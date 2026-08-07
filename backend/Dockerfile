@@ -61,7 +61,7 @@ COPY composer.json ./composer.json
 RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --no-security-blocking
 
 # Copiar la aplicacion
-COPY  .
+COPY . .
 
 # Copiar el codigo del agente Go y los binarios pre-compilados
 #COPY agent-go/ /var/www/html/agent-go/
