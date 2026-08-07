@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Configurar nginx
-COPY frontend-php/nginx.conf /etc/nginx/sites-available/default
+COPY frontend/nginx.conf /etc/nginx/sites-available/default
 RUN rm -f /etc/nginx/sites-enabled/default && \
     ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
 
@@ -24,7 +24,7 @@ RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 
 # Copiar la aplicacion
 WORKDIR /var/www/html
-COPY frontend-php/ .
+COPY frontend/ .
 
 # Copiar logo desde el frontend React
 COPY frontend-react/logo-nuevo.png /var/www/html/logo-nuevo.png
@@ -36,7 +36,7 @@ RUN mkdir -p /var/www/html/uploads /var/run/nginx /run/nginx \
 EXPOSE 80
 
 # Entrypoint: arrancar PHP-FPM y nginx
-COPY frontend-php/entrypoint.sh /entrypoint.sh
+COPY frontend/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 CMD ["/entrypoint.sh"]
