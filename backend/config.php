@@ -10,6 +10,7 @@ define('CORS_ORIGIN', getenv('CORS_ORIGIN') ?: 'http://localhost:5173');
 define('OLLAMA_HOST', getenv('OLLAMA_HOST') ?: 'http://localhost:11434');
 define('AI_MODEL', getenv('AI_MODEL') ?: 'mistral');
 define('TURNSTILE_SECRET_KEY', getenv('TURNSTILE_SECRET_KEY') ?: '');
+define('API_BASE_URL', getenv('API_BASE_URL') ?: '');
 
 // CORS headers
 header('Access-Control-Allow-Origin: ' . CORS_ORIGIN);
