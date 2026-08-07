@@ -24,7 +24,7 @@ RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 
 # Copiar la aplicacion
 WORKDIR /var/www/html
-COPY  .
+COPY . .
 
 # Copiar logo desde el frontend React
 COPY frontend-react/logo-nuevo.png /var/www/html/logo-nuevo.png
