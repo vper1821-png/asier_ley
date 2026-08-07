@@ -50,8 +50,8 @@ if (preg_match('#^/admin/user/([a-zA-Z0-9]+)$#', $uri, $m)) {
 // Compliance RAT export passthrough
 if ($uri === '/compliance-export') {
     if (!is_logged_in()) { header('Location: /login'); exit; }
-    $host = explode(':', $_SERVER['HTTP_HOST'] ?? 'localhost')[0];
-    header('Location: http://' . $host . ':3838/api/compliance/ropa-export?token=' . urlencode($_SESSION['token']));
+    // Usar SITE_URL con https
+    header('Location: ' . SITE_URL . '/api/compliance/ropa-export?token=' . urlencode($_SESSION['token']));
     exit;
 }
 
