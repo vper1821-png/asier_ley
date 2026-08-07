@@ -1,0 +1,5 @@
+{
+  "token": "YOUR_INVISIA_TOKEN",
+  "api_base": "http://your-server:3838/api/agents",
+  "heartbeat_interval": 30
+}

@@ -1,0 +1,397 @@
+[2026-07-10T19:19:03Z] Ollama AI enabled: http://localhost:11434 (model: llama3.2)
+[2026-07-10T19:19:04Z] [ASSISTANT] SQLite knowledge base ready: C:\Users\asier\Videos\v3 pagina\agent-go\securelab_assistant.db
+[2026-07-10T19:19:04Z] API: http://localhost:3838/api/agents
+[2026-07-10T19:19:04Z] Interval: 5s
+[2026-07-10T19:19:04Z] Platform: windows/amd64
+[2026-07-10T19:19:04Z] Registering: DESKTOP-CDEE7BS (windows/amd64) [DESKTOP-CDEE7BS-6284f8a61f6aab24]
+[2026-07-10T19:19:04Z] Registered: DESKTOP-CDEE7BS-6284f8a61f6aab24
+[2026-07-10T19:19:04Z] WS: connecting to ws://localhost:3838/ws/agent
+[2026-07-10T19:19:04Z] DB Monitor: started (10s interval)
+[2026-07-10T19:19:04Z] Activity Monitor: ADVANCED MODE started (interval: 5s)
+[2026-07-10T19:19:04Z] WS: connected
+[2026-07-10T19:19:05Z] WS command: registered
+[2026-07-10T19:19:07Z] Activity Monitor: scanning host for database logs...
+[2026-07-10T19:19:07Z] Activity Monitor: total 8 DB log files discovered on host
+[2026-07-10T19:19:07Z] DB Engine: starting auto-discovery of all local databases...
+[2026-07-10T19:19:07Z] DB Engine: discovered 1 database instances
+[2026-07-10T19:19:07Z] DB Engine: [mysql] 127.0.0.1:3306 — running (source: port_scan)
+[2026-07-10T19:19:07Z] DB Engine: auto-connected to 1 databases
+[2026-07-10T19:19:07Z] DB Engine: connected → mysql://127.0.0.1:3306
+[2026-07-10T19:19:07Z] Activity Monitor: auto-registered mysql://127.0.0.1:3306 for audit
+[2026-07-10T19:19:07Z] Activity Monitor: 1 auto-registered connections ready for audit
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: 'system user' desde  en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64224 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64231 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64238 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:62018 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:62024 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:62031 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55507 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55514 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55520 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63679 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63828 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63838 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:51064 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:51071 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:51078 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55323 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:56945 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:56952 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:52412 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:52419 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:65006 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55112 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55119 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55124 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:60645 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:60648 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:60650 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55100 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55102 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55113 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64594 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64601 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64607 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:56579 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:56586 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:56593 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:58470 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:58477 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:58483 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:51672 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:51678 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:51685 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:61560 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:61567 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:61574 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:65529 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:65363 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:65374 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:50730 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:50737 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55219 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:54894 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:57652 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:57664 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55575 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55587 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55598 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53195 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53200 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63602 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:56381 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:56385 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:56388 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:50105 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:56988 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:56996 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:60088 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:60102 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63140 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55590 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:59337 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:59349 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64182 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:52516 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:52527 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:49764 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:56343 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:56355 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:56024 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:56043 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:65528 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:52658 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:52676 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:52688 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53817 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63320 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:65300 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64772 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64783 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:52251 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:56120 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:57363 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:57374 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:58472 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:58485 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:58493 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:50720 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:57300 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:57303 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:50390 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:50394 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:50398 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63383 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63387 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63390 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55743 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53341 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53345 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:59567 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:59576 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:59093 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:58973 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:58985 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:59872 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55749 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55761 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55772 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:50170 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:52747 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:52759 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:52080 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:52092 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:52103 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:58076 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:58087 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:58104 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:57521 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:57533 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:57544 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53485 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53496 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53508 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53568 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53580 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53591 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:49713 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64715 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64727 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63746 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:58056 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:51703 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55207 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55211 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55215 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:50519 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:50523 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:50526 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53965 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53968 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53973 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:59879 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:59883 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:59886 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:59160 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:59163 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:59167 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:49292 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:59424 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:59431 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63344 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:58471 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:58482 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63263 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63275 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63286 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:52877 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:50451 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:50463 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:62614 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:62626 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55170 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64673 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64685 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64697 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:49925 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:49937 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:49948 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:58028 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:51014 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:62064 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:65071 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:65083 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:65094 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63121 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63132 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63146 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55968 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55976 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55983 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:65431 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:65439 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:65447 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:58929 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:58934 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:54037 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64235 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63655 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63660 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63734 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63738 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:59216 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:61966 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:61970 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:61974 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53388 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53392 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53395 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53188 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53192 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53197 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:61691 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:61695 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:61698 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:50402 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:50409 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:50418 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64215 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64225 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63027 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55619 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55626 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55634 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:58068 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:58083 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:58102 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:59045 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:49350 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:49362 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:65032 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:57722 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:54210 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53798 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53810 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53825 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:61487 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:61500 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:61511 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:65441 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63435 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:61414 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:52204 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:52216 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:52227 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53544 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:56474 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:57980 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64479 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64487 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64495 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:60383 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:60390 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:60398 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64698 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64702 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64705 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55629 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:51085 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:51089 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53011 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63095 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:56514 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:54211 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:54215 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:54219 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53363 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53368 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53371 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:57494 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:57497 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64827 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:56946 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:56950 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:56954 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:59065 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:59313 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:50061 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:50180 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:50207 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:50232 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:50268 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:62363 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:59293 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:59450 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:59461 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:59464 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:59473 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:59486 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:56962 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64751 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64759 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64762 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:64771 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:50215 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53963 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:62166 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:62171 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:62182 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:62213 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:65346 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53542 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:60735 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:60762 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:60930 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63200 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63206 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63362 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:65240 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:65247 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:65253 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63845 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63851 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:53099 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:65136 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:65143 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:65150 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63191 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:49928 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:60825 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:50285 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:50292 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63644 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:57546 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63885 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:55549 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:57028 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63625 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: 'root' desde localhost:63782 en mysql/
+[2026-07-10T19:19:12Z] Activity Monitor: 👤 NUEVO USUARIO DB: '123456789xd' desde localhost:63169 en mysql/
+[2026-07-10T19:19:12Z] MySQL: general_log=1 log_output=FILE,TABLE file=DESKTOP-CDEE7BS.log
+[2026-07-10T19:19:12Z] MySQL: starting general_log tail: C:\xampp\mysql\data\DESKTOP-CDEE7BS.log
+[2026-07-10T19:19:12Z] Activity Monitor: GENERAL LOG está ACTIVADO — todas las consultas se registran
+[2026-07-10T19:19:12Z] MySQL: general_log table poll ➜ [root[root]@localhost [127.0.0.1]] SELECT DIGEST_TEXT, COUNT_STAR, SUM_TIMER_WAIT/1000000000000 as total_sec,
+			AVG_TIMER_WAIT/1000000000000 as avg_sec, SUM_ROWS_EXAMINED, SUM_ROWS_SENT,
+			IFNULL(SCHEMA_NAME, 'N/A
+[2026-07-10T19:19:12Z] MySQL: general_log table poll ➜ [root[root]@localhost [127.0.0.1]] SELECT THREAD_ID, EVENT_ID, EVENT_NAME, DIGEST_TEXT,
+					SQL_TEXT, CURRENT_SCHEMA, 'unknown' as USER_HOST,
+					ROWS_EXAMINED, ROWS_AFFECTED, ROWS_SENT,
+					TIMER_WAIT/1000000000
+[2026-07-10T19:19:12Z] MySQL: general_log table poll ➜ [123456789xd[123456789xd]@localhost [127.0.0.1]] SELECT DIGEST_TEXT, COUNT_STAR, SUM_TIMER_WAIT/1000000000000 as total_sec,
+			AVG_TIMER_WAIT/1000000000000 as avg_sec, SUM_ROWS_EXAMINED, SUM_ROWS_SENT,
+			IFNULL(SCHEMA_NAME, 'N/A
+[2026-07-10T19:19:12Z] MySQL: general_log table poll ➜ [123456789xd[123456789xd]@localhost [127.0.0.1]] SELECT THREAD_ID, EVENT_ID, EVENT_NAME, DIGEST_TEXT,
+					SQL_TEXT, CURRENT_SCHEMA, 'unknown' as USER_HOST,
+					ROWS_EXAMINED, ROWS_AFFECTED, ROWS_SENT,
+					TIMER_WAIT/1000000000
+[2026-07-10T19:19:12Z] MySQL: general_log table poll ➜ [123456789xd[123456789xd]@localhost [127.0.0.1]] SELECT DIGEST_TEXT, COUNT_STAR, SUM_TIMER_WAIT/1000000000000 as total_sec,
+			AVG_TIMER_WAIT/1000000000000 as avg_sec, SUM_ROWS_EXAMINED, SUM_ROWS_SENT,
+			IFNULL(SCHEMA_NAME, 'N/A
+[2026-07-10T19:19:12Z] MySQL: general_log table poll ➜ [123456789xd[123456789xd]@localhost [127.0.0.1]] SELECT THREAD_ID, EVENT_ID, EVENT_NAME, DIGEST_TEXT,
+					SQL_TEXT, CURRENT_SCHEMA, 'unknown' as USER_HOST,
+					ROWS_EXAMINED, ROWS_AFFECTED, ROWS_SENT,
+					TIMER_WAIT/1000000000
+[2026-07-10T19:19:12Z] MySQL: general_log table poll ➜ [123456789xd[123456789xd]@localhost [127.0.0.1]] SELECT DIGEST_TEXT, COUNT_STAR, SUM_TIMER_WAIT/1000000000000 as total_sec,
+			AVG_TIMER_WAIT/1000000000000 as avg_sec, SUM_ROWS_EXAMINED, SUM_ROWS_SENT,
+			IFNULL(SCHEMA_NAME, 'N/A
+[2026-07-10T19:19:12Z] MySQL: general_log table poll ➜ [123456789xd[123456789xd]@localhost [127.0.0.1]] SELECT THREAD_ID, EVENT_ID, EVENT_NAME, DIGEST_TEXT,
+					SQL_TEXT, CURRENT_SCHEMA, 'unknown' as USER_HOST,
+					ROWS_EXAMINED, ROWS_AFFECTED, ROWS_SENT,
+					TIMER_WAIT/1000000000
+[2026-07-10T19:19:12Z] MySQL: general_log table poll ➜ [123456789xd[123456789xd]@localhost [127.0.0.1]] SELECT DIGEST_TEXT, COUNT_STAR, SUM_TIMER_WAIT/1000000000000 as total_sec,
+			AVG_TIMER_WAIT/1000000000000 as avg_sec, SUM_ROWS_EXAMINED, SUM_ROWS_SENT,
+			IFNULL(SCHEMA_NAME, 'N/A
+[2026-07-10T19:19:12Z] MySQL: general_log table poll ➜ [123456789xd[123456789xd]@localhost [127.0.0.1]] SELECT THREAD_ID, EVENT_ID, EVENT_NAME, DIGEST_TEXT,
+					SQL_TEXT, CURRENT_SCHEMA, 'unknown' as USER_HOST,
+					ROWS_EXAMINED, ROWS_AFFECTED, ROWS_SENT,
+					TIMER_WAIT/1000000000
+[2026-07-10T19:19:12Z] MySQL: general_log table poll: 10 new queries captured ✅
+[2026-07-10T19:19:12Z] MySQL: flushing 10 query logs via WebSocket
+[2026-07-10T19:19:14Z] Received test_connection for: mysql/123456789xd
+[2026-07-10T19:19:14Z] DB Monitor: connection set for mysql/123456789xd
+[2026-07-10T19:19:14Z] Activity Monitor: connection active for mysql/123456789xd
+[2026-07-10T19:19:14Z] Heartbeat interval changed to 2s
+[2026-07-10T19:19:14Z] Test result reported for connection healthcheck-6a51282c680480778b03c78c (status 200)
+[2026-07-10T19:19:14Z] DB Monitor: connected to mysql/123456789xd
+[2026-07-10T19:19:20Z] Heartbeat interval changed to 5s

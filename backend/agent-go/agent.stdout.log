@@ -1,0 +1,13 @@
+[2026-07-08T21:38:13Z] Ollama AI enabled: http://localhost:11434 (model: llama3.2)
+[2026-07-08T21:38:13Z] [ASSISTANT] SQLite knowledge base ready: C:\Users\asier\Videos\ley\agent-go\securelab_assistant.db
+
+  ╔══════════════════════════════════════╗
+  ║      SecureLab Agent (Go)           ║
+  ╚══════════════════════════════════════╝
+
+[2026-07-08T21:38:13Z] API: http://localhost:3838/api/agents
+[2026-07-08T21:38:13Z] Interval: 5s
+[2026-07-08T21:38:13Z] Platform: windows/amd64
+[2026-07-08T21:38:13Z] Registering: DESKTOP-CDEE7BS (windows/amd64) [DESKTOP-CDEE7BS-6284f8a61f6aab24]
+[2026-07-08T21:38:13Z] Registration error: register request: Post "http://localhost:3838/api/agents/register": dial tcp [::1]:3838: connectex: No connection could be made because the target machine actively refused it.
+[2026-07-08T21:38:13Z] Registration failed, retrying in 30s...
