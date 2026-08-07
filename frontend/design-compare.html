@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Design Compare - SecureLab PHP vs React</title>
+    <style>
+        :root { --bg: #0b0b0f; --panel: #0f0f14; --border: rgba(255,255,255,0.06); --text: #d1d5db; --muted: #9ca3af; --accent: #3b82f6; }
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: Inter, system-ui, sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; }
+        header { height: 56px; background: var(--panel); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 1rem; flex-shrink: 0; }
+        h1 { margin: 0; font-size: 14px; font-weight: 600; }
+        .controls { display: flex; align-items: center; gap: .75rem; }
+        select, button, input { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: .375rem; padding: .4rem .6rem; font-size: 12px; }
+        button { cursor: pointer; background: var(--accent); color: white; border: none; }
+        button:hover { opacity: .9; }
+        main { display: grid; grid-template-columns: 1fr 1fr; height: calc(100vh - 56px); gap: 1px; background: var(--border); }
+        .panel { display: flex; flex-direction: column; background: var(--bg); }
+        .panel-header { height: 32px; background: var(--panel); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 .75rem; font-size: 11px; color: var(--muted); }
+        iframe { flex: 1; width: 100%; border: 0; background: var(--bg); }
+        .badge { font-size: 10px; padding: 2px 6px; border-radius: 999px; background: rgba(59,130,246,.1); color: var(--accent); }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>SecureLab — Side-by-side Design Compare</h1>
+        <div class="controls">
+            <label>PHP port</label>
+            <input id="phpPort" value="8090" style="width:70px">
+            <label>React port</label>
+            <input id="reactPort" value="5173" style="width:70px">
+            <select id="routeSelect">
+                <option value='{"php":"/","react":"/"}'>Landing</option>
+                <option value='{"php":"/login","react":"/login"}'>Login</option>
+                <option value='{"php":"/register","react":"/register"}'>Register</option>
+                <option value='{"php":"/dashboard","react":"/dashboard"}'>Dashboard</option>
+                <option value='{"php":"/compliance","react":"/compliance"}'>Compliance</option>
+                <option value='{"php":"/admin","react":"/admin"}'>Admin</option>
+                <option value='{"php":"/host-monitor","react":"/host-monitor"}'>Host Monitor</option>
+                <option value='{"php":"/arco-public","react":"/arco-solicitud"}'>ARCO Solicitud</option>
+                <option value='{"php":"/citizen-portal","react":"/track"}'>Portal Ciudadano</option>
+                <option value='{"php":"/settings","react":"/settings"}'>Settings</option>
+                <option value='{"php":"/dpo","react":"/dpo"}'>DPO</option>
+                <option value='{"php":"/user-monitor","react":"/user-monitor"}'>User Monitor</option>
+                <option value='{"php":"/pending","react":"/pending"}'>Pending</option>
+                <option value='{"php":"/sign-invite","react":"/sign-invite"}'>Sign Invite</option>
+                <option value='{"php":"/privacy","react":"/privacy"}'>Privacy</option>
+                <option value='{"php":"/privacy-policy","react":"/politica-privacidad"}'>Politica Privacidad</option>
+            </select>
+            <button onclick="load()">Load both</button>
+        </div>
+    </header>
+    <main>
+        <div class="panel">
+            <div class="panel-header"><span>PHP Frontend</span><span class="badge" id="phpUrl">http://localhost:8090</span></div>
+            <iframe id="phpFrame" src="about:blank"></iframe>
+        </div>
+        <div class="panel">
+            <div class="panel-header"><span>React Frontend</span><span class="badge" id="reactUrl">http://localhost:5173</span></div>
+            <iframe id="reactFrame" src="about:blank"></iframe>
+        </div>
+    </main>
+    <script>
+        function load() {
+            const php = 'http://localhost:' + document.getElementById('phpPort').value;
+            const react = 'http://localhost:' + document.getElementById('reactPort').value;
+            const route = JSON.parse(document.getElementById('routeSelect').value);
+            document.getElementById('phpUrl').textContent = php + route.php;
+            document.getElementById('reactUrl').textContent = react + route.react;
+            document.getElementById('phpFrame').src = php + route.php;
+            document.getElementById('reactFrame').src = react + route.react;
+        }
+        document.getElementById('routeSelect').addEventListener('change', load);
+        window.addEventListener('DOMContentLoaded', load);
+    </script>
+</body>
+</html>

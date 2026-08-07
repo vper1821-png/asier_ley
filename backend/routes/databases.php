@@ -1,0 +1,431 @@
+<?php
+// Database routes
+
+function listAll() {
+    $user = Auth::requireAuth();
+    $db = Database::getInstance();
+    $databases = $db->find('databases', ['userId' => $user['_id']]);
+    json_response($databases);
+}
+
+function getDbId() {
+    return $_GET['id'] ?? '';
+}
+
+function connect() {
+    $user = Auth::requireAuth();
+    $body = get_body();
+    $db = Database::getInstance();
+
+    $required = ['name', 'type', 'host', 'port', 'user', 'database'];
+    foreach ($required as $field) {
+        if (empty($body[$field])) json_error("$field requerido");
+    }
+
+    $allowedTypes = ['mysql', 'mariadb', 'postgres', 'postgresql', 'mssql', 'sqlite'];
+    if (!in_array($body['type'], $allowedTypes)) json_error('tipo de base de datos no soportado');
+
+    $record = $db->insertOne('databases', [
+        'userId' => $user['_id'],
+        'name' => $body['name'],
+        'type' => $body['type'],
+        'host' => $body['host'],
+        'port' => $body['port'],
+        'user' => $body['user'],
+        'password' => $body['password'] ?? '',
+        'database' => $body['database'],
+        'ssl' => filter_var($body['ssl'] ?? false, FILTER_VALIDATE_BOOLEAN),
+        'status' => 'configured',
+        'lastTest' => null,
+        'tables' => 0,
+    ]);
+
+    unset($record['password']);
+    json_response(['success' => true, 'database' => $record]);
+}
+
+function localConnect() {
+    $user = Auth::requireAuth();
+    $body = get_body();
+    $db = Database::getInstance();
+
+    if (empty($body['name']) || empty($body['type']) || empty($body['database'])) {
+        json_error('nombre, tipo y base de datos requeridos');
+    }
+
+    $type = $body['type'];
+    $allowedTypes = ['mysql', 'mariadb', 'postgres', 'postgresql', 'mssql', 'sqlite'];
+    if (!in_array($type, $allowedTypes)) json_error('tipo no soportado');
+
+    $defaultPorts = ['mysql' => 3306, 'mariadb' => 3306, 'postgres' => 5432, 'postgresql' => 5432, 'mssql' => 1433, 'sqlite' => 0];
+    $record = $db->insertOne('databases', [
+        'userId' => $user['_id'],
+        'name' => $body['name'],
+        'type' => $type,
+        'host' => getenv('MYSQL_HOST') ?: '127.0.0.1',
+        'port' => $body['port'] ?? ($defaultPorts[$type] ?? 0),
+        'user' => $body['user'] ?? '',
+        'password' => $body['password'] ?? '',
+        'database' => $body['database'],
+        'ssl' => false,
+        'isLocal' => true,
+        'status' => 'configured',
+        'lastTest' => null,
+        'tables' => 0,
+    ]);
+
+    unset($record['password']);
+    json_response(['success' => true, 'database' => $record]);
+}
+
+function update() {
+    $user = Auth::requireAuth();
+    $body = get_body();
+    $id = getDbId();
+    if (!$id) json_error('id requerido');
+
+    $db = Database::getInstance();
+    $existing = $db->findOne('databases', ['_id' => $id, 'userId' => $user['_id']]);
+    if (!$existing) json_error('base de datos no encontrada', 404);
+
+    $allowed = ['name', 'type', 'host', 'port', 'user', 'password', 'database', 'ssl'];
+    $updates = [];
+    foreach ($allowed as $field) {
+        if (array_key_exists($field, $body)) $updates[$field] = $body[$field];
+    }
+    if (!empty($updates)) $db->updateOne('databases', ['_id' => $id], $updates);
+    json_response(['success' => true]);
+}
+
+function delete() {
+    $user = Auth::requireAuth();
+    $id = getDbId();
+    if (!$id) json_error('id requerido');
+
+    $db = Database::getInstance();
+    $existing = $db->findOne('databases', ['_id' => $id, 'userId' => $user['_id']]);
+    if (!$existing) json_error('base de datos no encontrada', 404);
+
+    $db->deleteOne('databases', ['_id' => $id]);
+    json_response(['success' => true]);
+}
+
+function getDsn($record) {
+    $type = $record['type'] ?? '';
+    $host = $record['host'] ?? '';
+    $port = $record['port'] ?? 0;
+    $database = $record['database'] ?? '';
+    $user = $record['user'] ?? '';
+    $password = $record['password'] ?? '';
+    $ssl = filter_var($record['ssl'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+    try {
+        if (in_array($type, ['mysql', 'mariadb'])) {
+            $dsn = "mysql:host=$host;port=$port;dbname=$database" . ($ssl ? ';charset=utf8mb4' : '');
+            $pdo = new PDO($dsn, $user, $password, [PDO::ATTR_TIMEOUT => 5, PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+            if ($ssl) $pdo->exec("SET NAMES utf8mb4");
+            return $pdo;
+        }
+        if (in_array($type, ['postgres', 'postgresql'])) {
+            $dsn = "pgsql:host=$host;port=$port;dbname=$database";
+            $pdo = new PDO($dsn, $user, $password, [PDO::ATTR_TIMEOUT => 5, PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+            if ($ssl) $pdo->exec("SET sslmode=require");
+            return $pdo;
+        }
+        if ($type === 'mssql') {
+            $dsn = "sqlsrv:Server=$host,$port;Database=$database";
+            $pdo = new PDO($dsn, $user, $password, [PDO::SQLSRV_ATTR_QUERY_TIMEOUT => 5, PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+            return $pdo;
+        }
+        if ($type === 'sqlite') {
+            if (!file_exists($database)) json_error('archivo sqlite no encontrado');
+            return new PDO("sqlite:$database", '', '', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        }
+    } catch (PDOException $e) {
+        json_error('conexión fallida: ' . $e->getMessage());
+    }
+    json_error('tipo no soportado');
+}
+
+function testConnection() {
+    $user = Auth::requireAuth();
+    $id = getDbId();
+    if (!$id) json_error('id requerido');
+
+    $db = Database::getInstance();
+    $record = $db->findOne('databases', ['_id' => $id, 'userId' => $user['_id']]);
+    if (!$record) json_error('base de datos no encontrada', 404);
+
+    $start = microtime(true);
+    $pdo = getDsn($record);
+    $stmt = $pdo->query('SELECT 1');
+    $stmt->fetch();
+    $latency = round((microtime(true) - $start) * 1000);
+
+    $db->updateOne('databases', ['_id' => $id], ['lastTest' => date('c'), 'status' => 'connected', 'latency' => $latency]);
+    json_response(['success' => true, 'latency' => $latency, 'status' => 'connected']);
+}
+
+function scan() {
+    $user = Auth::requireAuth();
+    $id = getDbId();
+    if (!$id) json_error('id requerido');
+
+    $db = Database::getInstance();
+    $record = $db->findOne('databases', ['_id' => $id, 'userId' => $user['_id']]);
+    if (!$record) json_error('base de datos no encontrada', 404);
+
+    $pdo = getDsn($record);
+    $type = $record['type'] ?? '';
+    $tables = [];
+    $totalRows = 0;
+
+    try {
+        if (in_array($type, ['mysql', 'mariadb'])) {
+            $stmt = $pdo->query('SHOW TABLES');
+            while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
+                $tableName = $row[0];
+                $cntStmt = $pdo->query("SELECT COUNT(*) AS cnt FROM `$tableName`");
+                $cntRow = $cntStmt->fetch(PDO::FETCH_ASSOC);
+                $cnt = (int)($cntRow['cnt'] ?? 0);
+                $tables[] = ['name' => $tableName, 'rows' => $cnt];
+                $totalRows += $cnt;
+            }
+        } elseif (in_array($type, ['postgres', 'postgresql'])) {
+            $stmt = $pdo->query("SELECT relname AS table_name, n_live_tup AS row_count FROM pg_stat_user_tables");
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $tables[] = ['name' => $row['table_name'], 'rows' => (int)($row['row_count'] ?? 0)];
+                $totalRows += (int)($row['row_count'] ?? 0);
+            }
+        } elseif ($type === 'sqlite') {
+            $stmt = $pdo->query("SELECT name FROM sqlite_master WHERE type='table'");
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $tables[] = ['name' => $row['name'], 'rows' => 0];
+            }
+        }
+    } catch (PDOException $e) {
+        json_error('escaneo fallido: ' . $e->getMessage());
+    }
+
+    $db->updateOne('databases', ['_id' => $id], ['tables' => count($tables), 'totalRows' => $totalRows, 'records' => $totalRows, 'recordCount' => $totalRows, 'status' => 'connected', 'lastScan' => date('c')]);
+
+    // Auto-popular compliance inventory
+    $inventoryData = [
+        'userId' => $user['_id'],
+        'databaseId' => $id,
+        'name' => 'Tratamiento: ' . ($record['name'] ?? $record['database'] ?? 'db'),
+        'dataCategories' => implode(', ', array_column($tables, 'name')) ?: 'Datos personales',
+        'legalBasis' => 'Interés legítimo / Consentimiento',
+        'records' => $totalRows,
+        'active' => true,
+        'updatedAt' => date('c'),
+    ];
+    $existingInv = $db->findOne('compliance_inventory', ['userId' => $user['_id'], 'databaseId' => $id]);
+    if ($existingInv) {
+        $db->updateOne('compliance_inventory', ['_id' => $existingInv['_id']], $inventoryData);
+    } else {
+        $inventoryData['createdAt'] = date('c');
+        $db->insertOne('compliance_inventory', $inventoryData);
+    }
+
+    json_response(['success' => true, 'tables' => $tables, 'totalRows' => $totalRows]);
+}
+
+function query() {
+    $user = Auth::requireAuth();
+    $body = get_body();
+    $id = getDbId();
+    $query = trim($body['query'] ?? '');
+    if (!$id) json_error('id requerido');
+    if (!$query) json_error('query requerido');
+
+    $db = Database::getInstance();
+    $record = $db->findOne('databases', ['_id' => $id, 'userId' => $user['_id']]);
+    if (!$record) json_error('base de datos no encontrada', 404);
+
+    $firstWord = strtoupper(strtok($query, " \t\n\r"));
+    if (!in_array($firstWord, ['SELECT', 'SHOW', 'DESCRIBE', 'EXPLAIN'])) {
+        json_error('solo se permiten consultas de lectura (SELECT, SHOW, DESCRIBE, EXPLAIN)');
+    }
+
+    $pdo = getDsn($record);
+    try {
+        $stmt = $pdo->query($query);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        json_response(['success' => true, 'rows' => $rows, 'count' => count($rows)]);
+    } catch (PDOException $e) {
+        json_error('query fallida: ' . $e->getMessage());
+    }
+}
+
+function generateReport() {
+    $user = Auth::requireAuth();
+    $id = getDbId();
+    if (!$id) json_error('id requerido');
+
+    $db = Database::getInstance();
+    $record = $db->findOne('databases', ['_id' => $id, 'userId' => $user['_id']]);
+    if (!$record) json_error('base de datos no encontrada', 404);
+
+    $pdo = getDsn($record);
+    $tables = [];
+    $type = $record['type'] ?? '';
+    try {
+        if (in_array($type, ['mysql', 'mariadb'])) {
+            $stmt = $pdo->query("SELECT table_name, table_rows FROM information_schema.tables WHERE table_schema = '" . addslashes($record['database']) . "'");
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $tables[] = ['name' => $row['table_name'], 'rows' => (int)$row['table_rows']];
+            }
+        } elseif (in_array($type, ['postgres', 'postgresql'])) {
+            $stmt = $pdo->query("SELECT relname AS table_name, n_live_tup AS row_count FROM pg_stat_user_tables");
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $tables[] = ['name' => $row['table_name'], 'rows' => (int)($row['row_count'] ?? 0)];
+            }
+        } elseif ($type === 'sqlite') {
+            $stmt = $pdo->query("SELECT name FROM sqlite_master WHERE type='table'");
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $tables[] = ['name' => $row['name'], 'rows' => 0];
+            }
+        }
+    } catch (PDOException $e) {
+        json_error('reporte fallido: ' . $e->getMessage());
+    }
+
+    json_response(['success' => true, 'name' => $record['name'], 'type' => $type, 'tables' => $tables, 'generatedAt' => date('c')]);
+}
+
+function syncAgent() {
+    $user = Auth::requireAuth();
+    $id = getDbId();
+    if (!$id) json_error('id requerido');
+
+    $db = Database::getInstance();
+    $record = $db->findOne('databases', ['_id' => $id, 'userId' => $user['_id']]);
+    if (!$record) json_error('base de datos no encontrada', 404);
+
+    $db->updateOne('databases', ['_id' => $id], ['agentSyncedAt' => date('c'), 'agentStatus' => 'synced']);
+    json_response(['success' => true, 'message' => 'sincronización con agente registrada']);
+}
+
+function logList() {
+    $user = Auth::requireAuth();
+    $body = get_body();
+    $db = Database::getInstance();
+    $filter = ['userId' => $user['_id']];
+    if (!empty($body['databaseId'])) $filter['databaseId'] = $body['databaseId'];
+    if (!empty($body['severity'])) $filter['severity'] = $body['severity'];
+    $logs = $db->find('database_logs', $filter, ['limit' => (int)($body['limit'] ?? 200)]);
+    json_response(['logs' => $logs, 'total' => count($logs)]);
+}
+
+function logStats() {
+    $user = Auth::requireAuth();
+    $body = get_body();
+    $db = Database::getInstance();
+    $filter = ['userId' => $user['_id']];
+    if (!empty($body['databaseId'])) $filter['databaseId'] = $body['databaseId'];
+    $logs = $db->find('database_logs', $filter);
+    $bySeverity = [];
+    $recentErrors = [];
+    foreach ($logs as $log) {
+        $sev = $log['severity'] ?? 'info';
+        $bySeverity[$sev] = ($bySeverity[$sev] ?? 0) + 1;
+        if (in_array($sev, ['critical', 'high']) && count($recentErrors) < 10) {
+            $recentErrors[] = $log;
+        }
+    }
+    $bySeverityArray = [];
+    foreach ($bySeverity as $k => $v) {
+        $bySeverityArray[] = ['_id' => $k, 'count' => $v];
+    }
+    json_response(['total' => count($logs), 'bySeverity' => $bySeverityArray, 'recentErrors' => $recentErrors]);
+}
+
+function skipQuery() {
+    $user = Auth::requireAuth();
+    $body = get_body();
+    $db = Database::getInstance();
+    $dbId = $body['databaseId'] ?? '';
+    $query = $body['query'] ?? '';
+    if (!$dbId || !$query) json_error('databaseId y query requeridos');
+
+    $db->insertOne('database_skipped_queries', [
+        'userId' => $user['_id'],
+        'databaseId' => $dbId,
+        'query' => $query,
+        'reason' => $body['reason'] ?? '',
+        'createdAt' => date('c'),
+    ]);
+    json_response(['success' => true]);
+}
+
+function skippedQueries() {
+    $user = Auth::requireAuth();
+    $db = Database::getInstance();
+    $dbId = $_GET['databaseId'] ?? ($_POST['databaseId'] ?? '');
+    $filter = ['userId' => $user['_id']];
+    if ($dbId) $filter['databaseId'] = $dbId;
+    json_response($db->find('database_skipped_queries', $filter));
+}
+
+function revokeSkip() {
+    $user = Auth::requireAuth();
+    $body = get_body();
+    $db = Database::getInstance();
+    $skipId = $body['skipId'] ?? '';
+    $query = $body['query'] ?? '';
+
+    if ($skipId) {
+        $db->deleteOne('database_skipped_queries', ['_id' => $skipId, 'userId' => $user['_id']]);
+    } elseif ($query) {
+        $db->deleteOne('database_skipped_queries', ['query' => $query, 'userId' => $user['_id']]);
+    } else {
+        json_error('skipId o query requerido');
+    }
+
+    json_response(['success' => true]);
+}
+
+function deleteByQuery() {
+    $user = Auth::requireAuth();
+    $body = get_body();
+    $db = Database::getInstance();
+    $filter = ['userId' => $user['_id']];
+    if (!empty($body['databaseId'])) $filter['databaseId'] = $body['databaseId'];
+    if (!empty($body['query'])) $filter['query'] = $body['query'];
+    $all = $db->find('database_logs', $filter);
+    foreach ($all as $log) $db->deleteOne('database_logs', ['_id' => $log['_id']]);
+    json_response(['success' => true, 'deleted' => count($all)]);
+}
+
+function clientAction($action) {
+    $user = Auth::requireAuth();
+    $body = get_body();
+    $db = Database::getInstance();
+    $dbId = $_GET['dbId'] ?? $_GET['id'] ?? '';
+    if (!$dbId) json_error('dbId requerido');
+
+    $cmd = match ($action) {
+        'uninstall', 'uninstall-agent' => ['action' => 'uninstall'],
+        'reconnect-db' => ['action' => 'reconnect-db', 'databaseId' => $body['databaseId'] ?? $dbId],
+        'reconnect-agent' => ['action' => 'reconnect-agent'],
+        'restart-agent', 'restart' => ['action' => 'restart'],
+        default => json_error('acción no soportada'),
+    };
+
+    $database = $db->findOne('databases', ['_id' => $dbId, 'userId' => $user['_id']]);
+    $agentId = $database['agentId'] ?? $dbId;
+    $agent = $db->findOne('agents', ['agentId' => $agentId, 'userId' => $user['_id']]);
+    if (!$agent && !($database && ($database['agentId'] ?? ''))) {
+        $agentId = $dbId;
+    }
+
+    $db->insertOne('agent_commands', [
+        'userId' => $user['_id'],
+        'agentId' => $agentId,
+        'command' => $cmd,
+        'createdAt' => date('c'),
+        'executed' => false,
+    ]);
+    json_response(['success' => true]);
+}

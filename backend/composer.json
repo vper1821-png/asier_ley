@@ -1,0 +1,9 @@
+{
+    "require": {
+        "mongodb/mongodb": "^1.19",
+        "dompdf/dompdf": "^2.0"
+    },
+    "config": {
+        "optimize-autoloader": true
+    }
+}
