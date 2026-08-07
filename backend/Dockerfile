@@ -48,7 +48,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 # Configurar nginx
-COPY backend/nginx.conf /etc/nginx/sites-available/default
+COPY nginx.conf /etc/nginx/sites-available/default
 RUN rm -f /etc/nginx/sites-enabled/default && \
     ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
 
@@ -57,11 +57,11 @@ RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 
 # Instalar dependencias PHP (composer) con cache de capa
 WORKDIR /var/www/html
-COPY backend/composer.json ./composer.json
+COPY composer.json ./composer.json
 RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --no-security-blocking
 
 # Copiar la aplicacion
-COPY backend/ .
+COPY  .
 
 # Copiar el codigo del agente Go y los binarios pre-compilados
 #COPY agent-go/ /var/www/html/agent-go/
@@ -74,7 +74,7 @@ RUN mkdir -p /var/www/html/data /var/www/html/uploads /var/www/html/reports /var
 EXPOSE 3838
 
 # Entrypoint
-COPY backend/entrypoint.sh /entrypoint.sh
+COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 CMD ["/entrypoint.sh"]
