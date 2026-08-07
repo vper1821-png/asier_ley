@@ -238,10 +238,10 @@ function download() {
         $hostName = '127.0.0.1';
     }
     $config = [
-        'api_base' => (isset($_SERVER['HTTPS']) ? 'https://' : 'http://') . $hostName . ':' . $port . '/api/agents',
-        'token' => $token,
-        'heartbeat_interval' => 5,
-        'agent_version' => '2.0.0',
+    'api_base' => API_BASE_URL . '/api/agents',  // ← usa la constante definida en config.php
+    'token' => $token,
+    'heartbeat_interval' => 5,
+    'agent_version' => '2.0.0',
     ];
     file_put_contents($tmpDir . '/config.json', json_encode($config, JSON_PRETTY_PRINT));
 
