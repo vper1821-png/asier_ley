@@ -59,8 +59,8 @@ if ($uri === '/compliance-export') {
 if ($uri === '/download-agent') {
     if (!is_logged_in()) { header('Location: /login'); exit; }
     $platform = $_GET['platform'] ?? 'win-x64';
-    $host = explode(':', $_SERVER['HTTP_HOST'] ?? 'localhost')[0];
-    header('Location: http://' . $host . ':3838/api/agents/download/' . urlencode($platform) . '?token=' . urlencode($_SESSION['token']));
+    // Usar SITE_URL (definida en config.php) con https
+    header('Location: ' . SITE_URL . '/api/agents/download/' . urlencode($platform) . '?token=' . urlencode($_SESSION['token']));
     exit;
 }
 
