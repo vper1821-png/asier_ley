@@ -27,7 +27,7 @@ WORKDIR /var/www/html
 COPY . .
 
 # Copiar logo desde el frontend React
-COPY frontend-react/logo-nuevo.png /var/www/html/logo-nuevo.png
+#COPY frontend-react/logo-nuevo.png /var/www/html/logo-nuevo.png
 
 # Crear directorios necesarios
 RUN mkdir -p /var/www/html/uploads /var/run/nginx /run/nginx \
