@@ -22,8 +22,16 @@ function connect() {
         if (empty($body[$field])) json_error("$field requerido");
     }
 
-    $allowedTypes = ['mysql', 'mariadb', 'postgres', 'postgresql', 'mssql', 'sqlite'];
+    // ✅ AGREGADO: mongodb a la lista de tipos permitidos
+    $allowedTypes = ['mysql', 'mariadb', 'postgres', 'postgresql', 'mssql', 'sqlite', 'mongodb'];
     if (!in_array($body['type'], $allowedTypes)) json_error('tipo de base de datos no soportado');
+
+    // ✅ AGREGADO: validación extra para MongoDB
+    if ($body['type'] === 'mongodb') {
+        if (!class_exists('MongoDB\Client')) {
+            json_error('MongoDB driver no instalado. Ejecuta: composer require mongodb/mongodb');
+        }
+    }
 
     $record = $db->insertOne('databases', [
         'userId' => $user['_id'],
@@ -54,10 +62,11 @@ function localConnect() {
     }
 
     $type = $body['type'];
-    $allowedTypes = ['mysql', 'mariadb', 'postgres', 'postgresql', 'mssql', 'sqlite'];
+    // ✅ AGREGADO: mongodb a la lista de tipos permitidos
+    $allowedTypes = ['mysql', 'mariadb', 'postgres', 'postgresql', 'mssql', 'sqlite', 'mongodb'];
     if (!in_array($type, $allowedTypes)) json_error('tipo no soportado');
 
-    $defaultPorts = ['mysql' => 3306, 'mariadb' => 3306, 'postgres' => 5432, 'postgresql' => 5432, 'mssql' => 1433, 'sqlite' => 0];
+    $defaultPorts = ['mysql' => 3306, 'mariadb' => 3306, 'postgres' => 5432, 'postgresql' => 5432, 'mssql' => 1433, 'sqlite' => 0, 'mongodb' => 27017];
     $record = $db->insertOne('databases', [
         'userId' => $user['_id'],
         'name' => $body['name'],
@@ -110,6 +119,7 @@ function delete() {
     json_response(['success' => true]);
 }
 
+// ✅ MODIFICADO: Soporte para MongoDB en getDsn()
 function getDsn($record) {
     $type = $record['type'] ?? '';
     $host = $record['host'] ?? '';
@@ -141,7 +151,32 @@ function getDsn($record) {
             if (!file_exists($database)) json_error('archivo sqlite no encontrado');
             return new PDO("sqlite:$database", '', '', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
         }
+        // ✅ NUEVO: Soporte para MongoDB
+        if ($type === 'mongodb') {
+            if (!class_exists('MongoDB\Client')) {
+                json_error('MongoDB driver no instalado. Ejecuta: composer require mongodb/mongodb');
+            }
+            
+            // Construir URI de conexión
+            $uri = "mongodb://";
+            if ($user && $password) {
+                $uri .= urlencode($user) . ':' . urlencode($password) . '@';
+            }
+            $uri .= $host . ':' . $port . '/' . $database;
+            
+            $client = new MongoDB\Client($uri, [
+                'serverSelectionTimeoutMS' => 5000,
+                'connectTimeoutMS' => 5000,
+                'socketTimeoutMS' => 5000,
+            ]);
+            
+            // Probar conexión
+            $client->selectDatabase($database)->command(['ping' => 1]);
+            return $client;
+        }
     } catch (PDOException $e) {
+        json_error('conexión fallida: ' . $e->getMessage());
+    } catch (Exception $e) {
         json_error('conexión fallida: ' . $e->getMessage());
     }
     json_error('tipo no soportado');
@@ -157,15 +192,26 @@ function testConnection() {
     if (!$record) json_error('base de datos no encontrada', 404);
 
     $start = microtime(true);
-    $pdo = getDsn($record);
-    $stmt = $pdo->query('SELECT 1');
-    $stmt->fetch();
+    $conn = getDsn($record);
     $latency = round((microtime(true) - $start) * 1000);
+
+    // Para MongoDB, verificar conexión con ping
+    if ($record['type'] === 'mongodb') {
+        try {
+            $conn->selectDatabase($record['database'])->command(['ping' => 1]);
+        } catch (Exception $e) {
+            json_error('conexión fallida: ' . $e->getMessage());
+        }
+    } else {
+        $stmt = $conn->query('SELECT 1');
+        $stmt->fetch();
+    }
 
     $db->updateOne('databases', ['_id' => $id], ['lastTest' => date('c'), 'status' => 'connected', 'latency' => $latency]);
     json_response(['success' => true, 'latency' => $latency, 'status' => 'connected']);
 }
 
+// ✅ MODIFICADO: Soporte para MongoDB en scan()
 function scan() {
     $user = Auth::requireAuth();
     $id = getDbId();
@@ -175,39 +221,59 @@ function scan() {
     $record = $db->findOne('databases', ['_id' => $id, 'userId' => $user['_id']]);
     if (!$record) json_error('base de datos no encontrada', 404);
 
-    $pdo = getDsn($record);
+    $conn = getDsn($record);
     $type = $record['type'] ?? '';
     $tables = [];
     $totalRows = 0;
 
     try {
         if (in_array($type, ['mysql', 'mariadb'])) {
-            $stmt = $pdo->query('SHOW TABLES');
+            $stmt = $conn->query('SHOW TABLES');
             while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
                 $tableName = $row[0];
-                $cntStmt = $pdo->query("SELECT COUNT(*) AS cnt FROM `$tableName`");
+                $cntStmt = $conn->query("SELECT COUNT(*) AS cnt FROM `$tableName`");
                 $cntRow = $cntStmt->fetch(PDO::FETCH_ASSOC);
                 $cnt = (int)($cntRow['cnt'] ?? 0);
                 $tables[] = ['name' => $tableName, 'rows' => $cnt];
                 $totalRows += $cnt;
             }
         } elseif (in_array($type, ['postgres', 'postgresql'])) {
-            $stmt = $pdo->query("SELECT relname AS table_name, n_live_tup AS row_count FROM pg_stat_user_tables");
+            $stmt = $conn->query("SELECT relname AS table_name, n_live_tup AS row_count FROM pg_stat_user_tables");
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 $tables[] = ['name' => $row['table_name'], 'rows' => (int)($row['row_count'] ?? 0)];
                 $totalRows += (int)($row['row_count'] ?? 0);
             }
         } elseif ($type === 'sqlite') {
-            $stmt = $pdo->query("SELECT name FROM sqlite_master WHERE type='table'");
+            $stmt = $conn->query("SELECT name FROM sqlite_master WHERE type='table'");
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 $tables[] = ['name' => $row['name'], 'rows' => 0];
+            }
+        } elseif ($type === 'mongodb') {
+            // ✅ NUEVO: Escaneo para MongoDB
+            $database = $conn->selectDatabase($record['database']);
+            $collections = $database->listCollections();
+            
+            foreach ($collections as $collection) {
+                $name = $collection->getName();
+                $count = $database->selectCollection($name)->countDocuments();
+                $tables[] = ['name' => $name, 'rows' => $count];
+                $totalRows += $count;
             }
         }
     } catch (PDOException $e) {
         json_error('escaneo fallido: ' . $e->getMessage());
+    } catch (Exception $e) {
+        json_error('escaneo fallido: ' . $e->getMessage());
     }
 
-    $db->updateOne('databases', ['_id' => $id], ['tables' => count($tables), 'totalRows' => $totalRows, 'records' => $totalRows, 'recordCount' => $totalRows, 'status' => 'connected', 'lastScan' => date('c')]);
+    $db->updateOne('databases', ['_id' => $id], [
+        'tables' => count($tables), 
+        'totalRows' => $totalRows, 
+        'records' => $totalRows, 
+        'recordCount' => $totalRows, 
+        'status' => 'connected', 
+        'lastScan' => date('c')
+    ]);
 
     // Auto-popular compliance inventory
     $inventoryData = [
@@ -231,6 +297,7 @@ function scan() {
     json_response(['success' => true, 'tables' => $tables, 'totalRows' => $totalRows]);
 }
 
+// ✅ MODIFICADO: query() ahora soporta MongoDB (usando MongoDB\Operation\Find)
 function query() {
     $user = Auth::requireAuth();
     $body = get_body();
@@ -243,14 +310,50 @@ function query() {
     $record = $db->findOne('databases', ['_id' => $id, 'userId' => $user['_id']]);
     if (!$record) json_error('base de datos no encontrada', 404);
 
+    $type = $record['type'] ?? '';
+
+    // Si es MongoDB, usar sintaxis diferente
+    if ($type === 'mongodb') {
+        // Solo permitir find() en MongoDB
+        if (strpos(strtolower($query), 'find') === false) {
+            json_error('MongoDB solo soporta consultas find()');
+        }
+        
+        try {
+            $conn = getDsn($record);
+            $database = $conn->selectDatabase($record['database']);
+            
+            // Parsear query: find('collection', {filter})
+            $parts = explode(',', $query);
+            $collectionName = trim(str_replace(['find(', "'", '"'], '', $parts[0]));
+            $filter = isset($parts[1]) ? json_decode(trim($parts[1]), true) : [];
+            
+            $collection = $database->selectCollection($collectionName);
+            $cursor = $collection->find($filter, ['limit' => 100]);
+            $rows = iterator_to_array($cursor);
+            
+            // Convertir ObjectId a string para JSON
+            foreach ($rows as &$row) {
+                if (isset($row['_id']) && $row['_id'] instanceof MongoDB\BSON\ObjectId) {
+                    $row['_id'] = (string)$row['_id'];
+                }
+            }
+            
+            json_response(['success' => true, 'rows' => $rows, 'count' => count($rows)]);
+        } catch (Exception $e) {
+            json_error('query fallida: ' . $e->getMessage());
+        }
+    }
+
+    // SQL: solo SELECT, SHOW, DESCRIBE, EXPLAIN
     $firstWord = strtoupper(strtok($query, " \t\n\r"));
     if (!in_array($firstWord, ['SELECT', 'SHOW', 'DESCRIBE', 'EXPLAIN'])) {
         json_error('solo se permiten consultas de lectura (SELECT, SHOW, DESCRIBE, EXPLAIN)');
     }
 
-    $pdo = getDsn($record);
+    $conn = getDsn($record);
     try {
-        $stmt = $pdo->query($query);
+        $stmt = $conn->query($query);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
         json_response(['success' => true, 'rows' => $rows, 'count' => count($rows)]);
     } catch (PDOException $e) {
@@ -258,6 +361,7 @@ function query() {
     }
 }
 
+// ✅ MODIFICADO: generateReport() con soporte para MongoDB
 function generateReport() {
     $user = Auth::requireAuth();
     $id = getDbId();
@@ -267,27 +371,39 @@ function generateReport() {
     $record = $db->findOne('databases', ['_id' => $id, 'userId' => $user['_id']]);
     if (!$record) json_error('base de datos no encontrada', 404);
 
-    $pdo = getDsn($record);
+    $conn = getDsn($record);
     $tables = [];
     $type = $record['type'] ?? '';
+    
     try {
         if (in_array($type, ['mysql', 'mariadb'])) {
-            $stmt = $pdo->query("SELECT table_name, table_rows FROM information_schema.tables WHERE table_schema = '" . addslashes($record['database']) . "'");
+            $stmt = $conn->query("SELECT table_name, table_rows FROM information_schema.tables WHERE table_schema = '" . addslashes($record['database']) . "'");
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 $tables[] = ['name' => $row['table_name'], 'rows' => (int)$row['table_rows']];
             }
         } elseif (in_array($type, ['postgres', 'postgresql'])) {
-            $stmt = $pdo->query("SELECT relname AS table_name, n_live_tup AS row_count FROM pg_stat_user_tables");
+            $stmt = $conn->query("SELECT relname AS table_name, n_live_tup AS row_count FROM pg_stat_user_tables");
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 $tables[] = ['name' => $row['table_name'], 'rows' => (int)($row['row_count'] ?? 0)];
             }
         } elseif ($type === 'sqlite') {
-            $stmt = $pdo->query("SELECT name FROM sqlite_master WHERE type='table'");
+            $stmt = $conn->query("SELECT name FROM sqlite_master WHERE type='table'");
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 $tables[] = ['name' => $row['name'], 'rows' => 0];
             }
+        } elseif ($type === 'mongodb') {
+            // ✅ NUEVO: Reporte para MongoDB
+            $database = $conn->selectDatabase($record['database']);
+            $collections = $database->listCollections();
+            foreach ($collections as $collection) {
+                $name = $collection->getName();
+                $count = $database->selectCollection($name)->countDocuments();
+                $tables[] = ['name' => $name, 'rows' => $count];
+            }
         }
     } catch (PDOException $e) {
+        json_error('reporte fallido: ' . $e->getMessage());
+    } catch (Exception $e) {
         json_error('reporte fallido: ' . $e->getMessage());
     }
 
