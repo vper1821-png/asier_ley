@@ -14,11 +14,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $res = api_post_form('/api/databases/connect', [
             'token' => $token,
             'name' => $_POST['name'] ?? '',
-            'engine' => $_POST['engine'] ?? 'mysql',
+            'type' => $_POST['type'] ?? 'mysql',  // ✅ CAMBIADO: 'engine' → 'type'
             'host' => $_POST['host'] ?? '',
             'port' => $_POST['port'] ?? '',
             'database' => $_POST['database'] ?? '',
-            'username' => $_POST['username'] ?? '',
+            'user' => $_POST['user'] ?? '',       // ✅ CAMBIADO: 'username' → 'user'
             'password' => $_POST['password'] ?? '',
         ]);
         if (!empty($res['success']) || !empty($res['_id'])) $msg = 'Base de datos conectada.';
@@ -75,7 +75,7 @@ $engines = ['mysql' => 'MySQL', 'postgres' => 'PostgreSQL', 'mongodb' => 'MongoD
                     </div>
                     <div>
                         <label class="label-premium">Motor</label>
-                        <select name="engine" class="input-premium">
+                        <select name="type" class="input-premium">  <!-- ✅ CAMBIADO: 'engine' → 'type' -->
                             <?php foreach ($engines as $val => $label): ?>
                             <option value="<?= $val ?>"><?= h($label) ?></option>
                             <?php endforeach; ?>
@@ -95,7 +95,7 @@ $engines = ['mysql' => 'MySQL', 'postgres' => 'PostgreSQL', 'mongodb' => 'MongoD
                     </div>
                     <div>
                         <label class="label-premium">Usuario</label>
-                        <input type="text" name="username" class="input-premium" placeholder="root">
+                        <input type="text" name="user" class="input-premium" placeholder="root">  <!-- ✅ CAMBIADO: 'username' → 'user' -->
                     </div>
                     <div>
                         <label class="label-premium">Contraseña</label>
@@ -133,7 +133,7 @@ $engines = ['mysql' => 'MySQL', 'postgres' => 'PostgreSQL', 'mongodb' => 'MongoD
                         <p class="text-[10px] text-text-subtle truncate">Tablas: <?= (int)($d['tables'] ?? 0) ?> · Registros: <?= (int)($d['totalRows'] ?? ($d['records'] ?? 0)) ?> · Cumple: <?= empty($d['compliant']) || ($d['compliant'] === true) ? 'Sí' : 'No' ?></p>
                     </div>
                     <div class="lg:col-span-2">
-                        <span class="text-[11px] text-text-muted"><?= h($engines[$d['engine'] ?? ''] ?? $d['engine'] ?? '') ?></span>
+                        <span class="text-[11px] text-text-muted"><?= h($engines[$d['type'] ?? ''] ?? $d['type'] ?? '') ?></span>  <!-- ✅ CAMBIADO: 'engine' → 'type' -->
                     </div>
                     <div class="lg:col-span-2">
                         <span class="inline-flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full <?= $isConn ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20' ?>">
