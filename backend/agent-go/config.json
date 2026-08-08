@@ -1,5 +1,5 @@
 {
   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2YTQ1YTk2YTg1ZTZkODRjMzQzZTFmOWEiLCJlbWFpbCI6ImFzaWVyc2lubWFzMjAwNEBnbWFpbC5jb20iLCJpYXQiOjE3ODM1NDY2MDQsImV4cCI6MTgxNTA4MjYwNH0.N3uDr-y1tXKzTp03lS5ogbtexc59g49qQBfj4X3JyK8",
-  "api_base": "http://localhost:3838/api/agents",
+  "api_base": "https://leysecurelab.sytes.net/api/agents",
   "heartbeat_interval": 5
 }
