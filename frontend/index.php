@@ -74,7 +74,7 @@ if (isset($routes[$uri])) {
     <div class="min-h-screen flex items-center justify-center">
         <div class="text-center">
             <h1 class="text-6xl font-bold text-primary-500 mb-4">404</h1>
-            <p class="text-text-muted mb-6">Página no encontradasss</p>
+            <p class="text-text-muted mb-6">Página no encontrada</p>
             <a href="/" class="btn-primary inline-block">Volver al inicio</a>
         </div>
     </div>
