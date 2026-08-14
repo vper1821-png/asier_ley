@@ -126,6 +126,7 @@ $tabs = [
     ['id' => 'dpia', 'label' => 'Eval. Impacto', 'icon' => 'shield'],
     ['id' => 'trainings', 'label' => 'Capacitaciones', 'icon' => 'info'],
     ['id' => 'invites', 'label' => 'Firmas', 'icon' => 'pen'],
+    ['id' => 'files', 'label' => 'Archivos', 'icon' => 'fileText'],
 ];
 $activeLabel = 'Compliance';
 foreach ($tabs as $t) { if ($t['id'] === $tab) $activeLabel = $t['label']; }
@@ -553,6 +554,319 @@ require_once __DIR__ . '/../includes/header.php';
                 if ($signed) renderActionBtn('invites', $it['_id'] ?? '', 'unsign', 'Anular firma');
             }); ?>
             <?php endif; ?>
+            <?php elseif ($tab === 'files'): ?>
+    <?php
+    // ─── Obtener lista de archivos ───
+    $filesRes = api_get('/api/compliance/files', ['token' => $token]);
+    $files = is_array($filesRes) && empty($filesRes['error']) ? $filesRes : [];
+    $fileMsg = '';
+    $fileErr = '';
+
+    // ─── Procesar acciones POST ───
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        if (isset($_POST['analyze_file'])) {
+            $res = api_post_form('/api/compliance/files/analyze', [
+                'token' => $token,
+                'fileId' => $_POST['file_id'] ?? '',
+            ]);
+            if (!empty($res['success'])) $fileMsg = 'Archivo analizado correctamente.';
+            else $fileErr = $res['error'] ?? 'Error al analizar.';
+        }
+        if (isset($_POST['delete_file'])) {
+            $res = api_post_form('/api/compliance/files/delete', [
+                'token' => $token,
+                'fileId' => $_POST['file_id'] ?? '',
+            ]);
+            if (!empty($res['success'])) $fileMsg = 'Archivo eliminado.';
+            else $fileErr = $res['error'] ?? 'Error al eliminar.';
+        }
+    }
+    ?>
+
+    <?php renderSectionHeader('Archivos con Datos Personales', 'Sube y analiza archivos XLS, XLSX, CSV o TXT para incluirlos en el inventario de datos (RAT).'); ?>
+
+    <?php if ($fileMsg): ?>
+        <div class="px-4 py-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] mb-4"><?= h($fileMsg) ?></div>
+    <?php endif; ?>
+    <?php if ($fileErr): ?>
+        <div class="px-4 py-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-[11px] mb-4"><?= h($fileErr) ?></div>
+    <?php endif; ?>
+
+    <!-- Formulario de subida -->
+    <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5 mb-5">
+        <p class="text-[12px] font-semibold text-white mb-4">Subir nuevo archivo</p>
+        <form id="upload-form" enctype="multipart/form-data" class="flex flex-col md:flex-row gap-3">
+            <input type="file" name="file" id="file-input" required
+                   accept=".xlsx,.xls,.csv,.txt"
+                   class="flex-1 bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-[11px] file:font-medium file:bg-primary-500/10 file:text-primary-400 hover:file:bg-primary-500/20">
+            <button type="submit" id="upload-btn"
+                    class="px-4 py-2 rounded-lg text-[11px] font-medium bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white transition-all flex items-center gap-2">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                Subir archivo
+            </button>
+        </form>
+        <div id="upload-progress" class="hidden mt-3">
+            <div class="w-full bg-bg-elevated rounded-full h-1.5">
+                <div id="upload-bar" class="bg-primary-500 h-1.5 rounded-full transition-all" style="width:0%"></div>
+            </div>
+            <p id="upload-status" class="text-[10px] text-text-subtle mt-1">Subiendo...</p>
+        </div>
+    </div>
+
+    <!-- Lista de archivos -->
+    <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm overflow-hidden">
+        <div class="px-5 py-4 border-b border-border-theme/20 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-lg border border-white/[0.04] bg-white/[0.01] flex items-center justify-center text-cyan-400">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                </div>
+                <p class="text-[12px] font-semibold text-white">Archivos subidos</p>
+                <span class="text-[10px] text-text-subtle"><?= count($files) ?> archivos</span>
+            </div>
+            <button onclick="location.reload()" class="text-[10px] text-text-muted hover:text-text-body transition-colors">Refrescar</button>
+        </div>
+
+        <?php if (empty($files)): ?>
+            <p class="px-5 py-8 text-[11px] text-text-subtle text-center">No hay archivos subidos. Sube un archivo para comenzar.</p>
+        <?php else: ?>
+            <div class="divide-y divide-border-theme/20">
+                <?php foreach ($files as $f):
+                    $status = $f['status'] ?? 'pending';
+                    $statusLabels = [
+                        'pending'   => ['label' => 'Pendiente', 'class' => 'bg-amber-500/10 text-amber-400 border-amber-500/20'],
+                        'analyzing' => ['label' => 'Analizando...', 'class' => 'bg-blue-500/10 text-blue-400 border-blue-500/20'],
+                        'analyzed'  => ['label' => 'Analizado', 'class' => 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'],
+                        'failed'    => ['label' => 'Error', 'class' => 'bg-red-500/10 text-red-400 border-red-500/20'],
+                    ];
+                    $st = $statusLabels[$status] ?? $statusLabels['pending'];
+                    $result = $f['analysisResult'] ?? null;
+                ?>
+                <div class="px-5 py-3 flex flex-col md:flex-row md:items-center gap-3">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="text-[12px] font-medium text-text-heading truncate"><?= h($f['originalName'] ?? 'Archivo') ?></span>
+                            <span class="text-[10px] px-2 py-0.5 rounded-full border <?= $st['class'] ?>"><?= h($st['label']) ?></span>
+                            <span class="text-[10px] text-text-subtle"><?= h(number_format($f['size'] ?? 0)) ?> bytes</span>
+                        </div>
+                        <p class="text-[10px] text-text-subtle mt-0.5">
+                            Subido: <?= h(substr($f['createdAt'] ?? '', 0, 16)) ?>
+                            <?php if ($result && isset($result['rowCount'])): ?>
+                                · <?= h($result['rowCount']) ?> registros · <?= h(count($result['headers'] ?? [])) ?> columnas
+                            <?php endif; ?>
+                        </p>
+                        <?php if ($result && isset($result['patterns']) && !empty($result['patterns'])): ?>
+                            <div class="flex flex-wrap gap-1 mt-1">
+                                <?php foreach ($result['patterns'] as $col => $types): ?>
+                                    <span class="text-[9px] px-1.5 py-0.5 rounded bg-primary-500/10 text-primary-400 border border-primary-500/20">
+                                        <?= h($col) ?>: <?= h(implode(', ', $types)) ?>
+                                    </span>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                    <div class="flex items-center gap-1.5 flex-shrink-0">
+                        <?php if ($status === 'pending'): ?>
+                            <form method="POST" class="inline">
+                                <input type="hidden" name="file_id" value="<?= h($f['_id'] ?? '') ?>">
+                                <button type="submit" name="analyze_file" value="1"
+                                        class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 hover:bg-cyan-500/20 transition-all">
+                                    Analizar
+                                </button>
+                            </form>
+                        <?php endif; ?>
+
+                        <?php if ($status === 'analyzed' && $result): ?>
+                            <button onclick="openMapModal('<?= h($f['_id'] ?? '') ?>', <?= htmlspecialchars(json_encode($result['headers'] ?? [])) ?>)"
+                                    class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/20 transition-all">
+                                Mapear
+                            </button>
+                        <?php endif; ?>
+
+                        <?php if ($status === 'analyzed' && isset($result['inventoryId'])): ?>
+                            <a href="/compliance?tab=inventory" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 transition-all">
+                                Ver en inventario
+                            </a>
+                        <?php endif; ?>
+
+                        <form method="POST" class="inline">
+                            <input type="hidden" name="file_id" value="<?= h($f['_id'] ?? '') ?>">
+                            <button type="submit" name="delete_file" value="1" onclick="return confirm('¿Eliminar este archivo?')"
+                                    class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-red-900/10 border border-red-800/20 text-red-400 hover:bg-red-900/20 transition-all">
+                                Eliminar
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+    </div>
+
+    <!-- Modal de Mapeo -->
+    <div id="map-modal" class="hidden fixed inset-0 bg-black/65 flex items-center justify-center z-50 p-4">
+        <div class="bg-bg-panel border border-border-theme rounded-xl shadow-2xl w-full max-w-xl max-h-[80vh] flex flex-col">
+            <div class="flex items-center justify-between px-5 py-4 border-b border-border-theme flex-shrink-0">
+                <h3 class="text-[13px] font-semibold text-white">Mapeo de columnas</h3>
+                <button onclick="document.getElementById('map-modal').classList.add('hidden')" class="text-text-muted hover:text-text-heading transition-colors p-1 rounded-lg">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-5 scrollbar-custom">
+                <p class="text-[11px] text-text-muted mb-4">Asigna cada columna a una categoría de dato personal. Esto actualizará el inventario.</p>
+                <form id="map-form" class="space-y-3">
+                    <input type="hidden" name="fileId" id="map-file-id">
+                    <div id="map-fields" class="space-y-2"></div>
+                    <div id="map-result" class="hidden mt-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px]"></div>
+                    <div id="map-error" class="hidden mt-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-[11px]"></div>
+                </form>
+            </div>
+            <div class="flex justify-end gap-2 px-5 py-4 border-t border-border-theme flex-shrink-0">
+                <button onclick="document.getElementById('map-modal').classList.add('hidden')"
+                        class="px-3 py-1.5 text-[11px] font-medium rounded-lg bg-bg-elevated text-text-body border border-border-theme transition-all">Cancelar</button>
+                <button onclick="submitMapping()"
+                        class="px-3 py-1.5 text-[11px] font-medium rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white transition-all">Guardar mapeo</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ─── Subida de archivos con progreso ───
+    document.getElementById('upload-form')?.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const fileInput = document.getElementById('file-input');
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('token', '<?= h($token) ?>');
+
+        const progress = document.getElementById('upload-progress');
+        const bar = document.getElementById('upload-bar');
+        const status = document.getElementById('upload-status');
+
+        progress.classList.remove('hidden');
+        bar.style.width = '0%';
+        status.textContent = 'Subiendo...';
+
+        try {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/api/compliance/files/upload');
+
+            xhr.upload.onprogress = (e) => {
+                if (e.lengthComputable) {
+                    const pct = Math.round((e.loaded / e.total) * 100);
+                    bar.style.width = pct + '%';
+                }
+            };
+
+            xhr.onload = function() {
+                try {
+                    const res = JSON.parse(xhr.responseText);
+                    if (res.success) {
+                        bar.style.width = '100%';
+                        status.textContent = '✔ Subido correctamente. Analizando...';
+                        // Analizar automáticamente después de subir
+                        fetch('/api/compliance/files/analyze', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ fileId: res.fileId, token: '<?= h($token) ?>' })
+                        })
+                        .then(r => r.json())
+                        .then(data => {
+                            if (data.success) {
+                                status.textContent = '✔ Archivo analizado. Recargando...';
+                                setTimeout(() => location.reload(), 1000);
+                            } else {
+                                status.textContent = '⚠ ' + (data.error || 'Error en análisis');
+                            }
+                        })
+                        .catch(() => {
+                            status.textContent = '⚠ Error al analizar. Recarga para intentar.';
+                        });
+                    } else {
+                        status.textContent = '✗ ' + (res.error || 'Error al subir');
+                    }
+                } catch (e) {
+                    status.textContent = '✗ Error al procesar respuesta';
+                }
+            };
+
+            xhr.onerror = function() {
+                status.textContent = '✗ Error de conexión';
+            };
+
+            xhr.send(formData);
+        } catch (e) {
+            status.textContent = '✗ Error: ' + e.message;
+        }
+    });
+
+    // ─── Mapeo manual ───
+    const CATEGORIES = ['nombre', 'rut', 'email', 'telefono', 'direccion', 'fecha_nacimiento', 'genero', 'profesion', 'empresa', 'cargo', 'otro'];
+
+    function openMapModal(fileId, headers) {
+        document.getElementById('map-file-id').value = fileId;
+        const container = document.getElementById('map-fields');
+        container.innerHTML = '';
+        headers.forEach((h, i) => {
+            const div = document.createElement('div');
+            div.className = 'flex items-center gap-3';
+            div.innerHTML = `
+                <label class="text-[11px] text-text-body w-32 truncate flex-shrink-0" title="${h}">${h}</label>
+                <select name="mapping[${i}]" class="flex-1 bg-bg-base border border-border-theme text-[11px] text-white rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent transition-all">
+                    <option value="">Seleccionar...</option>
+                    ${CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join('')}
+                </select>
+            `;
+            container.appendChild(div);
+        });
+        document.getElementById('map-modal').classList.remove('hidden');
+        document.getElementById('map-result').classList.add('hidden');
+        document.getElementById('map-error').classList.add('hidden');
+    }
+
+    async function submitMapping() {
+        const fileId = document.getElementById('map-file-id').value;
+        const selects = document.querySelectorAll('#map-fields select');
+        const mapping = {};
+        selects.forEach(sel => {
+            if (sel.value) {
+                const index = parseInt(sel.name.replace('mapping[', '').replace(']', ''));
+                mapping[index] = sel.value;
+            }
+        });
+
+        if (Object.keys(mapping).length === 0) {
+            document.getElementById('map-error').textContent = 'Selecciona al menos una columna para mapear.';
+            document.getElementById('map-error').classList.remove('hidden');
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/compliance/files/map', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fileId, mapping, token: '<?= h($token) ?>' })
+            });
+            const data = await res.json();
+            if (data.success) {
+                document.getElementById('map-result').textContent = '✔ Mapeo guardado correctamente. El inventario ha sido actualizado.';
+                document.getElementById('map-result').classList.remove('hidden');
+                document.getElementById('map-error').classList.add('hidden');
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                document.getElementById('map-error').textContent = data.error || 'Error al guardar mapeo.';
+                document.getElementById('map-error').classList.remove('hidden');
+            }
+        } catch (e) {
+            document.getElementById('map-error').textContent = 'Error de conexión: ' + e.message;
+            document.getElementById('map-error').classList.remove('hidden');
+        }
+    }
+    </script>
+
+<?php endif; ?>
             </div>
         </div>
     </main>
