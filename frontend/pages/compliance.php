@@ -69,7 +69,7 @@ $CHECKLIST = [
     ['id' => 'arco', 'label' => 'Portal ARCO', 'desc' => 'Derechos Acceso, Rectificación, Cancelación, Oposición + Portabilidad', 'icon' => 'users', 'done' => true],
     ['id' => 'pseudonymization', 'label' => 'Seudonimización', 'desc' => 'Reemplazo de identificadores directos por seudónimos (Art. 30)', 'icon' => 'search', 'done' => count($pseudoRules) > 0],
     ['id' => 'incident_response', 'label' => 'Plan de Respuesta a Incidentes', 'desc' => 'Procedimiento documentado para brechas de seguridad (Art. 26)', 'icon' => 'alert', 'done' => count(array_filter($breaches, fn($b) => ($b['status'] ?? '') === 'resolved')) > 0],
-    ['id' => 'training', 'label' => 'Capacitación', 'desc' => 'Programa de formación en protección de datos', 'icon' => 'info', 'done' => count($trainings) > 0),
+    ['id' => 'training', 'label' => 'Capacitación', 'desc' => 'Programa de formación en protección de datos', 'icon' => 'info', 'done' => count($trainings) > 0],
 ];
 $checklistDone = count(array_filter($CHECKLIST, fn($c) => $c['done']));
 $checklistTotal = count($CHECKLIST);
