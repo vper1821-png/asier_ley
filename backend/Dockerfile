@@ -14,9 +14,11 @@ RUN go mod tidy
 # Ahora compilar (ya no falla porque go.sum está completo)
 RUN mkdir -p /out && \
     CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o /out/agent-win-x64.exe . && \
-    CGO_ENABIED=0 GOOS=linux   GOARCH=amd64 go build -ldflags "-s -w" -o /out/agent-linux-x64 . && \
+    CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -ldflags "-s -w" -o /out/agent-linux-x64 . && \
     CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -ldflags "-s -w" -o /out/agent-mac-x64 . && \
     CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -ldflags "-s -w" -o /out/agent-mac-arm64 .
+    
+
 
 # ── Stage 2: runtime PHP ──
 FROM php:8.3-fpm
