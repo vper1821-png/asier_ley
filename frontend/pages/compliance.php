@@ -1404,7 +1404,42 @@ require_once __DIR__ . '/../includes/header.php';
                             ];
                             $st = $statusLabels[$status] ?? $statusLabels['pending'];
                             $result = $f['analysisResult'] ?? null;
+                            $sourceType = $f['sourceType'] ?? 'user';
                         ?>
+                        <div class="px-5 py-3 flex flex-col md:flex-row md:items-center gap-3">
+    <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-[12px] font-medium text-text-heading truncate"><?= h($f['originalName'] ?? 'Archivo') ?></span>
+            <span class="text-[10px] px-2 py-0.5 rounded-full border <?= $st['class'] ?>"><?= h($st['label']) ?></span>
+            <span class="text-[10px] text-text-subtle"><?= h(number_format($f['size'] ?? 0)) ?> bytes</span>
+
+            <!-- ═══ NUEVO: Mostrar origen ═══ -->
+            <?php if ($sourceType === 'agent'): ?>
+                <span class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 flex items-center gap-1">
+                    🤖 Agente: <?= h($f['hostname'] ?? $f['agentId'] ?? 'N/A') ?>
+                </span>
+            <?php else: ?>
+                <span class="text-[10px] px-2 py-0.5 rounded-full bg-gray-500/10 text-text-muted border border-border-theme flex items-center gap-1">
+                    👤 Usuario
+                </span>
+            <?php endif; ?>
+        </div>
+        <p class="text-[10px] text-text-subtle mt-0.5">
+            Subido: <?= h(substr($f['createdAt'] ?? '', 0, 16)) ?>
+            <?php if ($result && isset($result['rowCount'])): ?>
+                · <?= h($result['rowCount']) ?> registros · <?= h(count($result['headers'] ?? [])) ?> columnas
+            <?php endif; ?>
+        </p>
+        <?php if ($result && isset($result['patterns']) && !empty($result['patterns'])): ?>
+            <div class="flex flex-wrap gap-1 mt-1">
+                <?php foreach ($result['patterns'] as $col => $types): ?>
+                    <span class="text-[9px] px-1.5 py-0.5 rounded bg-primary-500/10 text-primary-400 border border-primary-500/20">
+                        <?= h($col) ?>: <?= h(implode(', ', $types)) ?>
+                    </span>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+    </div>
                         <div class="px-5 py-3 flex flex-col md:flex-row md:items-center gap-3">
                             <div class="flex-1 min-w-0">
                                 <div class="flex items-center gap-2 flex-wrap">

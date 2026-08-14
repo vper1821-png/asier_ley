@@ -1,6 +1,7 @@
 <?php
 // backend/routes/compliance_files.php
 // Módulo de gestión de archivos con datos personales (Ley 21.719)
+// Incluye: subida manual (usuario), análisis, mapeo, y recepción desde agente
 
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Shared\Date;
@@ -14,7 +15,9 @@ if (!is_dir(UPLOAD_DIR)) {
     mkdir(UPLOAD_DIR, 0755, true);
 }
 
-// ─── Función de subida ───
+// ================================================================
+// 1. SUBIDA MANUAL (usuario)
+// ================================================================
 function upload() {
     $user = Auth::requireAuth();
     $db = Database::getInstance();
@@ -27,22 +30,16 @@ function upload() {
     $originalName = basename($file['name']);
     $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
 
-    // Validar extensión
     if (!in_array($ext, ALLOWED_EXTENSIONS)) {
         json_error('Tipo de archivo no permitido. Solo: ' . implode(', ', ALLOWED_EXTENSIONS));
     }
-
-    // Validar tamaño
     if ($file['size'] > MAX_FILE_SIZE) {
         json_error('El archivo excede el tamaño máximo de 50 MB');
     }
-
-    // Validar error de subida
     if ($file['error'] !== UPLOAD_ERR_OK) {
         json_error('Error al subir el archivo (código ' . $file['error'] . ')');
     }
 
-    // Generar nombre seguro y mover
     $safeName = bin2hex(random_bytes(16)) . '.' . $ext;
     $targetPath = UPLOAD_DIR . $safeName;
 
@@ -50,29 +47,27 @@ function upload() {
         json_error('No se pudo guardar el archivo');
     }
 
-    // Cifrar archivo (opcional, pero recomendado)
-    // cifrarArchivo($targetPath); // Implementar si se desea
-
-    // Calcular hash SHA-256
     $hash = hash_file('sha256', $targetPath);
 
-    // Guardar metadatos en MongoDB
     $doc = [
         'userId'       => $user['_id'],
+        'sourceType'   => 'user',          // ← origen: usuario
+        'agentId'      => null,
+        'hostname'     => null,
+        'path'         => null,
         'originalName' => $originalName,
         'safeName'     => $safeName,
         'ext'          => $ext,
         'size'         => $file['size'],
         'hash'         => $hash,
         'mimeType'     => mime_content_type($targetPath) ?: 'application/octet-stream',
-        'status'       => 'pending', // pending, analyzing, analyzed, failed
+        'status'       => 'pending',
         'analysisResult' => null,
         'createdAt'    => date('c'),
         'updatedAt'    => date('c'),
     ];
 
     $inserted = $db->insertOne('compliance_files', $doc);
-    // Devolver el ID para análisis posterior
     json_response([
         'success' => true,
         'fileId'  => $inserted['_id'],
@@ -80,7 +75,9 @@ function upload() {
     ]);
 }
 
-// ─── Análisis del archivo ───
+// ================================================================
+// 2. ANÁLISIS DE ARCHIVO (usuario)
+// ================================================================
 function analyze() {
     $user = Auth::requireAuth();
     $body = get_body();
@@ -101,7 +98,6 @@ function analyze() {
         json_error('El archivo físico no existe', 404);
     }
 
-    // Actualizar estado a 'analyzing'
     $db->updateOne('compliance_files', ['_id' => $fileId], ['status' => 'analyzing']);
 
     try {
@@ -118,13 +114,9 @@ function analyze() {
             throw new Exception('Extensión no soportada para análisis');
         }
 
-        // Detectar patrones de datos personales
         $patterns = detectPatterns($data['headers'], $data['sample']);
-
-        // Crear ítem en compliance_inventory automáticamente
         $inventoryItem = createInventoryItem($user['_id'], $fileId, $fileRecord['originalName'], $patterns, $data['rowCount']);
 
-        // Guardar resultado del análisis
         $analysisResult = [
             'headers'      => $data['headers'],
             'sample'       => $data['sample'],
@@ -132,6 +124,7 @@ function analyze() {
             'patterns'     => $patterns,
             'inventoryId'  => $inventoryItem['_id'],
             'analyzedAt'   => date('c'),
+            'analyzedBy'   => 'user',
         ];
 
         $db->updateOne('compliance_files', ['_id' => $fileId], [
@@ -147,39 +140,30 @@ function analyze() {
         ]);
 
     } catch (Exception $e) {
-        $db->updateOne('compliance_files', ['_id' => $fileId], [
-            'status' => 'failed',
-            'updatedAt' => date('c'),
-        ]);
+        $db->updateOne('compliance_files', ['_id' => $fileId], ['status' => 'failed', 'updatedAt' => date('c')]);
         json_error('Error al analizar el archivo: ' . $e->getMessage());
     }
 }
 
-// ─── Funciones auxiliares de análisis ───
-
+// ================================================================
+// 3. FUNCIONES AUXILIARES DE ANÁLISIS (usuario)
+// ================================================================
 function analyzeExcel($filePath) {
     $spreadsheet = IOFactory::load($filePath);
     $sheet = $spreadsheet->getActiveSheet();
     $rows = $sheet->toArray(null, true, true, true);
-
-    if (empty($rows)) {
-        throw new Exception('El archivo Excel está vacío');
-    }
-
-    $headers = array_shift($rows); // Primera fila como cabeceras
-    $sample = array_slice($rows, 0, 20); // Primeras 20 filas
+    if (empty($rows)) throw new Exception('El archivo Excel está vacío');
+    $headers = array_shift($rows);
+    $sample = array_slice($rows, 0, 20);
     $rowCount = count($rows);
-
     return ['headers' => $headers, 'sample' => $sample, 'rowCount' => $rowCount];
 }
 
 function analyzeCsv($filePath) {
     $handle = fopen($filePath, 'r');
     if (!$handle) throw new Exception('No se pudo abrir el CSV');
-
     $headers = fgetcsv($handle, 0, ',', '"', '\\');
     if ($headers === false) throw new Exception('El CSV no tiene cabeceras o está vacío');
-
     $sample = [];
     $rowCount = 0;
     while (($row = fgetcsv($handle, 0, ',', '"', '\\')) !== false) {
@@ -187,42 +171,34 @@ function analyzeCsv($filePath) {
         $rowCount++;
     }
     fclose($handle);
-
     return ['headers' => $headers, 'sample' => $sample, 'rowCount' => $rowCount];
 }
 
 function analyzeTxt($filePath) {
     $content = file_get_contents($filePath);
     if ($content === false) throw new Exception('No se pudo leer el archivo TXT');
-
     $lines = explode("\n", $content);
     $lines = array_filter($lines, 'trim');
     if (empty($lines)) throw new Exception('El archivo TXT está vacío');
-
-    // Tratar la primera línea como cabeceras (si parece una línea de encabezados)
     $firstLine = array_shift($lines);
-    $headers = explode("\t", $firstLine); // Por defecto tabulación, se puede mejorar
+    $headers = explode("\t", $firstLine);
     if (count($headers) < 2) {
-        // Si no tiene múltiples columnas, considerar todo como una sola columna
         $headers = ['contenido'];
         $lines = array_merge([$firstLine], $lines);
     }
-
     $sample = array_slice($lines, 0, 20);
     $rowCount = count($lines);
-
-    // Convertir cada línea en array (para consistencia)
     $sample = array_map(function($line) use ($headers) {
         $parts = explode("\t", $line);
-        // Rellenar para que coincida con el número de cabeceras
         while (count($parts) < count($headers)) $parts[] = '';
         return $parts;
     }, $sample);
-
     return ['headers' => $headers, 'sample' => $sample, 'rowCount' => $rowCount];
 }
 
-// ─── Detección de patrones de datos personales ───
+// ================================================================
+// 4. DETECCIÓN DE PATRONES (compartida con agente)
+// ================================================================
 function detectPatterns($headers, $sample) {
     $patterns = [];
     $commonPatterns = [
@@ -232,19 +208,14 @@ function detectPatterns($headers, $sample) {
         'name'   => '/^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+( [A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)+$/',
         'address'=> '/^[A-Za-z0-9#ñÑáéíóúÁÉÍÓÚ\s,.-]+$/',
     ];
-
     foreach ($headers as $colIndex => $colName) {
         $colNameLower = strtolower(trim($colName));
         $matched = [];
-
-        // Buscar en el nombre de la columna
         foreach ($commonPatterns as $key => $pattern) {
             if (preg_match($pattern, $colNameLower)) {
                 $matched[$key] = true;
             }
         }
-
-        // Si no se detectó por nombre, probar con muestras
         if (empty($matched)) {
             $sampleColumn = array_column($sample, $colIndex);
             $sampleColumn = array_filter($sampleColumn, 'trim');
@@ -253,26 +224,24 @@ function detectPatterns($headers, $sample) {
                     $matches = array_filter($sampleColumn, function($val) use ($pattern) {
                         return preg_match($pattern, $val) === 1;
                     });
-                    if (count($matches) >= count($sampleColumn) * 0.5) { // si más del 50% coincide
+                    if (count($matches) >= count($sampleColumn) * 0.5) {
                         $matched[$key] = true;
                     }
                 }
             }
         }
-
         if (!empty($matched)) {
             $patterns[$colName] = array_keys($matched);
         }
     }
-
     return $patterns;
 }
 
-// ─── Crear ítem en inventario ───
+// ================================================================
+// 5. CREAR ÍTEM EN INVENTARIO (compartida)
+// ================================================================
 function createInventoryItem($userId, $fileId, $fileName, $patterns, $rowCount) {
     $db = Database::getInstance();
-
-    // Construir categorías a partir de los patrones detectados
     $categories = [];
     foreach ($patterns as $col => $types) {
         $categories = array_merge($categories, $types);
@@ -294,11 +263,12 @@ function createInventoryItem($userId, $fileId, $fileName, $patterns, $rowCount) 
         'retentionDays' => null,
         'deletionScheduledAt' => null,
     ];
-
     return $db->insertOne('compliance_inventory', $doc);
 }
 
-// ─── Listar archivos del usuario ───
+// ================================================================
+// 6. LISTAR ARCHIVOS
+// ================================================================
 function listFiles() {
     $user = Auth::requireAuth();
     $db = Database::getInstance();
@@ -306,54 +276,53 @@ function listFiles() {
     json_response($files);
 }
 
-// ─── Eliminar archivo (físico y lógico) ───
+// ================================================================
+// 7. ELIMINAR ARCHIVO
+// ================================================================
 function deleteFile() {
     $user = Auth::requireAuth();
     $body = get_body();
     $fileId = $body['fileId'] ?? '';
-
     if (!$fileId) json_error('fileId requerido');
 
     $db = Database::getInstance();
     $fileRecord = $db->findOne('compliance_files', ['_id' => $fileId, 'userId' => $user['_id']]);
     if (!$fileRecord) json_error('Archivo no encontrado', 404);
 
-    // Eliminar archivo físico
-    $filePath = UPLOAD_DIR . $fileRecord['safeName'];
-    if (file_exists($filePath)) {
-        unlink($filePath);
+    // Eliminar físico (solo si es de usuario y tiene safeName)
+    if (($fileRecord['sourceType'] ?? 'user') === 'user' && !empty($fileRecord['safeName'])) {
+        $filePath = UPLOAD_DIR . $fileRecord['safeName'];
+        if (file_exists($filePath)) unlink($filePath);
     }
 
-    // Eliminar el registro de la base de datos
+    // Eliminar registro
     $db->deleteOne('compliance_files', ['_id' => $fileId]);
 
-    // Opcional: Eliminar también el ítem de inventario asociado (si existe)
+    // Eliminar inventario asociado
     if (!empty($fileRecord['analysisResult']['inventoryId'])) {
         $db->deleteOne('compliance_inventory', ['_id' => $fileRecord['analysisResult']['inventoryId']]);
     }
-
     json_response(['success' => true, 'message' => 'Archivo eliminado']);
 }
 
-// ─── Mapeo manual de columnas ───
+// ================================================================
+// 8. MAPEO MANUAL DE COLUMNAS
+// ================================================================
 function mapColumns() {
     $user = Auth::requireAuth();
     $body = get_body();
     $fileId = $body['fileId'] ?? '';
-    $mapping = $body['mapping'] ?? []; // Ej: {"columna1": "nombre", "columna2": "rut"}
-
+    $mapping = $body['mapping'] ?? [];
     if (!$fileId || empty($mapping)) json_error('fileId y mapping requeridos');
 
     $db = Database::getInstance();
     $fileRecord = $db->findOne('compliance_files', ['_id' => $fileId, 'userId' => $user['_id']]);
     if (!$fileRecord) json_error('Archivo no encontrado', 404);
 
-    // Actualizar el análisis con el mapeo manual
     $analysis = $fileRecord['analysisResult'] ?? [];
     $analysis['manualMapping'] = $mapping;
     $analysis['manualMappedAt'] = date('c');
 
-    // Actualizar el inventario con las categorías mapeadas
     $inventoryId = $analysis['inventoryId'] ?? null;
     if ($inventoryId) {
         $categories = array_values($mapping);
@@ -371,4 +340,97 @@ function mapColumns() {
     ]);
 
     json_response(['success' => true, 'message' => 'Mapeo guardado']);
+}
+
+// ================================================================
+// 9. NUEVO: ESCANEO POR AGENTE (reporte de archivos detectados)
+// ================================================================
+function agentScan() {
+    $user = Auth::requireAuth();
+    $body = get_body();
+
+    $required = ['agentId', 'path', 'hash', 'fileType'];
+    foreach ($required as $field) {
+        if (empty($body[$field])) json_error("Campo '$field' requerido");
+    }
+
+    $db = Database::getInstance();
+
+    // Buscar si ya existe (mismo agente y misma ruta)
+    $existing = $db->findOne('compliance_files', [
+        'agentId' => $body['agentId'],
+        'path'    => $body['path'],
+        'sourceType' => 'agent'
+    ]);
+
+    $doc = [
+        'userId'        => $user['_id'],
+        'sourceType'    => 'agent',
+        'agentId'       => $body['agentId'],
+        'hostname'      => $body['hostname'] ?? 'unknown',
+        'path'          => $body['path'],
+        'originalName'  => basename($body['path']),
+        'ext'           => strtolower(pathinfo($body['path'], PATHINFO_EXTENSION)),
+        'size'          => (int)($body['size'] ?? 0),
+        'hash'          => $body['hash'],
+        'mimeType'      => $body['mimeType'] ?? 'application/octet-stream',
+        'status'        => 'analyzed',
+        'analysisResult' => [
+            'rowCount'    => (int)($body['rowCount'] ?? 0),
+            'headers'     => array_keys($body['personalData'] ?? []),
+            'patterns'    => $body['personalData'] ?? [],
+            'sensitive'   => !empty($body['sensitive']),
+            'analyzedAt'  => date('c'),
+            'analyzedBy'  => 'agent',
+        ],
+        'createdAt'     => date('c'),
+        'updatedAt'     => date('c'),
+    ];
+
+    if ($existing) {
+        $db->updateOne('compliance_files', ['_id' => $existing['_id']], $doc);
+        $fileId = $existing['_id'];
+        $inventoryId = $existing['analysisResult']['inventoryId'] ?? null;
+    } else {
+        $inserted = $db->insertOne('compliance_files', $doc);
+        $fileId = $inserted['_id'];
+        $inventoryId = null;
+    }
+
+    // ── Crear/Actualizar el inventario (RAT) ──
+    $categories = [];
+    foreach ($body['personalData'] ?? [] as $col => $types) {
+        $categories = array_merge($categories, $types);
+    }
+    $categories = array_unique($categories);
+
+    $inventoryData = [
+        'userId'         => $user['_id'],
+        'sourceType'     => 'file',
+        'sourceId'       => $fileId,
+        'name'           => '📄 Archivo: ' . basename($body['path']),
+        'dataCategories' => implode(', ', $categories),
+        'records'        => (int)($body['rowCount'] ?? 0),
+        'sensitive'      => !empty($body['sensitive']),
+        'legalBasis'     => 'Pendiente de definir',
+        'active'         => true,
+        'storage'        => $body['hostname'] ?? 'Agente',
+        'updatedAt'      => date('c'),
+    ];
+
+    if ($inventoryId) {
+        $db->updateOne('compliance_inventory', ['_id' => $inventoryId], $inventoryData);
+    } else {
+        $inventoryData['createdAt'] = date('c');
+        $inv = $db->insertOne('compliance_inventory', $inventoryData);
+        $db->updateOne('compliance_files', ['_id' => $fileId], [
+            'analysisResult.inventoryId' => $inv['_id']
+        ]);
+    }
+
+    json_response([
+        'success' => true,
+        'fileId'  => $fileId,
+        'message' => 'Archivo reportado por agente y registrado en inventario'
+    ]);
 }
