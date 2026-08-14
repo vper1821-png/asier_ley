@@ -58,8 +58,7 @@ RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 # Instalar dependencias PHP (composer) con cache de capa
 WORKDIR /var/www/html
 COPY composer.json ./composer.json
-RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --no-security-blocking
-
+RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --no-security-blocking --ignore-platform-req=ext-gd
 # Copiar la aplicacion
 COPY . .
 
