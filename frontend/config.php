@@ -98,3 +98,16 @@ function is_active() {
 function h($str) {
     return htmlspecialchars($str ?? '', ENT_QUOTES, 'UTF-8');
 }
+function api_put($path, $data = []) {
+    $data['token'] = $_SESSION['token'] ?? '';
+    $url = API_BASE_URL . $path;
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+    $response = curl_exec($ch);
+    curl_close($ch);
+    return json_decode($response, true);
+}

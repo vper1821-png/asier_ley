@@ -69,7 +69,7 @@ $CHECKLIST = [
     ['id' => 'arco', 'label' => 'Portal ARCO', 'desc' => 'Derechos Acceso, Rectificación, Cancelación, Oposición + Portabilidad', 'icon' => 'users', 'done' => true],
     ['id' => 'pseudonymization', 'label' => 'Seudonimización', 'desc' => 'Reemplazo de identificadores directos por seudónimos (Art. 30)', 'icon' => 'search', 'done' => count($pseudoRules) > 0],
     ['id' => 'incident_response', 'label' => 'Plan de Respuesta a Incidentes', 'desc' => 'Procedimiento documentado para brechas de seguridad (Art. 26)', 'icon' => 'alert', 'done' => count(array_filter($breaches, fn($b) => ($b['status'] ?? '') === 'resolved')) > 0],
-    ['id' => 'training', 'label' => 'Capacitación', 'desc' => 'Programa de formación en protección de datos', 'icon' => 'info', 'done' => count($trainings) > 0],
+    ['id' => 'training', 'label' => 'Capacitación', 'desc' => 'Programa de formación en protección de datos', 'icon' => 'info', 'done' => count($trainings) > 0),
 ];
 $checklistDone = count(array_filter($CHECKLIST, fn($c) => $c['done']));
 $checklistTotal = count($CHECKLIST);
@@ -392,69 +392,832 @@ require_once __DIR__ . '/../includes/header.php';
                 if ($active) renderActionBtn('consents', $it['_id'] ?? '', 'revoke', 'Revocar');
             }); ?>
 
+            <!-- ═══ INVENTARIO (VERSIÓN MEJORADA) ═══ -->
             <?php elseif ($tab === 'inventory'): ?>
-            <?php renderSectionHeader('Inventario de Datos Personales', 'Registro de todas las bases de datos personales bajo tratamiento'); ?>
-            <div class="flex justify-end mb-3">
-                <a href="/compliance-export?type=ropa" class="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-bg-elevated/80 border border-border-theme text-text-body hover:bg-bg-elevated transition-all">Exportar RAT (CSV)</a>
-            </div>
-            <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5 mb-4">
-                <p class="text-[12px] font-semibold text-white mb-4">Nueva actividad de tratamiento</p>
-                <form method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-3">
-                    <input type="hidden" name="collection" value="inventory">
-                    <input type="text" name="fields[name]" required placeholder="Nombre de la actividad" class="input-premium">
-                    <input type="text" name="fields[dataCategories]" placeholder="Categorías de datos" class="input-premium">
-                    <input type="text" name="fields[legalBasis]" placeholder="Base de licitud" class="input-premium">
-                    <button type="submit" name="create_item" value="1" class="px-3 py-2 rounded-lg text-[11px] font-medium bg-primary-500 hover:bg-primary-600 text-white transition-all">Registrar</button>
-                </form>
-            </div>
-            <?php if (empty($items)): ?>
-            <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-10 text-center"><p class="text-[11px] text-text-subtle">Sin registros todavía.</p></div>
-            <?php else: ?>
-            <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm overflow-hidden">
-                <div class="overflow-x-auto">
-                    <table class="w-full text-[12px]">
-                        <thead>
-                            <tr class="border-b border-border-theme bg-bg-base/60 text-text-muted uppercase text-[10px] tracking-wider">
-                                <th class="text-left py-3 px-4">Actividad</th>
-                                <th class="text-left py-3 px-4">Categorías de datos</th>
-                                <th class="text-left py-3 px-4">Base legal</th>
-                                <th class="text-left py-3 px-4">Riesgo</th>
-                                <th class="text-left py-3 px-4">Sensibles</th>
-                                <th class="text-left py-3 px-4">Almacenamiento</th>
-                                <th class="text-left py-3 px-4">Retención</th>
-                                <th class="text-center py-3 px-4">Acción</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-border-theme/30">
-                            <?php foreach ($items as $it): ?>
-                            <?php
-                            $risk = $it['risk'] ?? 'low';
-                            $riskColor = $risk === 'critical' ? 'text-red-400' : ($risk === 'high' ? 'text-yellow-400' : ($risk === 'medium' ? 'text-blue-400' : 'text-text-muted'));
-                            $dc = $it['dataCategories'] ?? '';
-                            if (is_array($dc)) $dc = implode(', ', $dc);
-                            ?>
-                            <tr class="border-t border-border-theme/30 hover:bg-bg-base/40 transition-colors">
-                                <td class="py-3 px-4 text-white font-medium"><?= h($it['name'] ?? 'Actividad') ?></td>
-                                <td class="py-3 px-4 text-text-body"><?= h($dc ?: '-') ?></td>
-                                <td class="py-3 px-4 text-text-muted"><?= h($it['legalBasis'] ?? '-') ?></td>
-                                <td class="py-3 px-4"><span class="<?= $riskColor ?>"><?= h($risk) ?></span></td>
-                                <td class="py-3 px-4"><span class="px-2 py-0.5 rounded text-[10px] font-medium border <?= !empty($it['sensitive']) ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-bg-elevated text-text-muted border-border-theme' ?>"><?= !empty($it['sensitive']) ? 'Sí' : 'No' ?></span></td>
-                                <td class="py-3 px-4 text-text-muted"><?= h($it['storage'] ?? '-') ?></td>
-                                <td class="py-3 px-4 text-text-muted"><?= !empty($it['retentionDays']) ? h($it['retentionDays'] . 'd') : '-' ?></td>
-                                <td class="py-3 px-4 text-center">
-                                    <form method="POST" class="inline">
-                                        <input type="hidden" name="collection" value="inventory">
-                                        <input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>">
-                                        <button type="submit" name="delete_item" value="1" onclick="return confirm('¿Eliminar este registro?')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all">Eliminar</button>
-                                    </form>
-                                </td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
+            <?php
+            // ─── Obtener datos del inventario ───
+            $inventoryItems = $fetchList('inventory');
+            if (!is_array($inventoryItems)) $inventoryItems = [];
+
+            // ─── Estadísticas ───
+            $totalItems = count($inventoryItems);
+            $dbItems = count(array_filter($inventoryItems, fn($i) => ($i['sourceType'] ?? '') === 'database'));
+            $fileItems = count(array_filter($inventoryItems, fn($i) => ($i['sourceType'] ?? '') === 'file'));
+            $sensitiveItemsCount = count(array_filter($inventoryItems, fn($i) => !empty($i['sensitive'])));
+            $riskCounts = [
+                'critical' => count(array_filter($inventoryItems, fn($i) => ($i['risk'] ?? '') === 'critical')),
+                'high' => count(array_filter($inventoryItems, fn($i) => ($i['risk'] ?? '') === 'high')),
+                'medium' => count(array_filter($inventoryItems, fn($i) => ($i['risk'] ?? '') === 'medium')),
+                'low' => count(array_filter($inventoryItems, fn($i) => ($i['risk'] ?? '') === 'low' || empty($i['risk']))),
+            ];
+            $completeItems = count(array_filter($inventoryItems, function($i) {
+                return !empty($i['name']) && !empty($i['legalBasis']) && !empty($i['dataCategories']);
+            }));
+
+            // ─── Filtros y ordenamiento ───
+            $search = $_GET['search'] ?? '';
+            $filterRisk = $_GET['risk'] ?? '';
+            $filterSensitive = $_GET['sensitive'] ?? '';
+            $filterSource = $_GET['source'] ?? '';
+            $sortBy = $_GET['sort'] ?? 'createdAt';
+            $sortDir = $_GET['dir'] ?? 'desc';
+
+            // Aplicar filtros
+            $filtered = $inventoryItems;
+            if ($search) {
+                $searchLower = strtolower($search);
+                $filtered = array_filter($filtered, function($i) use ($searchLower) {
+                    return str_contains(strtolower($i['name'] ?? ''), $searchLower) ||
+                           str_contains(strtolower($i['dataCategories'] ?? ''), $searchLower) ||
+                           str_contains(strtolower($i['legalBasis'] ?? ''), $searchLower);
+                });
+            }
+            if ($filterRisk) {
+                $filtered = array_filter($filtered, fn($i) => ($i['risk'] ?? 'low') === $filterRisk);
+            }
+            if ($filterSensitive !== '') {
+                $filtered = array_filter($filtered, fn($i) => !empty($i['sensitive']) === ($filterSensitive === '1'));
+            }
+            if ($filterSource) {
+                $filtered = array_filter($filtered, fn($i) => ($i['sourceType'] ?? 'database') === $filterSource);
+            }
+
+            // Ordenar
+            usort($filtered, function($a, $b) use ($sortBy, $sortDir) {
+                $valA = $a[$sortBy] ?? '';
+                $valB = $b[$sortBy] ?? '';
+                $cmp = strcmp($valA, $valB);
+                return $sortDir === 'desc' ? -$cmp : $cmp;
+            });
+
+            $totalFiltered = count($filtered);
+            ?>
+
+            <?php renderSectionHeader('Inventario de Datos Personales (RAT)', 
+                'Registro de todas las actividades de tratamiento de datos personales. ' .
+                'Este inventario es obligatorio según el Art. 14 de la Ley 21.719.'
+            ); ?>
+
+            <?php if ($msg): ?>
+                <div class="px-4 py-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] mb-4"><?= h($msg) ?></div>
+            <?php endif; ?>
+            <?php if ($err): ?>
+                <div class="px-4 py-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-[11px] mb-4"><?= h($err) ?></div>
+            <?php endif; ?>
+
+            <!-- ═══ BARRA DE ESTADÍSTICAS ═══ -->
+            <div class="grid grid-cols-2 md:grid-cols-6 gap-3 mb-5">
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-3">
+                    <p class="text-[9px] text-text-subtle uppercase tracking-wider">Total</p>
+                    <p class="text-[18px] font-bold text-white"><?= $totalItems ?></p>
+                </div>
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-3">
+                    <p class="text-[9px] text-text-subtle uppercase tracking-wider">Bases de Datos</p>
+                    <p class="text-[18px] font-bold text-cyan-400"><?= $dbItems ?></p>
+                </div>
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-3">
+                    <p class="text-[9px] text-text-subtle uppercase tracking-wider">Archivos</p>
+                    <p class="text-[18px] font-bold text-amber-400"><?= $fileItems ?></p>
+                </div>
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-3">
+                    <p class="text-[9px] text-text-subtle uppercase tracking-wider">Datos Sensibles</p>
+                    <p class="text-[18px] font-bold text-red-400"><?= $sensitiveItemsCount ?></p>
+                </div>
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-3">
+                    <p class="text-[9px] text-text-subtle uppercase tracking-wider">Completos</p>
+                    <p class="text-[18px] font-bold text-emerald-400"><?= $completeItems ?> / <?= $totalItems ?></p>
+                </div>
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-3">
+                    <p class="text-[9px] text-text-subtle uppercase tracking-wider">⚠️ Riesgo Alto</p>
+                    <p class="text-[18px] font-bold text-yellow-400"><?= $riskCounts['high'] + $riskCounts['critical'] ?></p>
                 </div>
             </div>
-            <?php endif; ?>
+
+            <!-- ═══ FILTROS Y BÚSQUEDA ═══ -->
+            <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-4 mb-5">
+                <div class="flex flex-col md:flex-row gap-3">
+                    <!-- Buscador -->
+                    <div class="flex-1 relative">
+                        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-subtle" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                        <input type="text" id="inventory-search" value="<?= h($search) ?>" 
+                               placeholder="Buscar por nombre, categoría o base legal..." 
+                               class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg pl-9 pr-3 py-2 focus:outline-none focus:border-accent transition-all"
+                               onchange="updateFilters()">
+                    </div>
+                    
+                    <!-- Filtro: Riesgo -->
+                    <select id="filter-risk" class="bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all" onchange="updateFilters()">
+                        <option value="">Todos los riesgos</option>
+                        <option value="low" <?= $filterRisk === 'low' ? 'selected' : '' ?>>🟢 Bajo</option>
+                        <option value="medium" <?= $filterRisk === 'medium' ? 'selected' : '' ?>>🟡 Medio</option>
+                        <option value="high" <?= $filterRisk === 'high' ? 'selected' : '' ?>>🟠 Alto</option>
+                        <option value="critical" <?= $filterRisk === 'critical' ? 'selected' : '' ?>>🔴 Crítico</option>
+                    </select>
+                    
+                    <!-- Filtro: Sensibles -->
+                    <select id="filter-sensitive" class="bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all" onchange="updateFilters()">
+                        <option value="">Todos los datos</option>
+                        <option value="1" <?= $filterSensitive === '1' ? 'selected' : '' ?>>🔒 Sensibles</option>
+                        <option value="0" <?= $filterSensitive === '0' ? 'selected' : '' ?>>📄 No sensibles</option>
+                    </select>
+                    
+                    <!-- Filtro: Origen -->
+                    <select id="filter-source" class="bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all" onchange="updateFilters()">
+                        <option value="">Todos los orígenes</option>
+                        <option value="database" <?= $filterSource === 'database' ? 'selected' : '' ?>>🗄️ Base de datos</option>
+                        <option value="file" <?= $filterSource === 'file' ? 'selected' : '' ?>>📄 Archivo</option>
+                    </select>
+                    
+                    <!-- Botón limpiar -->
+                    <button onclick="clearFilters()" class="px-3 py-2 rounded-lg text-[11px] font-medium bg-bg-elevated/80 border border-border-theme text-text-muted hover:text-text-body transition-all">
+                        Limpiar filtros
+                    </button>
+                    
+                    <!-- Botón crear nuevo (versión compacta) -->
+                    <button onclick="document.getElementById('inventory-create-form').classList.toggle('hidden')" 
+                            class="px-3 py-2 rounded-lg text-[11px] font-medium bg-gradient-to-r from-blue-600 to-indigo-600 text-white transition-all flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                        Nuevo
+                    </button>
+                </div>
+                
+                <!-- Resultados de filtro -->
+                <div class="mt-2 text-[10px] text-text-subtle">
+                    Mostrando <?= $totalFiltered ?> de <?= $totalItems ?> registros
+                    <?php if ($search): ?> · Buscando: "<?= h($search) ?>"<?php endif; ?>
+                    <?php if ($filterRisk): ?> · Riesgo: <?= h($filterRisk) ?><?php endif; ?>
+                    <?php if ($filterSensitive === '1'): ?> · Solo sensibles<?php endif; ?>
+                    <?php if ($filterSource): ?> · Origen: <?= h($filterSource) ?><?php endif; ?>
+                </div>
+            </div>
+
+            <!-- ═══ FORMULARIO DE CREACIÓN (colapsable) ═══ -->
+            <div id="inventory-create-form" class="hidden rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5 mb-5">
+                <div class="flex items-center justify-between mb-4">
+                    <p class="text-[12px] font-semibold text-white">📝 Nueva actividad de tratamiento</p>
+                    <button onclick="document.getElementById('inventory-create-form').classList.add('hidden')" class="text-text-muted hover:text-text-heading">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+                
+                <div class="bg-cyan-500/[0.04] border border-cyan-500/20 rounded-lg p-3 mb-4 text-[10px] text-text-muted leading-relaxed">
+                    <p><span class="text-cyan-400 font-semibold">📖 ¿Qué es una actividad de tratamiento?</span></p>
+                    <p>Toda operación que realices con datos personales: recopilar, almacenar, usar, modificar, compartir o eliminar. 
+                       Cada actividad debe registrarse con su finalidad, base legal y medidas de seguridad.</p>
+                    <p class="mt-1"><span class="text-cyan-400">⚖️ Art. 14 Ley 21.719:</span> El responsable debe mantener un registro documentado de todas las actividades de tratamiento.</p>
+                </div>
+                
+                <form method="POST" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <input type="hidden" name="create_inventory_item" value="1">
+                    
+                    <div>
+                        <label class="label-premium">Nombre de la actividad *</label>
+                        <input type="text" name="name" required class="input-premium w-full" placeholder="Ej: Gestión de clientes">
+                        <p class="text-[8px] text-text-subtle mt-0.5">Identifica claramente qué tratamiento realizas.</p>
+                    </div>
+                    
+                    <div>
+                        <label class="label-premium">Finalidad / Propósito</label>
+                        <input type="text" name="purpose" class="input-premium w-full" placeholder="Ej: Enviar facturación y promociones">
+                        <p class="text-[8px] text-text-subtle mt-0.5">¿Para qué usas estos datos? (Art. 3 letra b)</p>
+                    </div>
+                    
+                    <div>
+                        <label class="label-premium">Categorías de datos</label>
+                        <input type="text" name="dataCategories" class="input-premium w-full" placeholder="Ej: nombres, RUT, emails, teléfonos">
+                        <p class="text-[8px] text-text-subtle mt-0.5">¿Qué tipo de datos personales tratas?</p>
+                    </div>
+                    
+                    <div>
+                        <label class="label-premium">Base de licitud *</label>
+                        <select name="legalBasis" required class="input-premium w-full">
+                            <option value="">Seleccionar...</option>
+                            <option value="Consentimiento">✅ Consentimiento del titular (Art. 12)</option>
+                            <option value="Ejecución de contrato">📄 Ejecución de contrato (Art. 13)</option>
+                            <option value="Obligación legal">⚖️ Obligación legal (Art. 13)</option>
+                            <option value="Interés legítimo">🎯 Interés legítimo (Art. 13)</option>
+                            <option value="Interés público">🏛️ Interés público (Art. 13)</option>
+                        </select>
+                        <p class="text-[8px] text-text-subtle mt-0.5">Base legal que justifica el tratamiento. Sin esta, el tratamiento es ilegal.</p>
+                    </div>
+                    
+                    <div>
+                        <label class="label-premium">Nivel de riesgo</label>
+                        <select name="risk" class="input-premium w-full">
+                            <option value="low">🟢 Bajo - Datos básicos</option>
+                            <option value="medium">🟡 Medio - Datos personales comunes</option>
+                            <option value="high">🟠 Alto - Datos sensibles o muchos registros</option>
+                            <option value="critical">🔴 Crítico - Datos muy sensibles (salud, biometría)</option>
+                        </select>
+                        <p class="text-[8px] text-text-subtle mt-0.5">Evalúa el impacto si estos datos se ven comprometidos.</p>
+                    </div>
+                    
+                    <div>
+                        <label class="label-premium">Datos sensibles</label>
+                        <select name="sensitive" class="input-premium w-full">
+                            <option value="0">❌ No</option>
+                            <option value="1">🔒 Sí - Salud, biometría, religión, etc.</option>
+                        </select>
+                        <p class="text-[8px] text-text-subtle mt-0.5">Según Art. 16: datos de salud, origen racial, creencias, etc.</p>
+                    </div>
+                    
+                    <div>
+                        <label class="label-premium">Días de retención</label>
+                        <input type="number" name="retentionDays" class="input-premium w-full" placeholder="Ej: 365">
+                        <p class="text-[8px] text-text-subtle mt-0.5">¿Cuánto tiempo conservas estos datos? (Art. 14)</p>
+                    </div>
+                    
+                    <div>
+                        <label class="label-premium">Almacenamiento</label>
+                        <input type="text" name="storage" class="input-premium w-full" placeholder="Ej: AWS, servidor local, Google Drive">
+                        <p class="text-[8px] text-text-subtle mt-0.5">¿Dónde se guardan estos datos?</p>
+                    </div>
+                    
+                    <div class="md:col-span-2 flex justify-end gap-2 mt-1">
+                        <button type="button" onclick="document.getElementById('inventory-create-form').classList.add('hidden')" 
+                                class="px-3 py-1.5 text-[11px] font-medium rounded-lg bg-bg-elevated text-text-body border border-border-theme transition-all">Cancelar</button>
+                        <button type="submit" class="px-4 py-1.5 text-[11px] font-medium rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white transition-all">Registrar actividad</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- ═══ TABLA DE INVENTARIO ═══ -->
+            <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm overflow-hidden">
+                <div class="px-5 py-3 border-b border-border-theme/20 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-lg border border-white/[0.04] bg-white/[0.01] flex items-center justify-center text-cyan-400">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>
+                        </div>
+                        <p class="text-[12px] font-semibold text-white">Registro de Actividades de Tratamiento (RAT)</p>
+                        <span class="text-[10px] text-text-subtle"><?= $totalFiltered ?> / <?= $totalItems ?> actividades</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <a href="/compliance-export?type=ropa" class="text-[10px] text-primary-400 hover:text-primary-300 font-medium transition-colors flex items-center gap-1">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                            Exportar RAT (CSV)
+                        </a>
+                    </div>
+                </div>
+
+                <?php if (empty($filtered)): ?>
+                    <div class="px-5 py-12 text-center">
+                        <?php if ($search || $filterRisk || $filterSensitive || $filterSource): ?>
+                            <p class="text-[12px] text-text-subtle">No hay registros que coincidan con los filtros aplicados.</p>
+                            <button onclick="clearFilters()" class="mt-2 text-[11px] text-primary-400 hover:text-primary-300">Limpiar filtros</button>
+                        <?php else: ?>
+                            <div class="w-12 h-12 rounded-xl bg-bg-elevated border border-border-theme flex items-center justify-center mx-auto mb-4">
+                                <svg class="w-6 h-6 text-text-subtle" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>
+                            </div>
+                            <h3 class="text-white font-semibold mb-2">Sin actividades de tratamiento</h3>
+                            <p class="text-text-muted text-[12px]">Haz clic en <span class="text-primary-400">"Nuevo"</span> para registrar tu primera actividad.</p>
+                            <p class="text-text-subtle text-[11px] mt-2">💡 <span class="text-cyan-400">Consejo:</span> Sube un archivo o conecta una base de datos para generar actividades automáticamente.</p>
+                        <?php endif; ?>
+                    </div>
+                <?php else: ?>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-[12px]">
+                            <thead>
+                                <tr class="border-b border-border-theme bg-bg-base/60 text-text-muted uppercase text-[10px] tracking-wider">
+                                    <th class="text-left py-2.5 px-3">
+                                        <a href="?tab=inventory&sort=name&dir=<?= $sortBy === 'name' && $sortDir === 'asc' ? 'desc' : 'asc' ?><?= $search ? '&search='.urlencode($search) : '' ?><?= $filterRisk ? '&risk='.urlencode($filterRisk) : '' ?>" 
+                                           class="hover:text-text-heading transition-colors flex items-center gap-1">
+                                            Actividad
+                                            <?php if ($sortBy === 'name'): ?>
+                                                <span class="text-[8px]"><?= $sortDir === 'asc' ? '↑' : '↓' ?></span>
+                                            <?php endif; ?>
+                                        </a>
+                                    </th>
+                                    <th class="text-left py-2.5 px-3">
+                                        <a href="?tab=inventory&sort=dataCategories&dir=<?= $sortBy === 'dataCategories' && $sortDir === 'asc' ? 'desc' : 'asc' ?><?= $search ? '&search='.urlencode($search) : '' ?><?= $filterRisk ? '&risk='.urlencode($filterRisk) : '' ?>" 
+                                           class="hover:text-text-heading transition-colors flex items-center gap-1">
+                                            Categorías
+                                            <?php if ($sortBy === 'dataCategories'): ?>
+                                                <span class="text-[8px]"><?= $sortDir === 'asc' ? '↑' : '↓' ?></span>
+                                            <?php endif; ?>
+                                        </a>
+                                    </th>
+                                    <th class="text-left py-2.5 px-3">
+                                        <a href="?tab=inventory&sort=legalBasis&dir=<?= $sortBy === 'legalBasis' && $sortDir === 'asc' ? 'desc' : 'asc' ?><?= $search ? '&search='.urlencode($search) : '' ?><?= $filterRisk ? '&risk='.urlencode($filterRisk) : '' ?>" 
+                                           class="hover:text-text-heading transition-colors flex items-center gap-1">
+                                            Base legal
+                                            <?php if ($sortBy === 'legalBasis'): ?>
+                                                <span class="text-[8px]"><?= $sortDir === 'asc' ? '↑' : '↓' ?></span>
+                                            <?php endif; ?>
+                                        </a>
+                                    </th>
+                                    <th class="text-left py-2.5 px-3">
+                                        <a href="?tab=inventory&sort=risk&dir=<?= $sortBy === 'risk' && $sortDir === 'asc' ? 'desc' : 'asc' ?><?= $search ? '&search='.urlencode($search) : '' ?><?= $filterRisk ? '&risk='.urlencode($filterRisk) : '' ?>" 
+                                           class="hover:text-text-heading transition-colors flex items-center gap-1">
+                                            Riesgo
+                                            <?php if ($sortBy === 'risk'): ?>
+                                                <span class="text-[8px]"><?= $sortDir === 'asc' ? '↑' : '↓' ?></span>
+                                            <?php endif; ?>
+                                        </a>
+                                    </th>
+                                    <th class="text-left py-2.5 px-3">Sensibles</th>
+                                    <th class="text-left py-2.5 px-3">Origen</th>
+                                    <th class="text-left py-2.5 px-3">Retención</th>
+                                    <th class="text-center py-2.5 px-3">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-border-theme/30">
+                                <?php foreach ($filtered as $it): 
+                                    $risk = $it['risk'] ?? 'low';
+                                    $riskColors = [
+                                        'critical' => ['text' => 'text-red-400', 'bg' => 'bg-red-500/15', 'border' => 'border-red-500/25', 'label' => '🔴 Crítico'],
+                                        'high' => ['text' => 'text-yellow-400', 'bg' => 'bg-yellow-500/15', 'border' => 'border-yellow-500/25', 'label' => '🟠 Alto'],
+                                        'medium' => ['text' => 'text-blue-400', 'bg' => 'bg-blue-500/15', 'border' => 'border-blue-500/25', 'label' => '🟡 Medio'],
+                                        'low' => ['text' => 'text-text-muted', 'bg' => 'bg-bg-elevated/50', 'border' => 'border-border-theme', 'label' => '🟢 Bajo'],
+                                    ];
+                                    $rc = $riskColors[$risk] ?? $riskColors['low'];
+                                    $dc = $it['dataCategories'] ?? '';
+                                    if (is_array($dc)) $dc = implode(', ', $dc);
+                                    $sourceType = $it['sourceType'] ?? 'database';
+                                    $sourceLabel = $sourceType === 'file' ? '📄 Archivo' : '🗄️ Base de datos';
+                                    $sourceId = $it['sourceId'] ?? null;
+                                    $isComplete = !empty($it['name']) && !empty($it['legalBasis']) && !empty($it['dataCategories']);
+                                ?>
+                                <tr class="border-t border-border-theme/30 hover:bg-bg-base/40 transition-colors">
+                                    <td class="py-2.5 px-3">
+                                        <span class="text-[12px] font-medium text-text-heading"><?= h($it['name'] ?? 'Sin nombre') ?></span>
+                                        <?php if (!$isComplete): ?>
+                                            <span class="ml-1 text-[8px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">⚠️ Incompleto</span>
+                                        <?php endif; ?>
+                                        <?php if (!empty($it['purpose'])): ?>
+                                            <span class="block text-[9px] text-text-subtle mt-0.5">🎯 <?= h($it['purpose']) ?></span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="py-2.5 px-3 text-text-body max-w-[120px] truncate" title="<?= h($dc) ?>">
+                                        <?= h($dc ?: '-') ?>
+                                    </td>
+                                    <td class="py-2.5 px-3 text-text-muted text-[11px]"><?= h($it['legalBasis'] ?? '-') ?></td>
+                                    <td class="py-2.5 px-3">
+                                        <span class="text-[10px] px-2 py-0.5 rounded-full border <?= $rc['bg'] ?> <?= $rc['text'] ?> <?= $rc['border'] ?>">
+                                            <?= $rc['label'] ?>
+                                        </span>
+                                    </td>
+                                    <td class="py-2.5 px-3">
+                                        <?php if (!empty($it['sensitive'])): ?>
+                                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 flex items-center gap-1 w-fit">
+                                                <span class="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse"></span>
+                                                Sensible
+                                            </span>
+                                        <?php else: ?>
+                                            <span class="text-[10px] text-text-subtle">No</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="py-2.5 px-3">
+                                        <span class="text-[10px] text-text-muted flex items-center gap-1">
+                                            <?= $sourceLabel ?>
+                                            <?php if ($sourceType === 'file' && $sourceId): ?>
+                                                <a href="/compliance?tab=files" class="text-cyan-400 hover:text-cyan-300 text-[9px]">🔗</a>
+                                            <?php elseif ($sourceType === 'database' && $sourceId): ?>
+                                                <a href="/databases" class="text-cyan-400 hover:text-cyan-300 text-[9px]">🔗</a>
+                                            <?php endif; ?>
+                                        </span>
+                                    </td>
+                                    <td class="py-2.5 px-3 text-text-muted text-[11px]">
+                                        <?= !empty($it['retentionDays']) ? h($it['retentionDays'] . ' días') : '-' ?>
+                                    </td>
+                                    <td class="py-2.5 px-3 text-center">
+                                        <div class="flex items-center justify-center gap-1.5">
+                                            <!-- Ver Detalle -->
+                                            <button onclick="openInventoryDetailModal('<?= h($it['_id'] ?? '') ?>')" 
+                                                    class="p-1.5 rounded-lg text-text-muted hover:text-text-heading hover:bg-bg-elevated transition-all"
+                                                    title="Ver detalle completo">
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                            </button>
+                                            
+                                            <!-- Editar -->
+                                            <button onclick="openInventoryEditModal('<?= h($it['_id'] ?? '') ?>')" 
+                                                    class="p-1.5 rounded-lg text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/10 transition-all"
+                                                    title="Editar actividad">
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                                            </button>
+                                            
+                                            <!-- Eliminar -->
+                                            <form method="POST" class="inline" onsubmit="return confirm('¿Eliminar esta actividad de tratamiento? Esta acción no se puede deshacer.')">
+                                                <input type="hidden" name="collection" value="inventory">
+                                                <input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>">
+                                                <button type="submit" name="delete_item" value="1" 
+                                                        class="p-1.5 rounded-lg text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-all"
+                                                        title="Eliminar">
+                                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Footer de la tabla -->
+                    <div class="px-5 py-2.5 border-t border-border-theme/20 flex items-center justify-between text-[10px] text-text-subtle">
+                        <span><?= $totalFiltered ?> actividades mostradas</span>
+                        <span>Última actualización: <?= date('H:i:s') ?></span>
+                    </div>
+                <?php endif; ?>
+            </div>
+
+            <!-- ============================================================ -->
+            <!-- ═══ MODAL: DETALLE COMPLETO (con explicaciones) ═══ -->
+            <!-- ============================================================ -->
+            <div id="inventory-detail-modal" class="hidden fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
+                <div class="bg-bg-panel border border-border-theme rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+                    <!-- Header -->
+                    <div class="flex items-center justify-between px-5 py-4 border-b border-border-theme flex-shrink-0">
+                        <div>
+                            <h3 class="text-[15px] font-semibold text-white" id="detail-title">Detalle de actividad</h3>
+                            <p class="text-[10px] text-text-subtle" id="detail-subtitle">Información completa del registro de tratamiento</p>
+                        </div>
+                        <button onclick="document.getElementById('inventory-detail-modal').classList.add('hidden')" 
+                                class="text-text-muted hover:text-text-heading transition-colors p-1 rounded-lg">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+                    
+                    <!-- Cuerpo -->
+                    <div class="flex-1 overflow-y-auto p-5 scrollbar-custom space-y-4" id="detail-body">
+                        <!-- Los datos se cargan dinámicamente con JavaScript -->
+                    </div>
+                    
+                    <!-- Footer -->
+                    <div class="flex justify-end gap-2 px-5 py-4 border-t border-border-theme flex-shrink-0">
+                        <button onclick="document.getElementById('inventory-detail-modal').classList.add('hidden')" 
+                                class="px-3 py-1.5 text-[11px] font-medium rounded-lg bg-bg-elevated text-text-body border border-border-theme transition-all">Cerrar</button>
+                        <button onclick="closeDetailAndEdit()" id="detail-edit-btn" 
+                                class="px-3 py-1.5 text-[11px] font-medium rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white transition-all">Editar actividad</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================================ -->
+            <!-- ═══ MODAL: EDICIÓN COMPLETA (con guía) ═══ -->
+            <!-- ============================================================ -->
+            <div id="inventory-edit-modal" class="hidden fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
+                <div class="bg-bg-panel border border-border-theme rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+                    <!-- Header -->
+                    <div class="flex items-center justify-between px-5 py-4 border-b border-border-theme flex-shrink-0">
+                        <div>
+                            <h3 class="text-[15px] font-semibold text-white">✏️ Editar actividad de tratamiento</h3>
+                            <p class="text-[10px] text-text-subtle">Actualiza los datos de esta actividad según lo requerido por la Ley 21.719</p>
+                        </div>
+                        <button onclick="document.getElementById('inventory-edit-modal').classList.add('hidden')" 
+                                class="text-text-muted hover:text-text-heading transition-colors p-1 rounded-lg">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+                    
+                    <!-- Cuerpo con formulario -->
+                    <div class="flex-1 overflow-y-auto p-5 scrollbar-custom">
+                        <!-- Leyenda de ayuda (siempre visible) -->
+                        <div class="bg-cyan-500/[0.04] border border-cyan-500/20 rounded-lg p-3 mb-4 text-[10px] text-text-muted leading-relaxed">
+                            <p><span class="text-cyan-400 font-semibold">⚖️ ¿Por qué es importante este registro?</span></p>
+                            <p>El Art. 14 de la Ley 21.719 exige que mantengas un <strong class="text-white">Registro de Actividades de Tratamiento (RAT)</strong> actualizado. 
+                               Este registro es lo primero que revisará la APDP en una fiscalización.</p>
+                            <p class="mt-1">Cada campo tiene un propósito legal. Completa toda la información posible para estar mejor protegido.</p>
+                        </div>
+                        
+                        <form id="inventory-edit-form" method="POST" class="space-y-3">
+                            <input type="hidden" name="update_inventory_item" value="1">
+                            <input type="hidden" name="item_id" id="edit-item-id">
+                            
+                            <!-- Nombre -->
+                            <div>
+                                <label class="label-premium flex items-center gap-1">
+                                    Nombre de la actividad <span class="text-red-400">*</span>
+                                    <span class="text-[9px] text-text-subtle font-normal ml-1">(requerido)</span>
+                                </label>
+                                <input type="text" name="name" id="edit-name" required class="input-premium w-full" placeholder="Ej: Gestión de clientes">
+                                <p class="text-[8px] text-text-subtle mt-0.5">📌 Identifica claramente qué tratamiento realizas. Debe ser específico.</p>
+                            </div>
+                            
+                            <!-- Propósito -->
+                            <div>
+                                <label class="label-premium flex items-center gap-1">
+                                    Finalidad / Propósito
+                                    <span class="text-[9px] text-text-subtle font-normal">(Art. 3 letra b)</span>
+                                </label>
+                                <input type="text" name="purpose" id="edit-purpose" class="input-premium w-full" placeholder="Ej: Enviar facturación y promociones">
+                                <p class="text-[8px] text-text-subtle mt-0.5">🎯 Define claramente para qué usas estos datos. La ley exige finalidades determinadas y explícitas.</p>
+                            </div>
+                            
+                            <!-- Categorías -->
+                            <div>
+                                <label class="label-premium flex items-center gap-1">
+                                    Categorías de datos
+                                    <span class="text-[9px] text-text-subtle font-normal">(recomendado)</span>
+                                </label>
+                                <input type="text" name="dataCategories" id="edit-categories" class="input-premium w-full" placeholder="Ej: nombres, RUT, emails, teléfonos">
+                                <p class="text-[8px] text-text-subtle mt-0.5">📋 Enumera los tipos de datos personales que tratas. Esto ayuda a clasificar el riesgo.</p>
+                            </div>
+                            
+                            <!-- Base legal -->
+                            <div>
+                                <label class="label-premium flex items-center gap-1">
+                                    Base de licitud <span class="text-red-400">*</span>
+                                    <span class="text-[9px] text-text-subtle font-normal">(requerido)</span>
+                                </label>
+                                <select name="legalBasis" id="edit-legalBasis" required class="input-premium w-full">
+                                    <option value="">Seleccionar...</option>
+                                    <option value="Consentimiento">✅ Consentimiento del titular (Art. 12)</option>
+                                    <option value="Ejecución de contrato">📄 Ejecución de contrato (Art. 13)</option>
+                                    <option value="Obligación legal">⚖️ Obligación legal (Art. 13)</option>
+                                    <option value="Interés legítimo">🎯 Interés legítimo (Art. 13)</option>
+                                    <option value="Interés público">🏛️ Interés público (Art. 13)</option>
+                                </select>
+                                <p class="text-[8px] text-text-subtle mt-0.5">⚖️ Sin una base legal válida, el tratamiento es ilegal. Elige la que corresponda a tu caso.</p>
+                            </div>
+                            
+                            <!-- Riesgo -->
+                            <div>
+                                <label class="label-premium">Nivel de riesgo</label>
+                                <select name="risk" id="edit-risk" class="input-premium w-full">
+                                    <option value="low">🟢 Bajo - Datos básicos (nombres, teléfonos)</option>
+                                    <option value="medium">🟡 Medio - Datos personales comunes (RUT, dirección)</option>
+                                    <option value="high">🟠 Alto - Datos sensibles o muchos registros</option>
+                                    <option value="critical">🔴 Crítico - Datos muy sensibles (salud, biometría)</option>
+                                </select>
+                                <p class="text-[8px] text-text-subtle mt-0.5">📊 Evalúa el impacto si estos datos se ven comprometidos. A mayor riesgo, mayores medidas de seguridad.</p>
+                            </div>
+                            
+                            <!-- Sensibles -->
+                            <div>
+                                <label class="label-premium">Datos sensibles</label>
+                                <select name="sensitive" id="edit-sensitive" class="input-premium w-full">
+                                    <option value="0">❌ No contiene datos sensibles</option>
+                                    <option value="1">🔒 Sí - Salud, biometría, religión, origen racial, etc.</option>
+                                </select>
+                                <p class="text-[8px] text-text-subtle mt-0.5">🔐 Según Art. 16: datos de salud, origen racial, creencias religiosas, vida sexual, etc.</p>
+                            </div>
+                            
+                            <!-- Retención -->
+                            <div>
+                                <label class="label-premium">Días de retención</label>
+                                <input type="number" name="retentionDays" id="edit-retention" class="input-premium w-full" placeholder="Ej: 365" min="0">
+                                <p class="text-[8px] text-text-subtle mt-0.5">📅 ¿Cuánto tiempo conservas estos datos? La ley exige que no se conserven más tiempo del necesario (Art. 14).</p>
+                            </div>
+                            
+                            <!-- Almacenamiento -->
+                            <div>
+                                <label class="label-premium">Almacenamiento</label>
+                                <input type="text" name="storage" id="edit-storage" class="input-premium w-full" placeholder="Ej: AWS, servidor local, Google Drive">
+                                <p class="text-[8px] text-text-subtle mt-0.5">💾 ¿Dónde se guardan físicamente estos datos? Ayuda a identificar riesgos de seguridad.</p>
+                            </div>
+                            
+                            <!-- Mensaje de estado -->
+                            <div id="edit-msg" class="hidden p-3 rounded-lg text-[11px]"></div>
+                            
+                            <!-- Botones -->
+                            <div class="flex justify-end gap-2 pt-2 border-t border-border-theme">
+                                <button type="button" onclick="document.getElementById('inventory-edit-modal').classList.add('hidden')" 
+                                        class="px-3 py-1.5 text-[11px] font-medium rounded-lg bg-bg-elevated text-text-body border border-border-theme transition-all">Cancelar</button>
+                                <button type="submit" class="px-4 py-1.5 text-[11px] font-medium rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white transition-all hover:from-blue-500 hover:to-indigo-500">
+                                    💾 Guardar cambios
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <script>
+            // ─── Datos de inventario (para uso en JS) ───
+            const inventoryData = <?= json_encode($inventoryItems, JSON_UNESCAPED_UNICODE) ?>;
+
+            // ─── Filtros ───
+            function updateFilters() {
+                const search = document.getElementById('inventory-search').value;
+                const risk = document.getElementById('filter-risk').value;
+                const sensitive = document.getElementById('filter-sensitive').value;
+                const source = document.getElementById('filter-source').value;
+                
+                let url = '?tab=inventory';
+                if (search) url += '&search=' + encodeURIComponent(search);
+                if (risk) url += '&risk=' + encodeURIComponent(risk);
+                if (sensitive !== '') url += '&sensitive=' + encodeURIComponent(sensitive);
+                if (source) url += '&source=' + encodeURIComponent(source);
+                
+                window.location.href = url;
+            }
+
+            function clearFilters() {
+                window.location.href = '?tab=inventory';
+            }
+
+            // ─── Enter para buscar ───
+            document.getElementById('inventory-search')?.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') updateFilters();
+            });
+
+            // ─── Modal: Detalle ───
+            let detailItemId = null;
+
+            function openInventoryDetailModal(itemId) {
+                detailItemId = itemId;
+                const item = inventoryData.find(i => i._id === itemId);
+                if (!item) return;
+                
+                document.getElementById('detail-title').textContent = item.name || 'Actividad sin nombre';
+                document.getElementById('detail-subtitle').textContent = 'ID: ' + itemId.substring(0, 8) + '...';
+                
+                const body = document.getElementById('detail-body');
+                
+                // Determinar estado de completitud
+                const isComplete = !!(item.name && item.legalBasis && item.dataCategories);
+                const missingFields = [];
+                if (!item.name) missingFields.push('Nombre');
+                if (!item.legalBasis) missingFields.push('Base legal');
+                if (!item.dataCategories) missingFields.push('Categorías de datos');
+                
+                // Mapeo de riesgo
+                const riskLabels = {
+                    'critical': '🔴 Crítico',
+                    'high': '🟠 Alto',
+                    'medium': '🟡 Medio',
+                    'low': '🟢 Bajo'
+                };
+                
+                // Mapeo de origen
+                const sourceLabels = {
+                    'database': '🗄️ Base de datos',
+                    'file': '📄 Archivo'
+                };
+                
+                body.innerHTML = `
+                    <!-- Estado de cumplimiento -->
+                    <div class="rounded-lg p-3 ${isComplete ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-amber-500/10 border border-amber-500/20'}">
+                        <div class="flex items-center gap-2">
+                            <span>${isComplete ? '✅' : '⚠️'}</span>
+                            <span class="text-[12px] font-semibold ${isComplete ? 'text-emerald-400' : 'text-amber-400'}">
+                                ${isComplete ? 'Registro completo' : 'Registro incompleto'}
+                            </span>
+                        </div>
+                        ${!isComplete ? `<p class="text-[10px] text-text-muted mt-1">Faltan campos obligatorios: ${missingFields.join(', ')}</p>` : ''}
+                        <p class="text-[9px] text-text-subtle mt-1">${isComplete ? '✅ Cumple con los requisitos mínimos del Art. 14' : '⚠️ Completa los campos faltantes para estar al día con la ley'}</p>
+                    </div>
+                    
+                    <!-- Información principal -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div class="bg-bg-base/40 border border-border-theme/25 rounded-lg p-3">
+                            <p class="text-[9px] text-text-subtle uppercase tracking-wider">Nombre</p>
+                            <p class="text-[13px] font-medium text-white">${escHtml(item.name || 'Sin nombre')}</p>
+                        </div>
+                        <div class="bg-bg-base/40 border border-border-theme/25 rounded-lg p-3">
+                            <p class="text-[9px] text-text-subtle uppercase tracking-wider">Finalidad</p>
+                            <p class="text-[13px] text-white">${escHtml(item.purpose || 'No especificada')}</p>
+                        </div>
+                        <div class="bg-bg-base/40 border border-border-theme/25 rounded-lg p-3">
+                            <p class="text-[9px] text-text-subtle uppercase tracking-wider">Categorías de datos</p>
+                            <p class="text-[13px] text-white">${escHtml(item.dataCategories || 'No especificadas')}</p>
+                        </div>
+                        <div class="bg-bg-base/40 border border-border-theme/25 rounded-lg p-3">
+                            <p class="text-[9px] text-text-subtle uppercase tracking-wider">Base legal</p>
+                            <p class="text-[13px] font-medium text-cyan-400">${escHtml(item.legalBasis || 'No definida')}</p>
+                            ${item.legalBasis ? `<p class="text-[8px] text-text-subtle mt-0.5">⚖️ Art. ${item.legalBasis === 'Consentimiento' ? '12' : '13'} Ley 21.719</p>` : ''}
+                        </div>
+                        <div class="bg-bg-base/40 border border-border-theme/25 rounded-lg p-3">
+                            <p class="text-[9px] text-text-subtle uppercase tracking-wider">Nivel de riesgo</p>
+                            <p class="text-[13px] font-medium">${riskLabels[item.risk] || '🟢 Bajo'}</p>
+                        </div>
+                        <div class="bg-bg-base/40 border border-border-theme/25 rounded-lg p-3">
+                            <p class="text-[9px] text-text-subtle uppercase tracking-wider">Datos sensibles</p>
+                            <p class="text-[13px] font-medium ${item.sensitive ? 'text-red-400' : 'text-text-muted'}">
+                                ${item.sensitive ? '🔒 Sí - Requiere protección especial' : '📄 No'}
+                            </p>
+                            ${item.sensitive ? `<p class="text-[8px] text-text-subtle mt-0.5">🔐 Art. 16 - Requiere consentimiento explícito</p>` : ''}
+                        </div>
+                    </div>
+                    
+                    <!-- Información adicional -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div class="bg-bg-base/40 border border-border-theme/25 rounded-lg p-3">
+                            <p class="text-[9px] text-text-subtle uppercase tracking-wider">Origen</p>
+                            <p class="text-[13px] text-white flex items-center gap-2">
+                                ${sourceLabels[item.sourceType] || '🗄️ Base de datos'}
+                                ${item.sourceId ? `<a href="${item.sourceType === 'file' ? '/compliance?tab=files' : '/databases'}" class="text-[10px] text-cyan-400 hover:text-cyan-300">🔗 Ver origen</a>` : ''}
+                            </p>
+                        </div>
+                        <div class="bg-bg-base/40 border border-border-theme/25 rounded-lg p-3">
+                            <p class="text-[9px] text-text-subtle uppercase tracking-wider">Retención</p>
+                            <p class="text-[13px] text-white">${item.retentionDays ? item.retentionDays + ' días' : 'No definida'}</p>
+                            ${!item.retentionDays ? `<p class="text-[8px] text-text-subtle mt-0.5">⚠️ Recomendado: define un plazo de retención (Art. 14)</p>` : ''}
+                        </div>
+                        <div class="bg-bg-base/40 border border-border-theme/25 rounded-lg p-3">
+                            <p class="text-[9px] text-text-subtle uppercase tracking-wider">Almacenamiento</p>
+                            <p class="text-[13px] text-white">${escHtml(item.storage || 'No especificado')}</p>
+                        </div>
+                        <div class="bg-bg-base/40 border border-border-theme/25 rounded-lg p-3">
+                            <p class="text-[9px] text-text-subtle uppercase tracking-wider">Fecha de creación</p>
+                            <p class="text-[13px] text-white">${item.createdAt ? new Date(item.createdAt).toLocaleString('es-CL') : 'No disponible'}</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Consejos de cumplimiento -->
+                    <div class="bg-emerald-500/[0.03] border border-emerald-500/20 rounded-lg p-3">
+                        <p class="text-[10px] font-semibold text-emerald-400 flex items-center gap-2">
+                            📋 <span>Consejos de cumplimiento para esta actividad</span>
+                        </p>
+                        <ul class="text-[10px] text-text-muted space-y-1 mt-1.5 list-disc list-inside">
+                            ${!item.legalBasis ? '<li>⚠️ <span class="text-amber-400">Falta base legal:</span> Define si el tratamiento se basa en consentimiento, contrato, obligación legal, interés legítimo o interés público.</li>' : ''}
+                            ${!item.dataCategories ? '<li>📋 <span class="text-amber-400">Faltan categorías:</span> Especifica qué tipos de datos personales tratas (nombres, RUT, emails, etc.).</li>' : ''}
+                            ${!item.retentionDays ? '<li>📅 Define un plazo de retención para estos datos. La ley exige que no se conserven más tiempo del necesario.</li>' : ''}
+                            ${item.sensitive ? '<li>🔐 <span class="text-red-400">Dato sensible detectado:</span> Asegúrate de tener consentimiento explícito por escrito y medidas de seguridad reforzadas.</li>' : ''}
+                            ${item.risk === 'high' || item.risk === 'critical' ? '<li>🛡️ <span class="text-yellow-400">Riesgo alto/crítico:</span> Considera realizar una Evaluación de Impacto (DPIA) según Art. 14 quater.</li>' : ''}
+                            ${isComplete ? '<li>✅ Este registro cumple con los requisitos mínimos del Art. 14 de la Ley 21.719.</li>' : ''}
+                        </ul>
+                    </div>
+                `;
+                
+                // Configurar botón de edición
+                document.getElementById('detail-edit-btn').onclick = function() {
+                    document.getElementById('inventory-detail-modal').classList.add('hidden');
+                    openInventoryEditModal(itemId);
+                };
+                
+                document.getElementById('inventory-detail-modal').classList.remove('hidden');
+            }
+
+            function closeDetailAndEdit() {
+                document.getElementById('inventory-detail-modal').classList.add('hidden');
+                if (detailItemId) openInventoryEditModal(detailItemId);
+            }
+
+            // ─── Modal: Edición ───
+            function openInventoryEditModal(itemId) {
+                const item = inventoryData.find(i => i._id === itemId);
+                if (!item) return;
+                
+                document.getElementById('edit-item-id').value = itemId;
+                document.getElementById('edit-name').value = item.name || '';
+                document.getElementById('edit-purpose').value = item.purpose || '';
+                document.getElementById('edit-categories').value = typeof item.dataCategories === 'string' ? item.dataCategories : (item.dataCategories || '');
+                document.getElementById('edit-legalBasis').value = item.legalBasis || '';
+                document.getElementById('edit-risk').value = item.risk || 'low';
+                document.getElementById('edit-sensitive').value = item.sensitive ? '1' : '0';
+                document.getElementById('edit-retention').value = item.retentionDays || '';
+                document.getElementById('edit-storage').value = item.storage || '';
+                
+                // Ocultar mensaje anterior
+                const msg = document.getElementById('edit-msg');
+                msg.classList.add('hidden');
+                
+                document.getElementById('inventory-edit-modal').classList.remove('hidden');
+            }
+
+            // ─── Envío del formulario de edición (AJAX) ───
+            document.getElementById('inventory-edit-form')?.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const formData = new FormData(this);
+                const msg = document.getElementById('edit-msg');
+                
+                const payload = {
+                    token: '<?= h($token) ?>',
+                    name: formData.get('name'),
+                    purpose: formData.get('purpose'),
+                    dataCategories: formData.get('dataCategories'),
+                    legalBasis: formData.get('legalBasis'),
+                    risk: formData.get('risk'),
+                    sensitive: formData.get('sensitive') === '1',
+                    retentionDays: parseInt(formData.get('retentionDays')) || null,
+                    storage: formData.get('storage'),
+                };
+                
+                msg.classList.remove('hidden');
+                msg.textContent = '⏳ Guardando cambios...';
+                msg.className = 'p-3 rounded-lg text-[11px] bg-blue-500/10 border border-blue-500/20 text-blue-400';
+                
+                try {
+                    const res = await fetch('/api/compliance/inventory/' + formData.get('item_id'), {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        msg.textContent = '✅ ¡Cambios guardados correctamente! Recargando...';
+                        msg.className = 'p-3 rounded-lg text-[11px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400';
+                        setTimeout(() => location.reload(), 1200);
+                    } else {
+                        msg.textContent = '❌ ' + (data.error || 'Error al guardar los cambios');
+                        msg.className = 'p-3 rounded-lg text-[11px] bg-red-500/10 border border-red-500/20 text-red-400';
+                    }
+                } catch (e) {
+                    msg.textContent = '❌ Error de conexión: ' + e.message;
+                    msg.className = 'p-3 rounded-lg text-[11px] bg-red-500/10 border border-red-500/20 text-red-400';
+                }
+            });
+
+            // ─── Utilidad: escape HTML ───
+            function escHtml(str) {
+                if (!str) return '';
+                const div = document.createElement('div');
+                div.textContent = str;
+                return div.innerHTML;
+            }
+            </script>
 
             <?php elseif ($tab === 'breaches'): ?>
             <?php renderSectionHeader('Brechas', 'Registro de incidentes de seguridad y violaciones de datos'); ?>
