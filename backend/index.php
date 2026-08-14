@@ -164,6 +164,14 @@ $routes = [
     'POST /api/compliance/verify-invite' => 'routes/compliance.php@verifyInvite',
     'POST /api/compliance/sign'          => 'routes/compliance.php@sign',
 
+    // ─── Compliance Files ───
+    'POST /api/compliance/files/upload'    => 'routes/compliance_files.php@upload',
+    'POST /api/compliance/files/analyze'   => 'routes/compliance_files.php@analyze',
+    'GET  /api/compliance/files'           => 'routes/compliance_files.php@listFiles',
+    'DELETE /api/compliance/files'         => 'routes/compliance_files.php@deleteFile',
+    'POST /api/compliance/files/map'       => 'routes/compliance_files.php@mapColumns',
+
+
     // ARCO
     'POST /api/arco/requests'      => 'routes/arco.php@create',
     'POST /api/arco/requests/list' => 'routes/arco.php@listRequests',
