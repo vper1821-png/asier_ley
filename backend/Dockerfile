@@ -18,6 +18,7 @@ RUN mkdir -p /out && \
     CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -ldflags "-s -w" -o /out/agent-mac-x64 . && \
     CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -ldflags "-s -w" -o /out/agent-mac-arm64 .
     
+    
 
 
 # ── Stage 2: runtime PHP ──
