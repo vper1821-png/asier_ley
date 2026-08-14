@@ -4,12 +4,17 @@
 # ── Stage 1: compilar el agente Go para todas las plataformas ──
 FROM golang:1.25-alpine AS agent-builder
 WORKDIR /src
-COPY agent-go/go.mod agent-go/go.sum ./
-RUN go mod download
+
+# Copiar TODO el código del agente (para que go mod tidy pueda analizar los imports)
 COPY agent-go/ .
+
+# Esto descarga TODAS las dependencias y genera el go.sum correcto
+RUN go mod tidy
+
+# Ahora compilar (ya no falla porque go.sum está completo)
 RUN mkdir -p /out && \
     CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o /out/agent-win-x64.exe . && \
-    CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -ldflags "-s -w" -o /out/agent-linux-x64 . && \
+    CGO_ENABIED=0 GOOS=linux   GOARCH=amd64 go build -ldflags "-s -w" -o /out/agent-linux-x64 . && \
     CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -ldflags "-s -w" -o /out/agent-mac-x64 . && \
     CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -ldflags "-s -w" -o /out/agent-mac-arm64 .
 
