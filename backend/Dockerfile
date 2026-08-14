@@ -31,7 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wixl \
     golang-go \
     default-libmysqlclient-dev \
-    && docker-php-ext-install curl mbstring zip pdo_mysql \
+    && docker-php-ext-install curl mbstring zip pdo_mysql gd \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
