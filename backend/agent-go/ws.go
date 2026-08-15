@@ -511,18 +511,4 @@ func handleRestartAgent(msg WSMessage) {
 	time.AfterFunc(3*time.Second, func() { osExit(0) })
 }
 
-// Stubs para túneles
-func handleTunnelOpen(msg WSMessage) {
-	logMsg("Tunnel open: %s", msg.TunnelID)
-}
-func handleTunnelData(msg WSMessage) {
-	logMsg("Tunnel data: %s", msg.TunnelID)
-}
-func handleTunnelClose(msg WSMessage) {
-	logMsg("Tunnel close: %s", msg.TunnelID)
-}
-func handleTunnelError(msg WSMessage) {
-	logMsg("Tunnel error: %s", msg.Error)
-}
-
 var osExit = os.Exit

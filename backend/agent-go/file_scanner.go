@@ -139,6 +139,7 @@ func (fs *FileScanner) Start() {
 	if fs.active {
 		return
 	}
+
 	fs.active = true
 	logMsg("FileScanner: iniciado, monitoreando %d directorios", len(fs.watchedDirs))
 	go fs.loop()
