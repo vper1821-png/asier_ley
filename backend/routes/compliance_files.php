@@ -433,4 +433,152 @@ function agentScan() {
         'fileId'  => $fileId,
         'message' => 'Archivo reportado por agente y registrado en inventario'
     ]);
+
+
 }
+
+
+
+// ─── Listar logs de auditoría de archivos ───
+function listFileAuditLogs() {
+    $user = Auth::requireAuth();
+    $db = Database::getInstance();
+    $limit = (int)($_GET['limit'] ?? 200);
+    $skip = (int)($_GET['skip'] ?? 0);
+    $filter = ['userId' => $user['_id']];
+    $logs = $db->find('file_audit_logs', $filter, ['limit' => $limit, 'skip' => $skip]);
+    $total = $db->count('file_audit_logs', $filter);
+    json_response([
+        'logs' => $logs,
+        'total' => $total,
+        'limit' => $limit,
+        'skip' => $skip,
+    ]);
+}
+
+// ─── NUEVA función agentScan con auditoría ───
+// Reemplaza la función agentScan() existente por esta versión mejorada
+function agentScan() {
+    $user = Auth::requireAuth();
+    $body = get_body();
+
+    $required = ['agentId', 'path', 'hash', 'fileType'];
+    foreach ($required as $field) {
+        if (empty($body[$field])) json_error("Campo '$field' requerido");
+    }
+
+    $db = Database::getInstance();
+
+    // Verificar si ya existe
+    $existing = $db->findOne('compliance_files', [
+        'agentId' => $body['agentId'],
+        'path'    => $body['path'],
+        'sourceType' => 'agent'
+    ]);
+
+    // Preparar documento
+    $doc = [
+        'userId'        => $user['_id'],
+        'sourceType'    => 'agent',
+        'agentId'       => $body['agentId'],
+        'hostname'      => $body['hostname'] ?? 'unknown',
+        'path'          => $body['path'],
+        'originalName'  => basename($body['path']),
+        'ext'           => strtolower(pathinfo($body['path'], PATHINFO_EXTENSION)),
+        'size'          => (int)($body['size'] ?? 0),
+        'hash'          => $body['hash'],
+        'mimeType'      => $body['mimeType'] ?? 'application/octet-stream',
+        'status'        => 'analyzed',
+        'user'          => $body['user'] ?? null,
+        'analysisResult' => [
+            'rowCount'    => (int)($body['rowCount'] ?? 0),
+            'headers'     => array_keys($body['personalData'] ?? []),
+            'patterns'    => $body['personalData'] ?? [],
+            'sensitive'   => !empty($body['sensitive']),
+            'analyzedAt'  => date('c'),
+            'analyzedBy'  => 'agent',
+            'user'        => $body['user'] ?? null,
+        ],
+        'createdAt'     => date('c'),
+        'updatedAt'     => date('c'),
+    ];
+
+    if ($existing) {
+        $db->updateOne('compliance_files', ['_id' => $existing['_id']], $doc);
+        $fileId = $existing['_id'];
+        $inventoryId = $existing['analysisResult']['inventoryId'] ?? null;
+    } else {
+        $inserted = $db->insertOne('compliance_files', $doc);
+        $fileId = $inserted['_id'];
+        $inventoryId = null;
+    }
+
+    // ── Crear/Actualizar el inventario (RAT) ──
+    $categories = [];
+    foreach ($body['personalData'] ?? [] as $col => $types) {
+        $categories = array_merge($categories, $types);
+    }
+    $categories = array_unique($categories);
+
+    $inventoryData = [
+        'userId'         => $user['_id'],
+        'sourceType'     => 'file',
+        'sourceId'       => $fileId,
+        'name'           => '📄 Archivo: ' . basename($body['path']),
+        'dataCategories' => implode(', ', $categories),
+        'records'        => (int)($body['rowCount'] ?? 0),
+        'sensitive'      => !empty($body['sensitive']),
+        'legalBasis'     => 'Pendiente de definir',
+        'active'         => true,
+        'storage'        => $body['hostname'] ?? 'Agente',
+        'user'           => $body['user'] ?? null,
+        'updatedAt'      => date('c'),
+    ];
+
+    if ($inventoryId) {
+        $db->updateOne('compliance_inventory', ['_id' => $inventoryId], $inventoryData);
+    } else {
+        $inventoryData['createdAt'] = date('c');
+        $inv = $db->insertOne('compliance_inventory', $inventoryData);
+        $db->updateOne('compliance_files', ['_id' => $fileId], [
+            'analysisResult.inventoryId' => $inv['_id']
+        ]);
+    }
+
+    // ─── GUARDAR EN AUDITORÍA DE ARCHIVOS ───
+    $db->insertOne('file_audit_logs', [
+        'userId' => $user['_id'],
+        'agentId' => $body['agentId'],
+        'hostname' => $body['hostname'] ?? 'unknown',
+        'path' => $body['path'],
+        'user' => $body['user'] ?? null,
+        'detectedAt' => date('c'),
+        'categories' => array_keys($body['personalData'] ?? []),
+        'sensitive' => !empty($body['sensitive']),
+        'rowCount' => (int)($body['rowCount'] ?? 0),
+        'fileType' => $body['fileType'] ?? 'unknown',
+        'hash' => $body['hash'],
+        'status' => 'processed',
+    ]);
+
+    // ─── GUARDAR EN LOG DE AUDITORÍA GENERAL ───
+    $db->insertOne('audit_logs', [
+        'userId' => $user['_id'],
+        'action' => 'file_detected_by_agent',
+        'details' => [
+            'agentId' => $body['agentId'],
+            'path' => $body['path'],
+            'user' => $body['user'] ?? null,
+            'sensitive' => !empty($body['sensitive']),
+            'categories' => array_keys($body['personalData'] ?? []),
+        ],
+        'createdAt' => date('c'),
+    ]);
+
+    json_response([
+        'success' => true,
+        'fileId'  => $fileId,
+        'message' => 'Archivo reportado por agente y registrado en inventario'
+    ]);
+}
+

@@ -174,6 +174,10 @@ $routes = [
      // ─── Compliance Files (Agente) ───
     'POST /api/compliance/files/agent-scan' => 'routes/compliance_files.php@agentScan',
 
+     // ─── Audit logs de archivos ───
+    'GET /api/compliance/files/audit-logs' => 'routes/compliance_files.php@listFileAuditLogs',
+
+
     // ARCO
     'POST /api/arco/requests'      => 'routes/arco.php@create',
     'POST /api/arco/requests/list' => 'routes/arco.php@listRequests',

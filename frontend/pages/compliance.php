@@ -127,6 +127,7 @@ $tabs = [
     ['id' => 'trainings', 'label' => 'Capacitaciones', 'icon' => 'info'],
     ['id' => 'invites', 'label' => 'Firmas', 'icon' => 'pen'],
     ['id' => 'files', 'label' => 'Archivos', 'icon' => 'fileText'],
+    ['id' => 'file-audit', 'label' => 'Auditoría Archivos', 'icon' => 'fileText'], // ← nueva pestaña
 ];
 $activeLabel = 'Compliance';
 foreach ($tabs as $t) { if ($t['id'] === $tab) $activeLabel = $t['label']; }
@@ -453,7 +454,7 @@ require_once __DIR__ . '/../includes/header.php';
             $totalFiltered = count($filtered);
             ?>
 
-            <?php renderSectionHeader('Inventario de Datos Personales (RAT)', 
+            <?php renderSectionHeader('Inventario de Datos Personales (RAT)',
                 'Registro de todas las actividades de tratamiento de datos personales. ' .
                 'Este inventario es obligatorio según el Art. 14 de la Ley 21.719.'
             ); ?>
@@ -499,12 +500,12 @@ require_once __DIR__ . '/../includes/header.php';
                     <!-- Buscador -->
                     <div class="flex-1 relative">
                         <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-subtle" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                        <input type="text" id="inventory-search" value="<?= h($search) ?>" 
-                               placeholder="Buscar por nombre, categoría o base legal..." 
+                        <input type="text" id="inventory-search" value="<?= h($search) ?>"
+                               placeholder="Buscar por nombre, categoría o base legal..."
                                class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg pl-9 pr-3 py-2 focus:outline-none focus:border-accent transition-all"
                                onchange="updateFilters()">
                     </div>
-                    
+
                     <!-- Filtro: Riesgo -->
                     <select id="filter-risk" class="bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all" onchange="updateFilters()">
                         <option value="">Todos los riesgos</option>
@@ -513,34 +514,34 @@ require_once __DIR__ . '/../includes/header.php';
                         <option value="high" <?= $filterRisk === 'high' ? 'selected' : '' ?>>🟠 Alto</option>
                         <option value="critical" <?= $filterRisk === 'critical' ? 'selected' : '' ?>>🔴 Crítico</option>
                     </select>
-                    
+
                     <!-- Filtro: Sensibles -->
                     <select id="filter-sensitive" class="bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all" onchange="updateFilters()">
                         <option value="">Todos los datos</option>
                         <option value="1" <?= $filterSensitive === '1' ? 'selected' : '' ?>>🔒 Sensibles</option>
                         <option value="0" <?= $filterSensitive === '0' ? 'selected' : '' ?>>📄 No sensibles</option>
                     </select>
-                    
+
                     <!-- Filtro: Origen -->
                     <select id="filter-source" class="bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all" onchange="updateFilters()">
                         <option value="">Todos los orígenes</option>
                         <option value="database" <?= $filterSource === 'database' ? 'selected' : '' ?>>🗄️ Base de datos</option>
                         <option value="file" <?= $filterSource === 'file' ? 'selected' : '' ?>>📄 Archivo</option>
                     </select>
-                    
+
                     <!-- Botón limpiar -->
                     <button onclick="clearFilters()" class="px-3 py-2 rounded-lg text-[11px] font-medium bg-bg-elevated/80 border border-border-theme text-text-muted hover:text-text-body transition-all">
                         Limpiar filtros
                     </button>
-                    
+
                     <!-- Botón crear nuevo (versión compacta) -->
-                    <button onclick="document.getElementById('inventory-create-form').classList.toggle('hidden')" 
+                    <button onclick="document.getElementById('inventory-create-form').classList.toggle('hidden')"
                             class="px-3 py-2 rounded-lg text-[11px] font-medium bg-gradient-to-r from-blue-600 to-indigo-600 text-white transition-all flex items-center gap-1.5">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                         Nuevo
                     </button>
                 </div>
-                
+
                 <!-- Resultados de filtro -->
                 <div class="mt-2 text-[10px] text-text-subtle">
                     Mostrando <?= $totalFiltered ?> de <?= $totalItems ?> registros
@@ -559,35 +560,35 @@ require_once __DIR__ . '/../includes/header.php';
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                     </button>
                 </div>
-                
+
                 <div class="bg-cyan-500/[0.04] border border-cyan-500/20 rounded-lg p-3 mb-4 text-[10px] text-text-muted leading-relaxed">
                     <p><span class="text-cyan-400 font-semibold">📖 ¿Qué es una actividad de tratamiento?</span></p>
-                    <p>Toda operación que realices con datos personales: recopilar, almacenar, usar, modificar, compartir o eliminar. 
+                    <p>Toda operación que realices con datos personales: recopilar, almacenar, usar, modificar, compartir o eliminar.
                        Cada actividad debe registrarse con su finalidad, base legal y medidas de seguridad.</p>
                     <p class="mt-1"><span class="text-cyan-400">⚖️ Art. 14 Ley 21.719:</span> El responsable debe mantener un registro documentado de todas las actividades de tratamiento.</p>
                 </div>
-                
+
                 <form method="POST" class="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <input type="hidden" name="create_inventory_item" value="1">
-                    
+
                     <div>
                         <label class="label-premium">Nombre de la actividad *</label>
                         <input type="text" name="name" required class="input-premium w-full" placeholder="Ej: Gestión de clientes">
                         <p class="text-[8px] text-text-subtle mt-0.5">Identifica claramente qué tratamiento realizas.</p>
                     </div>
-                    
+
                     <div>
                         <label class="label-premium">Finalidad / Propósito</label>
                         <input type="text" name="purpose" class="input-premium w-full" placeholder="Ej: Enviar facturación y promociones">
                         <p class="text-[8px] text-text-subtle mt-0.5">¿Para qué usas estos datos? (Art. 3 letra b)</p>
                     </div>
-                    
+
                     <div>
                         <label class="label-premium">Categorías de datos</label>
                         <input type="text" name="dataCategories" class="input-premium w-full" placeholder="Ej: nombres, RUT, emails, teléfonos">
                         <p class="text-[8px] text-text-subtle mt-0.5">¿Qué tipo de datos personales tratas?</p>
                     </div>
-                    
+
                     <div>
                         <label class="label-premium">Base de licitud *</label>
                         <select name="legalBasis" required class="input-premium w-full">
@@ -600,7 +601,7 @@ require_once __DIR__ . '/../includes/header.php';
                         </select>
                         <p class="text-[8px] text-text-subtle mt-0.5">Base legal que justifica el tratamiento. Sin esta, el tratamiento es ilegal.</p>
                     </div>
-                    
+
                     <div>
                         <label class="label-premium">Nivel de riesgo</label>
                         <select name="risk" class="input-premium w-full">
@@ -611,7 +612,7 @@ require_once __DIR__ . '/../includes/header.php';
                         </select>
                         <p class="text-[8px] text-text-subtle mt-0.5">Evalúa el impacto si estos datos se ven comprometidos.</p>
                     </div>
-                    
+
                     <div>
                         <label class="label-premium">Datos sensibles</label>
                         <select name="sensitive" class="input-premium w-full">
@@ -620,21 +621,21 @@ require_once __DIR__ . '/../includes/header.php';
                         </select>
                         <p class="text-[8px] text-text-subtle mt-0.5">Según Art. 16: datos de salud, origen racial, creencias, etc.</p>
                     </div>
-                    
+
                     <div>
                         <label class="label-premium">Días de retención</label>
                         <input type="number" name="retentionDays" class="input-premium w-full" placeholder="Ej: 365">
                         <p class="text-[8px] text-text-subtle mt-0.5">¿Cuánto tiempo conservas estos datos? (Art. 14)</p>
                     </div>
-                    
+
                     <div>
                         <label class="label-premium">Almacenamiento</label>
                         <input type="text" name="storage" class="input-premium w-full" placeholder="Ej: AWS, servidor local, Google Drive">
                         <p class="text-[8px] text-text-subtle mt-0.5">¿Dónde se guardan estos datos?</p>
                     </div>
-                    
+
                     <div class="md:col-span-2 flex justify-end gap-2 mt-1">
-                        <button type="button" onclick="document.getElementById('inventory-create-form').classList.add('hidden')" 
+                        <button type="button" onclick="document.getElementById('inventory-create-form').classList.add('hidden')"
                                 class="px-3 py-1.5 text-[11px] font-medium rounded-lg bg-bg-elevated text-text-body border border-border-theme transition-all">Cancelar</button>
                         <button type="submit" class="px-4 py-1.5 text-[11px] font-medium rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white transition-all">Registrar actividad</button>
                     </div>
@@ -679,7 +680,7 @@ require_once __DIR__ . '/../includes/header.php';
                             <thead>
                                 <tr class="border-b border-border-theme bg-bg-base/60 text-text-muted uppercase text-[10px] tracking-wider">
                                     <th class="text-left py-2.5 px-3">
-                                        <a href="?tab=inventory&sort=name&dir=<?= $sortBy === 'name' && $sortDir === 'asc' ? 'desc' : 'asc' ?><?= $search ? '&search='.urlencode($search) : '' ?><?= $filterRisk ? '&risk='.urlencode($filterRisk) : '' ?>" 
+                                        <a href="?tab=inventory&sort=name&dir=<?= $sortBy === 'name' && $sortDir === 'asc' ? 'desc' : 'asc' ?><?= $search ? '&search='.urlencode($search) : '' ?><?= $filterRisk ? '&risk='.urlencode($filterRisk) : '' ?>"
                                            class="hover:text-text-heading transition-colors flex items-center gap-1">
                                             Actividad
                                             <?php if ($sortBy === 'name'): ?>
@@ -688,7 +689,7 @@ require_once __DIR__ . '/../includes/header.php';
                                         </a>
                                     </th>
                                     <th class="text-left py-2.5 px-3">
-                                        <a href="?tab=inventory&sort=dataCategories&dir=<?= $sortBy === 'dataCategories' && $sortDir === 'asc' ? 'desc' : 'asc' ?><?= $search ? '&search='.urlencode($search) : '' ?><?= $filterRisk ? '&risk='.urlencode($filterRisk) : '' ?>" 
+                                        <a href="?tab=inventory&sort=dataCategories&dir=<?= $sortBy === 'dataCategories' && $sortDir === 'asc' ? 'desc' : 'asc' ?><?= $search ? '&search='.urlencode($search) : '' ?><?= $filterRisk ? '&risk='.urlencode($filterRisk) : '' ?>"
                                            class="hover:text-text-heading transition-colors flex items-center gap-1">
                                             Categorías
                                             <?php if ($sortBy === 'dataCategories'): ?>
@@ -697,7 +698,7 @@ require_once __DIR__ . '/../includes/header.php';
                                         </a>
                                     </th>
                                     <th class="text-left py-2.5 px-3">
-                                        <a href="?tab=inventory&sort=legalBasis&dir=<?= $sortBy === 'legalBasis' && $sortDir === 'asc' ? 'desc' : 'asc' ?><?= $search ? '&search='.urlencode($search) : '' ?><?= $filterRisk ? '&risk='.urlencode($filterRisk) : '' ?>" 
+                                        <a href="?tab=inventory&sort=legalBasis&dir=<?= $sortBy === 'legalBasis' && $sortDir === 'asc' ? 'desc' : 'asc' ?><?= $search ? '&search='.urlencode($search) : '' ?><?= $filterRisk ? '&risk='.urlencode($filterRisk) : '' ?>"
                                            class="hover:text-text-heading transition-colors flex items-center gap-1">
                                             Base legal
                                             <?php if ($sortBy === 'legalBasis'): ?>
@@ -706,7 +707,7 @@ require_once __DIR__ . '/../includes/header.php';
                                         </a>
                                     </th>
                                     <th class="text-left py-2.5 px-3">
-                                        <a href="?tab=inventory&sort=risk&dir=<?= $sortBy === 'risk' && $sortDir === 'asc' ? 'desc' : 'asc' ?><?= $search ? '&search='.urlencode($search) : '' ?><?= $filterRisk ? '&risk='.urlencode($filterRisk) : '' ?>" 
+                                        <a href="?tab=inventory&sort=risk&dir=<?= $sortBy === 'risk' && $sortDir === 'asc' ? 'desc' : 'asc' ?><?= $search ? '&search='.urlencode($search) : '' ?><?= $filterRisk ? '&risk='.urlencode($filterRisk) : '' ?>"
                                            class="hover:text-text-heading transition-colors flex items-center gap-1">
                                             Riesgo
                                             <?php if ($sortBy === 'risk'): ?>
@@ -721,7 +722,7 @@ require_once __DIR__ . '/../includes/header.php';
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-border-theme/30">
-                                <?php foreach ($filtered as $it): 
+                                <?php foreach ($filtered as $it):
                                     $risk = $it['risk'] ?? 'low';
                                     $riskColors = [
                                         'critical' => ['text' => 'text-red-400', 'bg' => 'bg-red-500/15', 'border' => 'border-red-500/25', 'label' => '🔴 Crítico'],
@@ -782,24 +783,24 @@ require_once __DIR__ . '/../includes/header.php';
                                     <td class="py-2.5 px-3 text-center">
                                         <div class="flex items-center justify-center gap-1.5">
                                             <!-- Ver Detalle -->
-                                            <button onclick="openInventoryDetailModal('<?= h($it['_id'] ?? '') ?>')" 
+                                            <button onclick="openInventoryDetailModal('<?= h($it['_id'] ?? '') ?>')"
                                                     class="p-1.5 rounded-lg text-text-muted hover:text-text-heading hover:bg-bg-elevated transition-all"
                                                     title="Ver detalle completo">
                                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                                             </button>
-                                            
+
                                             <!-- Editar -->
-                                            <button onclick="openInventoryEditModal('<?= h($it['_id'] ?? '') ?>')" 
+                                            <button onclick="openInventoryEditModal('<?= h($it['_id'] ?? '') ?>')"
                                                     class="p-1.5 rounded-lg text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/10 transition-all"
                                                     title="Editar actividad">
                                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
                                             </button>
-                                            
+
                                             <!-- Eliminar -->
                                             <form method="POST" class="inline" onsubmit="return confirm('¿Eliminar esta actividad de tratamiento? Esta acción no se puede deshacer.')">
                                                 <input type="hidden" name="collection" value="inventory">
                                                 <input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>">
-                                                <button type="submit" name="delete_item" value="1" 
+                                                <button type="submit" name="delete_item" value="1"
                                                         class="p-1.5 rounded-lg text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-all"
                                                         title="Eliminar">
                                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
@@ -812,7 +813,7 @@ require_once __DIR__ . '/../includes/header.php';
                             </tbody>
                         </table>
                     </div>
-                    
+
                     <!-- Footer de la tabla -->
                     <div class="px-5 py-2.5 border-t border-border-theme/20 flex items-center justify-between text-[10px] text-text-subtle">
                         <span><?= $totalFiltered ?> actividades mostradas</span>
@@ -832,22 +833,22 @@ require_once __DIR__ . '/../includes/header.php';
                             <h3 class="text-[15px] font-semibold text-white" id="detail-title">Detalle de actividad</h3>
                             <p class="text-[10px] text-text-subtle" id="detail-subtitle">Información completa del registro de tratamiento</p>
                         </div>
-                        <button onclick="document.getElementById('inventory-detail-modal').classList.add('hidden')" 
+                        <button onclick="document.getElementById('inventory-detail-modal').classList.add('hidden')"
                                 class="text-text-muted hover:text-text-heading transition-colors p-1 rounded-lg">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                         </button>
                     </div>
-                    
+
                     <!-- Cuerpo -->
                     <div class="flex-1 overflow-y-auto p-5 scrollbar-custom space-y-4" id="detail-body">
                         <!-- Los datos se cargan dinámicamente con JavaScript -->
                     </div>
-                    
+
                     <!-- Footer -->
                     <div class="flex justify-end gap-2 px-5 py-4 border-t border-border-theme flex-shrink-0">
-                        <button onclick="document.getElementById('inventory-detail-modal').classList.add('hidden')" 
+                        <button onclick="document.getElementById('inventory-detail-modal').classList.add('hidden')"
                                 class="px-3 py-1.5 text-[11px] font-medium rounded-lg bg-bg-elevated text-text-body border border-border-theme transition-all">Cerrar</button>
-                        <button onclick="closeDetailAndEdit()" id="detail-edit-btn" 
+                        <button onclick="closeDetailAndEdit()" id="detail-edit-btn"
                                 class="px-3 py-1.5 text-[11px] font-medium rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white transition-all">Editar actividad</button>
                     </div>
                 </div>
@@ -864,26 +865,26 @@ require_once __DIR__ . '/../includes/header.php';
                             <h3 class="text-[15px] font-semibold text-white">✏️ Editar actividad de tratamiento</h3>
                             <p class="text-[10px] text-text-subtle">Actualiza los datos de esta actividad según lo requerido por la Ley 21.719</p>
                         </div>
-                        <button onclick="document.getElementById('inventory-edit-modal').classList.add('hidden')" 
+                        <button onclick="document.getElementById('inventory-edit-modal').classList.add('hidden')"
                                 class="text-text-muted hover:text-text-heading transition-colors p-1 rounded-lg">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                         </button>
                     </div>
-                    
+
                     <!-- Cuerpo con formulario -->
                     <div class="flex-1 overflow-y-auto p-5 scrollbar-custom">
                         <!-- Leyenda de ayuda (siempre visible) -->
                         <div class="bg-cyan-500/[0.04] border border-cyan-500/20 rounded-lg p-3 mb-4 text-[10px] text-text-muted leading-relaxed">
                             <p><span class="text-cyan-400 font-semibold">⚖️ ¿Por qué es importante este registro?</span></p>
-                            <p>El Art. 14 de la Ley 21.719 exige que mantengas un <strong class="text-white">Registro de Actividades de Tratamiento (RAT)</strong> actualizado. 
+                            <p>El Art. 14 de la Ley 21.719 exige que mantengas un <strong class="text-white">Registro de Actividades de Tratamiento (RAT)</strong> actualizado.
                                Este registro es lo primero que revisará la APDP en una fiscalización.</p>
                             <p class="mt-1">Cada campo tiene un propósito legal. Completa toda la información posible para estar mejor protegido.</p>
                         </div>
-                        
+
                         <form id="inventory-edit-form" method="POST" class="space-y-3">
                             <input type="hidden" name="update_inventory_item" value="1">
                             <input type="hidden" name="item_id" id="edit-item-id">
-                            
+
                             <!-- Nombre -->
                             <div>
                                 <label class="label-premium flex items-center gap-1">
@@ -893,7 +894,7 @@ require_once __DIR__ . '/../includes/header.php';
                                 <input type="text" name="name" id="edit-name" required class="input-premium w-full" placeholder="Ej: Gestión de clientes">
                                 <p class="text-[8px] text-text-subtle mt-0.5">📌 Identifica claramente qué tratamiento realizas. Debe ser específico.</p>
                             </div>
-                            
+
                             <!-- Propósito -->
                             <div>
                                 <label class="label-premium flex items-center gap-1">
@@ -903,7 +904,7 @@ require_once __DIR__ . '/../includes/header.php';
                                 <input type="text" name="purpose" id="edit-purpose" class="input-premium w-full" placeholder="Ej: Enviar facturación y promociones">
                                 <p class="text-[8px] text-text-subtle mt-0.5">🎯 Define claramente para qué usas estos datos. La ley exige finalidades determinadas y explícitas.</p>
                             </div>
-                            
+
                             <!-- Categorías -->
                             <div>
                                 <label class="label-premium flex items-center gap-1">
@@ -913,7 +914,7 @@ require_once __DIR__ . '/../includes/header.php';
                                 <input type="text" name="dataCategories" id="edit-categories" class="input-premium w-full" placeholder="Ej: nombres, RUT, emails, teléfonos">
                                 <p class="text-[8px] text-text-subtle mt-0.5">📋 Enumera los tipos de datos personales que tratas. Esto ayuda a clasificar el riesgo.</p>
                             </div>
-                            
+
                             <!-- Base legal -->
                             <div>
                                 <label class="label-premium flex items-center gap-1">
@@ -930,7 +931,7 @@ require_once __DIR__ . '/../includes/header.php';
                                 </select>
                                 <p class="text-[8px] text-text-subtle mt-0.5">⚖️ Sin una base legal válida, el tratamiento es ilegal. Elige la que corresponda a tu caso.</p>
                             </div>
-                            
+
                             <!-- Riesgo -->
                             <div>
                                 <label class="label-premium">Nivel de riesgo</label>
@@ -942,7 +943,7 @@ require_once __DIR__ . '/../includes/header.php';
                                 </select>
                                 <p class="text-[8px] text-text-subtle mt-0.5">📊 Evalúa el impacto si estos datos se ven comprometidos. A mayor riesgo, mayores medidas de seguridad.</p>
                             </div>
-                            
+
                             <!-- Sensibles -->
                             <div>
                                 <label class="label-premium">Datos sensibles</label>
@@ -952,27 +953,27 @@ require_once __DIR__ . '/../includes/header.php';
                                 </select>
                                 <p class="text-[8px] text-text-subtle mt-0.5">🔐 Según Art. 16: datos de salud, origen racial, creencias religiosas, vida sexual, etc.</p>
                             </div>
-                            
+
                             <!-- Retención -->
                             <div>
                                 <label class="label-premium">Días de retención</label>
                                 <input type="number" name="retentionDays" id="edit-retention" class="input-premium w-full" placeholder="Ej: 365" min="0">
                                 <p class="text-[8px] text-text-subtle mt-0.5">📅 ¿Cuánto tiempo conservas estos datos? La ley exige que no se conserven más tiempo del necesario (Art. 14).</p>
                             </div>
-                            
+
                             <!-- Almacenamiento -->
                             <div>
                                 <label class="label-premium">Almacenamiento</label>
                                 <input type="text" name="storage" id="edit-storage" class="input-premium w-full" placeholder="Ej: AWS, servidor local, Google Drive">
                                 <p class="text-[8px] text-text-subtle mt-0.5">💾 ¿Dónde se guardan físicamente estos datos? Ayuda a identificar riesgos de seguridad.</p>
                             </div>
-                            
+
                             <!-- Mensaje de estado -->
                             <div id="edit-msg" class="hidden p-3 rounded-lg text-[11px]"></div>
-                            
+
                             <!-- Botones -->
                             <div class="flex justify-end gap-2 pt-2 border-t border-border-theme">
-                                <button type="button" onclick="document.getElementById('inventory-edit-modal').classList.add('hidden')" 
+                                <button type="button" onclick="document.getElementById('inventory-edit-modal').classList.add('hidden')"
                                         class="px-3 py-1.5 text-[11px] font-medium rounded-lg bg-bg-elevated text-text-body border border-border-theme transition-all">Cancelar</button>
                                 <button type="submit" class="px-4 py-1.5 text-[11px] font-medium rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white transition-all hover:from-blue-500 hover:to-indigo-500">
                                     💾 Guardar cambios
@@ -993,13 +994,13 @@ require_once __DIR__ . '/../includes/header.php';
                 const risk = document.getElementById('filter-risk').value;
                 const sensitive = document.getElementById('filter-sensitive').value;
                 const source = document.getElementById('filter-source').value;
-                
+
                 let url = '?tab=inventory';
                 if (search) url += '&search=' + encodeURIComponent(search);
                 if (risk) url += '&risk=' + encodeURIComponent(risk);
                 if (sensitive !== '') url += '&sensitive=' + encodeURIComponent(sensitive);
                 if (source) url += '&source=' + encodeURIComponent(source);
-                
+
                 window.location.href = url;
             }
 
@@ -1019,19 +1020,19 @@ require_once __DIR__ . '/../includes/header.php';
                 detailItemId = itemId;
                 const item = inventoryData.find(i => i._id === itemId);
                 if (!item) return;
-                
+
                 document.getElementById('detail-title').textContent = item.name || 'Actividad sin nombre';
                 document.getElementById('detail-subtitle').textContent = 'ID: ' + itemId.substring(0, 8) + '...';
-                
+
                 const body = document.getElementById('detail-body');
-                
+
                 // Determinar estado de completitud
                 const isComplete = !!(item.name && item.legalBasis && item.dataCategories);
                 const missingFields = [];
                 if (!item.name) missingFields.push('Nombre');
                 if (!item.legalBasis) missingFields.push('Base legal');
                 if (!item.dataCategories) missingFields.push('Categorías de datos');
-                
+
                 // Mapeo de riesgo
                 const riskLabels = {
                     'critical': '🔴 Crítico',
@@ -1039,13 +1040,13 @@ require_once __DIR__ . '/../includes/header.php';
                     'medium': '🟡 Medio',
                     'low': '🟢 Bajo'
                 };
-                
+
                 // Mapeo de origen
                 const sourceLabels = {
                     'database': '🗄️ Base de datos',
                     'file': '📄 Archivo'
                 };
-                
+
                 body.innerHTML = `
                     <!-- Estado de cumplimiento -->
                     <div class="rounded-lg p-3 ${isComplete ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-amber-500/10 border border-amber-500/20'}">
@@ -1058,7 +1059,7 @@ require_once __DIR__ . '/../includes/header.php';
                         ${!isComplete ? `<p class="text-[10px] text-text-muted mt-1">Faltan campos obligatorios: ${missingFields.join(', ')}</p>` : ''}
                         <p class="text-[9px] text-text-subtle mt-1">${isComplete ? '✅ Cumple con los requisitos mínimos del Art. 14' : '⚠️ Completa los campos faltantes para estar al día con la ley'}</p>
                     </div>
-                    
+
                     <!-- Información principal -->
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div class="bg-bg-base/40 border border-border-theme/25 rounded-lg p-3">
@@ -1090,7 +1091,7 @@ require_once __DIR__ . '/../includes/header.php';
                             ${item.sensitive ? `<p class="text-[8px] text-text-subtle mt-0.5">🔐 Art. 16 - Requiere consentimiento explícito</p>` : ''}
                         </div>
                     </div>
-                    
+
                     <!-- Información adicional -->
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div class="bg-bg-base/40 border border-border-theme/25 rounded-lg p-3">
@@ -1114,7 +1115,7 @@ require_once __DIR__ . '/../includes/header.php';
                             <p class="text-[13px] text-white">${item.createdAt ? new Date(item.createdAt).toLocaleString('es-CL') : 'No disponible'}</p>
                         </div>
                     </div>
-                    
+
                     <!-- Consejos de cumplimiento -->
                     <div class="bg-emerald-500/[0.03] border border-emerald-500/20 rounded-lg p-3">
                         <p class="text-[10px] font-semibold text-emerald-400 flex items-center gap-2">
@@ -1130,13 +1131,13 @@ require_once __DIR__ . '/../includes/header.php';
                         </ul>
                     </div>
                 `;
-                
+
                 // Configurar botón de edición
                 document.getElementById('detail-edit-btn').onclick = function() {
                     document.getElementById('inventory-detail-modal').classList.add('hidden');
                     openInventoryEditModal(itemId);
                 };
-                
+
                 document.getElementById('inventory-detail-modal').classList.remove('hidden');
             }
 
@@ -1149,7 +1150,7 @@ require_once __DIR__ . '/../includes/header.php';
             function openInventoryEditModal(itemId) {
                 const item = inventoryData.find(i => i._id === itemId);
                 if (!item) return;
-                
+
                 document.getElementById('edit-item-id').value = itemId;
                 document.getElementById('edit-name').value = item.name || '';
                 document.getElementById('edit-purpose').value = item.purpose || '';
@@ -1159,11 +1160,11 @@ require_once __DIR__ . '/../includes/header.php';
                 document.getElementById('edit-sensitive').value = item.sensitive ? '1' : '0';
                 document.getElementById('edit-retention').value = item.retentionDays || '';
                 document.getElementById('edit-storage').value = item.storage || '';
-                
+
                 // Ocultar mensaje anterior
                 const msg = document.getElementById('edit-msg');
                 msg.classList.add('hidden');
-                
+
                 document.getElementById('inventory-edit-modal').classList.remove('hidden');
             }
 
@@ -1172,7 +1173,7 @@ require_once __DIR__ . '/../includes/header.php';
                 e.preventDefault();
                 const formData = new FormData(this);
                 const msg = document.getElementById('edit-msg');
-                
+
                 const payload = {
                     token: '<?= h($token) ?>',
                     name: formData.get('name'),
@@ -1184,11 +1185,11 @@ require_once __DIR__ . '/../includes/header.php';
                     retentionDays: parseInt(formData.get('retentionDays')) || null,
                     storage: formData.get('storage'),
                 };
-                
+
                 msg.classList.remove('hidden');
                 msg.textContent = '⏳ Guardando cambios...';
                 msg.className = 'p-3 rounded-lg text-[11px] bg-blue-500/10 border border-blue-500/20 text-blue-400';
-                
+
                 try {
                     const res = await fetch('/api/compliance/inventory/' + formData.get('item_id'), {
                         method: 'PUT',
@@ -1318,15 +1319,13 @@ require_once __DIR__ . '/../includes/header.php';
             }); ?>
 
             <?php elseif ($tab === 'files'): ?>
-            <!-- ═══ SECCIÓN ARCHIVOS (NUEVA) ═══ -->
+            <!-- ═══ SECCIÓN ARCHIVOS (CORREGIDA) ═══ -->
             <?php
-            // ─── Obtener lista de archivos ───
             $filesRes = api_get('/api/compliance/files', ['token' => $token]);
             $files = is_array($filesRes) && empty($filesRes['error']) ? $filesRes : [];
             $fileMsg = '';
             $fileErr = '';
 
-            // ─── Procesar acciones POST ───
             if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (isset($_POST['analyze_file'])) {
                     $res = api_post_form('/api/compliance/files/analyze', [
@@ -1407,45 +1406,27 @@ require_once __DIR__ . '/../includes/header.php';
                             $sourceType = $f['sourceType'] ?? 'user';
                         ?>
                         <div class="px-5 py-3 flex flex-col md:flex-row md:items-center gap-3">
-    <div class="flex-1 min-w-0">
-        <div class="flex items-center gap-2 flex-wrap">
-            <span class="text-[12px] font-medium text-text-heading truncate"><?= h($f['originalName'] ?? 'Archivo') ?></span>
-            <span class="text-[10px] px-2 py-0.5 rounded-full border <?= $st['class'] ?>"><?= h($st['label']) ?></span>
-            <span class="text-[10px] text-text-subtle"><?= h(number_format($f['size'] ?? 0)) ?> bytes</span>
-
-            <!-- ═══ NUEVO: Mostrar origen ═══ -->
-            <?php if ($sourceType === 'agent'): ?>
-                <span class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 flex items-center gap-1">
-                    🤖 Agente: <?= h($f['hostname'] ?? $f['agentId'] ?? 'N/A') ?>
-                </span>
-            <?php else: ?>
-                <span class="text-[10px] px-2 py-0.5 rounded-full bg-gray-500/10 text-text-muted border border-border-theme flex items-center gap-1">
-                    👤 Usuario
-                </span>
-            <?php endif; ?>
-        </div>
-        <p class="text-[10px] text-text-subtle mt-0.5">
-            Subido: <?= h(substr($f['createdAt'] ?? '', 0, 16)) ?>
-            <?php if ($result && isset($result['rowCount'])): ?>
-                · <?= h($result['rowCount']) ?> registros · <?= h(count($result['headers'] ?? [])) ?> columnas
-            <?php endif; ?>
-        </p>
-        <?php if ($result && isset($result['patterns']) && !empty($result['patterns'])): ?>
-            <div class="flex flex-wrap gap-1 mt-1">
-                <?php foreach ($result['patterns'] as $col => $types): ?>
-                    <span class="text-[9px] px-1.5 py-0.5 rounded bg-primary-500/10 text-primary-400 border border-primary-500/20">
-                        <?= h($col) ?>: <?= h(implode(', ', $types)) ?>
-                    </span>
-                <?php endforeach; ?>
-            </div>
-        <?php endif; ?>
-    </div>
-                        <div class="px-5 py-3 flex flex-col md:flex-row md:items-center gap-3">
                             <div class="flex-1 min-w-0">
                                 <div class="flex items-center gap-2 flex-wrap">
                                     <span class="text-[12px] font-medium text-text-heading truncate"><?= h($f['originalName'] ?? 'Archivo') ?></span>
                                     <span class="text-[10px] px-2 py-0.5 rounded-full border <?= $st['class'] ?>"><?= h($st['label']) ?></span>
                                     <span class="text-[10px] text-text-subtle"><?= h(number_format($f['size'] ?? 0)) ?> bytes</span>
+
+                                    <!-- ═══ NUEVO: Mostrar origen y usuario ═══ -->
+                                    <?php if ($sourceType === 'agent'): ?>
+                                        <span class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 flex items-center gap-1">
+                                            🤖 Agente: <?= h($f['hostname'] ?? $f['agentId'] ?? 'N/A') ?>
+                                        </span>
+                                        <?php if (!empty($f['user'])): ?>
+                                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20 flex items-center gap-1">
+                                                👤 Usuario PC: <?= h($f['user']) ?>
+                                            </span>
+                                        <?php endif; ?>
+                                    <?php else: ?>
+                                        <span class="text-[10px] px-2 py-0.5 rounded-full bg-gray-500/10 text-text-muted border border-border-theme flex items-center gap-1">
+                                            👤 Usuario
+                                        </span>
+                                    <?php endif; ?>
                                 </div>
                                 <p class="text-[10px] text-text-subtle mt-0.5">
                                     Subido: <?= h(substr($f['createdAt'] ?? '', 0, 16)) ?>
@@ -1664,6 +1645,108 @@ require_once __DIR__ . '/../includes/header.php';
                 }
             }
             </script>
+
+            <?php elseif ($tab === 'file-audit'): ?>
+            <!-- ═══ SECCIÓN AUDITORÍA DE ARCHIVOS ═══ -->
+            <?php
+            // ─── Obtener logs de auditoría de archivos ───
+            $auditLogs = [];
+            try {
+                $auditRes = api_get('/api/compliance/files/audit-logs', ['token' => $token, 'limit' => 200]);
+                if (is_array($auditRes) && !isset($auditRes['error'])) {
+                    $auditLogs = $auditRes;
+                }
+            } catch (Exception $e) {
+                // Silently fail
+            }
+            $auditCount = count($auditLogs);
+            ?>
+
+            <?php renderSectionHeader('Auditoría de Archivos', 'Registro detallado de todos los archivos detectados por el agente, incluyendo usuario, categorías y estado.'); ?>
+
+            <?php if ($auditCount === 0): ?>
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-12 text-center">
+                    <div class="w-12 h-12 rounded-xl bg-bg-elevated border border-border-theme flex items-center justify-center mx-auto mb-4">
+                        <svg class="w-6 h-6 text-text-subtle" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    </div>
+                    <h3 class="text-white font-semibold mb-2">Sin logs de auditoría</h3>
+                    <p class="text-text-muted text-[12px]">Cuando el agente detecte archivos con datos personales, aparecerán aquí con todos los detalles.</p>
+                </div>
+            <?php else: ?>
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-[12px]">
+                            <thead>
+                                <tr class="border-b border-border-theme bg-bg-base/60 text-text-muted uppercase text-[10px] tracking-wider">
+                                    <th class="text-left py-2.5 px-3">Fecha</th>
+                                    <th class="text-left py-2.5 px-3">Agente / Host</th>
+                                    <th class="text-left py-2.5 px-3">Usuario PC</th>
+                                    <th class="text-left py-2.5 px-3">Archivo</th>
+                                    <th class="text-left py-2.5 px-3">Categorías</th>
+                                    <th class="text-left py-2.5 px-3">Sensible</th>
+                                    <th class="text-left py-2.5 px-3">Registros</th>
+                                    <th class="text-left py-2.5 px-3">Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-border-theme/30">
+                                <?php foreach ($auditLogs as $log): ?>
+                                <tr class="border-t border-border-theme/30 hover:bg-bg-base/40 transition-colors">
+                                    <td class="py-2.5 px-3 text-text-muted text-[11px]">
+                                        <?= h(substr($log['detectedAt'] ?? $log['createdAt'] ?? '', 0, 16)) ?>
+                                    </td>
+                                    <td class="py-2.5 px-3">
+                                        <span class="text-[11px] text-text-body font-mono truncate block max-w-[120px]" title="<?= h($log['agentId'] ?? '') ?>">
+                                            <?= h($log['hostname'] ?? substr($log['agentId'] ?? '', 0, 12)) ?>
+                                        </span>
+                                    </td>
+                                    <td class="py-2.5 px-3 text-text-body text-[11px]">
+                                        <?= h($log['user'] ?? '-') ?>
+                                    </td>
+                                    <td class="py-2.5 px-3 text-text-heading text-[11px] truncate max-w-[200px]" title="<?= h($log['path'] ?? '') ?>">
+                                        <?= h(basename($log['path'] ?? 'Desconocido')) ?>
+                                    </td>
+                                    <td class="py-2.5 px-3">
+                                        <?php
+                                        $cats = $log['categories'] ?? [];
+                                        if (is_string($cats)) $cats = explode(',', $cats);
+                                        if (!empty($cats) && is_array($cats)) {
+                                            $display = array_slice($cats, 0, 3);
+                                            echo implode(', ', array_map(fn($c) => '<span class="text-[10px] px-1.5 py-0.5 rounded bg-primary-500/10 text-primary-400 border border-primary-500/20">' . h($c) . '</span>', $display));
+                                            if (count($cats) > 3) echo ' <span class="text-[10px] text-text-subtle">+'.(count($cats)-3).' más</span>';
+                                        } else {
+                                            echo '<span class="text-[10px] text-text-subtle">-</span>';
+                                        }
+                                        ?>
+                                    </td>
+                                    <td class="py-2.5 px-3">
+                                        <?php if (!empty($log['sensitive'])): ?>
+                                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 flex items-center gap-1 w-fit">
+                                                <span class="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse"></span> Sí
+                                            </span>
+                                        <?php else: ?>
+                                            <span class="text-[10px] text-text-subtle">No</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="py-2.5 px-3 text-text-muted text-[11px]">
+                                        <?= h($log['rowCount'] ?? 0) ?>
+                                    </td>
+                                    <td class="py-2.5 px-3">
+                                        <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                            <?= h($log['status'] ?? 'procesado') ?>
+                                        </span>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- Footer -->
+                    <div class="px-5 py-2.5 border-t border-border-theme/20 flex items-center justify-between text-[10px] text-text-subtle">
+                        <span><?= $auditCount ?> registros de auditoría</span>
+                        <span>Última actualización: <?= date('H:i:s') ?></span>
+                    </div>
+                </div>
+            <?php endif; ?>
 
             <?php endif; ?>
             </div>

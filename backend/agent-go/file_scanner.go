@@ -7,13 +7,14 @@ import (
 	"encoding/hex"
 	"io"
 	"os"
+	"os/user" // ← IMPORT CORRECTO
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/xuri/excelize/v2"
+	"github.com/xuri/excelize/v2" // ← DEPENDENCIA CORRECTA
 )
 
 // ─── Escáner de archivos para datos personales ───
@@ -43,9 +44,10 @@ type DetectedFile struct {
 	Size         int64               `json:"size"`
 	Hash         string              `json:"hash"`
 	RowCount     int                 `json:"rowCount"`
-	PersonalData map[string][]string `json:"personalData"` // columna -> categorías
+	PersonalData map[string][]string `json:"personalData"`
 	Sensitive    bool                `json:"sensitive"`
 	MimeType     string              `json:"mimeType"`
+	User         string              `json:"user"` // ← USUARIO DEL SISTEMA
 }
 
 var fileScanner *FileScanner
@@ -62,7 +64,6 @@ func GetFileScanner() *FileScanner {
 func getDefaultScanDirs() []string {
 	var dirs []string
 	if runtime.GOOS == "windows" {
-		// Buscar carpetas de todos los usuarios reales en C:\Users
 		usersPath := "C:\\Users"
 		entries, err := os.ReadDir(usersPath)
 		if err == nil {
@@ -71,14 +72,12 @@ func getDefaultScanDirs() []string {
 					continue
 				}
 				name := entry.Name()
-				// Saltar carpetas del sistema y cuentas especiales
 				if name == "Public" || name == "Default" || name == "Default User" ||
 					strings.HasPrefix(name, ".") || strings.HasPrefix(name, "All Users") ||
 					strings.HasPrefix(name, "Administrator") {
 					continue
 				}
 				userDir := filepath.Join(usersPath, name)
-				// Añadir subcarpetas comunes
 				subDirs := []string{
 					filepath.Join(userDir, "Documents"),
 					filepath.Join(userDir, "Desktop"),
@@ -92,7 +91,6 @@ func getDefaultScanDirs() []string {
 				}
 			}
 		}
-		// También añadir carpetas públicas por si acaso
 		publicDirs := []string{
 			"C:\\Users\\Public\\Documents",
 			"C:\\Users\\Public\\Desktop",
@@ -103,7 +101,6 @@ func getDefaultScanDirs() []string {
 				dirs = append(dirs, d)
 			}
 		}
-		// Eliminar duplicados
 		seen := map[string]bool{}
 		var unique []string
 		for _, d := range dirs {
@@ -115,7 +112,6 @@ func getDefaultScanDirs() []string {
 		logMsg("FileScanner: directorios monitorizados: %v", unique)
 		return unique
 	}
-	// Linux / macOS
 	home := os.ExpandEnv("$HOME")
 	return []string{
 		filepath.Join(home, "Documents"),
@@ -127,7 +123,6 @@ func getDefaultScanDirs() []string {
 
 func NewFileScanner(dirs []string) *FileScanner {
 	return &FileScanner{
-
 		watchedDirs: dirs,
 		knownFiles:  make(map[string]FileSnapshot),
 		interval:    10 * time.Minute,
@@ -139,7 +134,6 @@ func (fs *FileScanner) Start() {
 	if fs.active {
 		return
 	}
-
 	fs.active = true
 	logMsg("FileScanner: iniciado, monitoreando %d directorios", len(fs.watchedDirs))
 	go fs.loop()
@@ -201,7 +195,7 @@ func (fs *FileScanner) scan() {
 			if !isAllowedFileExt(ext) {
 				return nil
 			}
-			if info.Size() > 50*1024*1024 { // saltar archivos > 50 MB
+			if info.Size() > 50*1024*1024 {
 				return nil
 			}
 			if fs.shouldProcess(path, info) {
@@ -250,6 +244,7 @@ func (fs *FileScanner) processFile(path string, info os.FileInfo) {
 		detected.Hostname, _ = os.Hostname()
 		detected.Hash = hash
 		detected.Size = info.Size()
+		detected.User = getCurrentOSUser()
 
 		logMsg("FileScanner: datos personales detectados en %s (categorías: %v)", path, detected.PersonalData)
 		wsSendFileDetection(detected)
@@ -271,7 +266,7 @@ func (fs *FileScanner) updateSnapshot(path string, info os.FileInfo, hash string
 	}
 }
 
-// ─── Análisis de archivos  fix 12 ───
+// ─── Análisis de archivos ───
 func (fs *FileScanner) analyzeFile(path string, info os.FileInfo, hash string) *DetectedFile {
 	ext := strings.ToLower(filepath.Ext(path))
 	detected := &DetectedFile{
@@ -398,9 +393,8 @@ func (fs *FileScanner) analyzeTXT(path string, detected *DetectedFile) *Detected
 	return detected
 }
 
-// ─── Extraer datos personales (USA LAS VARIABLES GLOBALES DE db_scanner.go) ───
+// ─── Extraer datos personales ───
 func (fs *FileScanner) extractPersonalDataFromColumns(headers []string, sampleRows [][]string, detected *DetectedFile) {
-	// Usamos las variables globales definidas en db_scanner.go
 	patterns := personalDataPatterns
 	sensitiveMap := sensitiveCategories
 
@@ -409,7 +403,6 @@ func (fs *FileScanner) extractPersonalDataFromColumns(headers []string, sampleRo
 		headerNorm := strings.ReplaceAll(headerLower, "_", " ")
 		matchedCategories := []string{}
 
-		// 1. Buscar por nombre de columna
 		for cat, keywords := range patterns {
 			for _, kw := range keywords {
 				if strings.Contains(headerNorm, kw) {
@@ -419,7 +412,6 @@ func (fs *FileScanner) extractPersonalDataFromColumns(headers []string, sampleRo
 			}
 		}
 
-		// 2. Si no se encontró por nombre, buscar en los valores de muestra
 		if len(matchedCategories) == 0 && len(sampleRows) > 0 {
 			for _, row := range sampleRows {
 				if colIdx >= len(row) {
@@ -447,7 +439,6 @@ func (fs *FileScanner) extractPersonalDataFromColumns(headers []string, sampleRo
 		}
 
 		if len(matchedCategories) > 0 {
-			// Eliminar duplicados
 			unique := []string{}
 			seen := map[string]bool{}
 			for _, cat := range matchedCategories {
@@ -458,7 +449,6 @@ func (fs *FileScanner) extractPersonalDataFromColumns(headers []string, sampleRo
 			}
 			detected.PersonalData[header] = unique
 
-			// Verificar si es sensible
 			for _, cat := range unique {
 				if sensitiveMap[cat] {
 					detected.Sensitive = true
@@ -481,4 +471,19 @@ func computeFileHash(path string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
+// ─── Obtener usuario actual del sistema ───
+func getCurrentOSUser() string {
+	username := os.Getenv("USERNAME")
+	if username == "" {
+		username = os.Getenv("USER")
+	}
+	if username == "" {
+		if u, err := user.Current(); err == nil {
+			return u.Username
+		}
+		return "unknown"
+	}
+	return username
 }
