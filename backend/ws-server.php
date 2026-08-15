@@ -7,7 +7,6 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/Database.php';
 require_once __DIR__ . '/Auth.php';
 
-// Incluir funciones de compliance_files para reutilizar lógica
 require_once __DIR__ . '/routes/compliance_files.php';
 
 use Ratchet\MessageComponentInterface;
@@ -92,16 +91,20 @@ class AgentWebSocket implements MessageComponentInterface {
         if (!$token || !$agentId) {
             $conn->send(json_encode(['type' => 'error', 'message' => 'Token y agentId requeridos']));
             $conn->close();
+            echo "❌ Registro fallido: faltan datos\n";
             return;
         }
 
+        // ── Verificar token ──
         $decoded = Auth::verifyToken($token);
         if (!$decoded) {
             $conn->send(json_encode(['type' => 'error', 'message' => 'Token inválido']));
             $conn->close();
+            echo "❌ Registro fallido: token inválido\n";
             return;
         }
 
+        // ── Guardar sesión ──
         $conn->userId = $decoded['userId'];
         $conn->agentId = $agentId;
         $this->agentSessions[$agentId] = $conn;
@@ -151,6 +154,7 @@ class AgentWebSocket implements MessageComponentInterface {
     private function handleTelemetry(ConnectionInterface $from, $data) {
         $agentId = $from->agentId ?? 'unknown';
         echo "📊 Telemetría recibida de {$agentId}\n";
+        // Aquí podrías guardar la telemetría en la base de datos si quieres
     }
 
     private function handleHeartbeat(ConnectionInterface $from, $data) {
@@ -161,6 +165,7 @@ class AgentWebSocket implements MessageComponentInterface {
                 'status' => 'online'
             ]);
         }
+        // Enviar comandos pendientes (si los hay)
         $pendingCommands = $this->getPendingCommands($from->agentId);
         if (!empty($pendingCommands)) {
             $from->send(json_encode([
@@ -254,7 +259,7 @@ class AgentWebSocket implements MessageComponentInterface {
     }
 
     private function getPendingCommands($agentId) {
-        // Aquí puedes consultar comandos pendientes en la base de datos
+        // Aquí puedes implementar la lógica de comandos pendientes
         return [];
     }
 }
@@ -266,7 +271,7 @@ $server = IoServer::factory(
             new AgentWebSocket()
         )
     ),
-    3839  // Puerto interno para WebSocket
+    3839
 );
 
 $server->run();

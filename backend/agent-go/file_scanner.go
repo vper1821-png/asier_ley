@@ -62,29 +62,67 @@ func GetFileScanner() *FileScanner {
 func getDefaultScanDirs() []string {
 	var dirs []string
 	if runtime.GOOS == "windows" {
-		dirs = []string{
-			os.ExpandEnv("%USERPROFILE%\\Documents"),
-			os.ExpandEnv("%USERPROFILE%\\Desktop"),
-			os.ExpandEnv("%USERPROFILE%\\Downloads"),
-			os.ExpandEnv("%USERPROFILE%\\OneDrive"),
+		// Buscar carpetas de todos los usuarios reales en C:\Users
+		usersPath := "C:\\Users"
+		entries, err := os.ReadDir(usersPath)
+		if err == nil {
+			for _, entry := range entries {
+				if !entry.IsDir() {
+					continue
+				}
+				name := entry.Name()
+				// Saltar carpetas del sistema y cuentas especiales
+				if name == "Public" || name == "Default" || name == "Default User" ||
+					strings.HasPrefix(name, ".") || strings.HasPrefix(name, "All Users") ||
+					strings.HasPrefix(name, "Administrator") {
+					continue
+				}
+				userDir := filepath.Join(usersPath, name)
+				// Añadir subcarpetas comunes
+				subDirs := []string{
+					filepath.Join(userDir, "Documents"),
+					filepath.Join(userDir, "Desktop"),
+					filepath.Join(userDir, "Downloads"),
+					filepath.Join(userDir, "OneDrive"),
+				}
+				for _, d := range subDirs {
+					if info, err := os.Stat(d); err == nil && info.IsDir() {
+						dirs = append(dirs, d)
+					}
+				}
+			}
 		}
-	} else {
-		home := os.ExpandEnv("$HOME")
-		dirs = []string{
-			filepath.Join(home, "Documents"),
-			filepath.Join(home, "Desktop"),
-			filepath.Join(home, "Downloads"),
-			filepath.Join(home, "OneDrive"),
+		// También añadir carpetas públicas por si acaso
+		publicDirs := []string{
+			"C:\\Users\\Public\\Documents",
+			"C:\\Users\\Public\\Desktop",
+			"C:\\Users\\Public\\Downloads",
 		}
+		for _, d := range publicDirs {
+			if info, err := os.Stat(d); err == nil && info.IsDir() {
+				dirs = append(dirs, d)
+			}
+		}
+		// Eliminar duplicados
+		seen := map[string]bool{}
+		var unique []string
+		for _, d := range dirs {
+			if !seen[d] {
+				seen[d] = true
+				unique = append(unique, d)
+			}
+		}
+		logMsg("FileScanner: directorios monitorizados: %v", unique)
+		return unique
 	}
-	// Filtrar directorios que no existen
-	var valid []string
-	for _, d := range dirs {
-		if info, err := os.Stat(d); err == nil && info.IsDir() {
-			valid = append(valid, d)
-		}
+	// Linux / macOS
+	home := os.ExpandEnv("$HOME")
+	return []string{
+		filepath.Join(home, "Documents"),
+		filepath.Join(home, "Desktop"),
+		filepath.Join(home, "Downloads"),
+		filepath.Join(home, "OneDrive"),
 	}
-	return valid
 }
 
 func NewFileScanner(dirs []string) *FileScanner {
