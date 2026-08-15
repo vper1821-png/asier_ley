@@ -64,7 +64,6 @@ type WSManager struct {
 
 var wsManager = &WSManager{done: make(chan struct{})}
 var wsReconnectDelay = 1 * time.Second
-var crashCount int
 
 const maxReconnectDelay = 60 * time.Second
 

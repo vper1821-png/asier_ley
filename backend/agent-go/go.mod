@@ -13,6 +13,7 @@ require (
     modernc.org/sqlite v1.53.0
 )
 
+
 require (
     filippo.io/edwards25519 v1.2.0 // indirect
     github.com/dustin/go-humanize v1.0.1 // indirect
