@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"os/exec"
 	"runtime"
 	"strings"
 	"sync"
@@ -13,7 +14,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// ─── Estructura de mensajes WebSocket ───
+// WSMessage ...
 type WSMessage struct {
 	Type            string          `json:"type"`
 	AgentID         string          `json:"agentId,omitempty"`
@@ -33,7 +34,7 @@ type WSMessage struct {
 	Success         bool            `json:"success,omitempty"`
 	Output          string          `json:"output,omitempty"`
 	Results         interface{}     `json:"results,omitempty"`
-	TS              float64         `json:"ts,omitempty"` // ← CORREGIDO: float64
+	TS              float64         `json:"ts,omitempty"`
 	PendingBlocks   []string        `json:"pendingBlocks,omitempty"`
 	PendingUnblocks []string        `json:"pendingUnblocks,omitempty"`
 	PendingRules    []Rule          `json:"pendingRules,omitempty"`
@@ -50,10 +51,10 @@ type WSMessage struct {
 	Compliance      *AntivirusInfo  `json:"compliance,omitempty"`
 	EventType       string          `json:"event_type,omitempty"`
 	DetectedFile    *DetectedFile   `json:"detectedFile,omitempty"`
-	Token           string          `json:"token,omitempty"` // ← NUEVO: token para autenticación
+	Token           string          `json:"token,omitempty"`
 }
 
-// ─── Gestor de WebSocket ───
+// WSManager ...
 type WSManager struct {
 	conn           *websocket.Conn
 	mu             sync.Mutex
@@ -67,11 +68,10 @@ var crashCount int
 
 const maxReconnectDelay = 60 * time.Second
 
-// Buffer de mensajes pendientes (offline)
 var pendingMessages []WSMessage
 var pendingMu sync.Mutex
 
-// ─── Conectar WebSocket ───
+// wsConnect ...
 func wsConnect() {
 	wsManager.mu.Lock()
 	if wsManager.conn != nil {
@@ -109,7 +109,6 @@ func wsConnect() {
 
 	wsReconnectDelay = 1 * time.Second
 
-	// Configurar timeouts y ping/pong
 	c.SetReadDeadline(time.Now().Add(60 * time.Second))
 	c.SetPongHandler(func(string) error {
 		c.SetReadDeadline(time.Now().Add(60 * time.Second))
@@ -127,7 +126,6 @@ func wsConnect() {
 	logMsg("WS: connected")
 	crashCount = 0
 
-	// Enviar mensajes pendientes
 	pendingMu.Lock()
 	pendingCopy := pendingMessages
 	pendingMessages = nil
@@ -136,19 +134,19 @@ func wsConnect() {
 		wsSend(p)
 	}
 
-	// ─── REGISTRO CON TOKEN ───
+	// Registrar con token
 	wsSend(WSMessage{
 		Type:    "register",
 		AgentID: GetAgentID(),
 		IP:      getLocalIP(),
-		Token:   cfg.Token, // ¡CLAVE! envía el token para autenticación
+		Token:   cfg.Token,
 	})
 
 	sendTelemetry()
 	go wsReadLoop(c)
 }
 
-// ─── Bucle de lectura ───
+// wsReadLoop ...
 func wsReadLoop(c *websocket.Conn) {
 	defer func() {
 		wsManager.mu.Lock()
@@ -179,7 +177,7 @@ func wsReadLoop(c *websocket.Conn) {
 	}
 }
 
-// ─── Enviar mensaje ───
+// wsSend ...
 func wsSend(msg WSMessage) {
 	wsManager.mu.Lock()
 	conn := wsManager.conn
@@ -210,7 +208,7 @@ func wsSend(msg WSMessage) {
 	}
 }
 
-// ─── Enviar evento ───
+// wsSendEvent ...
 func wsSendEvent(title, description, source, severity string, autoBlock bool) {
 	wsSend(WSMessage{
 		Type:        "event",
@@ -223,7 +221,7 @@ func wsSendEvent(title, description, source, severity string, autoBlock bool) {
 	})
 }
 
-// ─── Enviar logs de consultas ───
+// wsSendQueryLogs ...
 func wsSendQueryLogs(logs []QueryLogEntry) {
 	if len(logs) == 0 {
 		return
@@ -235,7 +233,7 @@ func wsSendQueryLogs(logs []QueryLogEntry) {
 	})
 }
 
-// ─── Enviar detección de archivo ───
+// wsSendFileDetection ...
 func wsSendFileDetection(detected *DetectedFile) {
 	wsSend(WSMessage{
 		Type:         "file_detected",
@@ -244,7 +242,7 @@ func wsSendFileDetection(detected *DetectedFile) {
 	})
 }
 
-// ─── Enviar telemetría ───
+// sendTelemetry ...
 func sendTelemetry() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -259,7 +257,7 @@ func sendTelemetry() {
 	})
 }
 
-// ─── Manejar comandos del servidor ───
+// handleWSCommand ...
 func handleWSCommand(msg WSMessage) {
 	logMsg("WS command: %s", msg.Type)
 
@@ -292,15 +290,13 @@ func handleWSCommand(msg WSMessage) {
 	case "restart_agent":
 		handleRestartAgent(msg)
 	case "file_detected":
-		// Solo log para depuración, el backend lo procesa
 		logMsg("WS: file_detected received (will be processed by backend)")
 	default:
 		logMsg("WS: unknown command: %s", msg.Type)
 	}
 }
 
-// ─── Handlers de comandos ───
-
+// handleScanDatabase ...
 func handleScanDatabase(msg WSMessage) {
 	if msg.DBConnection == nil {
 		wsSend(WSMessage{
@@ -355,6 +351,7 @@ func handleScanDatabase(msg WSMessage) {
 	logMsg("Scan complete: %d tables, %d rows", result.TotalTables, result.TotalRows)
 }
 
+// handleCommands ...
 func handleCommands(msg WSMessage) {
 	if len(msg.PendingBlocks) > 0 {
 		for _, user := range msg.PendingBlocks {
@@ -425,7 +422,7 @@ func handleCommands(msg WSMessage) {
 	wsSend(WSMessage{Type: "result", Command: "executed", Success: true})
 }
 
-// ─── Lockdown ───
+// doLockdown ...
 func doLockdown() {
 	logMsg("LOCKDOWN: Initiating")
 	users := getActiveUsers()
@@ -436,25 +433,29 @@ func doLockdown() {
 	}
 	switch runtime.GOOS {
 	case "windows":
-		execCommand("netsh", "advfirewall", "set", "allprofiles", "firewallpolicy", "blockinbound,allowoutbound")
+		cmd := exec.Command("netsh", "advfirewall", "set", "allprofiles", "firewallpolicy", "blockinbound,allowoutbound")
+		cmd.Run()
 	default:
-		execCommand("sh", "-c", "iptables -P INPUT DROP 2>/dev/null; iptables -P FORWARD DROP 2>/dev/null")
+		cmd := exec.Command("sh", "-c", "iptables -P INPUT DROP 2>/dev/null; iptables -P FORWARD DROP 2>/dev/null")
+		cmd.Run()
 	}
 	wsSendEvent("LOCKDOWN ACTIVADO", "Sistema bloqueado por comando IA", "invisia_ai", "critical", true)
 }
 
-// ─── Matar proceso ───
+// killProcess ...
 func killProcess(name string) {
 	switch runtime.GOOS {
 	case "windows":
-		execCommand("taskkill", "/F", "/IM", name)
+		cmd := exec.Command("taskkill", "/F", "/IM", name)
+		cmd.Run()
 	default:
-		execCommand("sh", "-c", fmt.Sprintf("killall -9 %s 2>/dev/null || kill -9 %s 2>/dev/null", name, name))
+		cmd := exec.Command("sh", "-c", fmt.Sprintf("killall -9 %s 2>/dev/null || kill -9 %s 2>/dev/null", name, name))
+		cmd.Run()
 	}
 	logMsg("Killed: %s", name)
 }
 
-// ─── Desinstalar agente ───
+// handleUninstallAgent ...
 func handleUninstallAgent(msg WSMessage) {
 	logMsg("Uninstall agent requested")
 	wsSendEvent("Desinstalando Agente", "El agente se desinstalará del sistema", "client", "critical", false)
@@ -462,7 +463,7 @@ func handleUninstallAgent(msg WSMessage) {
 	time.AfterFunc(2*time.Second, func() { osExit(0) })
 }
 
-// ─── Reconectar DB ───
+// handleReconnectDB ...
 func handleReconnectDB(msg WSMessage) {
 	logMsg("DB reconnect requested")
 	wsSendEvent("Reconectando DB", "Reiniciando monitor de base de datos", "client", "low", false)
@@ -480,7 +481,7 @@ func handleReconnectDB(msg WSMessage) {
 	}()
 }
 
-// ─── Reconectar agente ───
+// handleReconnectAgent ...
 func handleReconnectAgent(msg WSMessage) {
 	logMsg("Agent reconnect requested")
 	wsSendEvent("Reconectando Agente", "Forzando reconexión del agente al servidor", "client", "low", false)
@@ -503,42 +504,25 @@ func handleReconnectAgent(msg WSMessage) {
 	}()
 }
 
-// ─── Reiniciar agente ───
+// handleRestartAgent ...
 func handleRestartAgent(msg WSMessage) {
 	logMsg("Agent restart requested")
 	wsSendEvent("Reiniciando Agente", "El agente se reiniciará en 3 segundos", "client", "high", false)
 	time.AfterFunc(3*time.Second, func() { osExit(0) })
 }
 
-// ─── Funciones auxiliares para túneles (stubs) ───
+// Stubs para túneles
 func handleTunnelOpen(msg WSMessage) {
-	// Implementación existente en tunnel.go
 	logMsg("Tunnel open: %s", msg.TunnelID)
 }
-
 func handleTunnelData(msg WSMessage) {
-	// Implementación existente en tunnel.go
 	logMsg("Tunnel data: %s", msg.TunnelID)
 }
-
 func handleTunnelClose(msg WSMessage) {
-	// Implementación existente en tunnel.go
 	logMsg("Tunnel close: %s", msg.TunnelID)
 }
-
 func handleTunnelError(msg WSMessage) {
-	// Implementación existente en tunnel.go
 	logMsg("Tunnel error: %s", msg.Error)
 }
 
-func now() time.Time {
-	return time.Now()
-}
-
 var osExit = os.Exit
-
-// ─── Comandos del sistema (stubs) ───
-func execCommand(name string, args ...string) {
-	// Función auxiliar para ejecutar comandos (definida en otro archivo)
-	// Simulamos para compilación
-}

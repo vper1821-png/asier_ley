@@ -127,6 +127,7 @@ func getDefaultScanDirs() []string {
 
 func NewFileScanner(dirs []string) *FileScanner {
 	return &FileScanner{
+
 		watchedDirs: dirs,
 		knownFiles:  make(map[string]FileSnapshot),
 		interval:    10 * time.Minute,
