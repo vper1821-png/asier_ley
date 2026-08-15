@@ -8,7 +8,12 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 )
+
+func now() time.Time {
+	return time.Now()
+}
 
 func generateAgentID() string {
 	b := make([]byte, 8)

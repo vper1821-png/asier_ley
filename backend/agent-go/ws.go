@@ -145,7 +145,7 @@ func wsConnect() {
 	go wsReadLoop(c)
 }
 
-// wsReadLoop ...
+// wsReadLoop ....
 func wsReadLoop(c *websocket.Conn) {
 	defer func() {
 		wsManager.mu.Lock()

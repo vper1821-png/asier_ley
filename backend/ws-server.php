@@ -259,7 +259,7 @@ class AgentWebSocket implements MessageComponentInterface {
     }
 
     private function getPendingCommands($agentId) {
-        // Aquí puedes implementar la lógica de comandos pendientes
+        // Aquí puedes implementar la lógica de comandos pendientes 2
         return [];
     }
 }

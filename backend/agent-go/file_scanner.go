@@ -271,7 +271,7 @@ func (fs *FileScanner) updateSnapshot(path string, info os.FileInfo, hash string
 	}
 }
 
-// ─── Análisis de archivos  fix 10 ───
+// ─── Análisis de archivos  fix 12 ───
 func (fs *FileScanner) analyzeFile(path string, info os.FileInfo, hash string) *DetectedFile {
 	ext := strings.ToLower(filepath.Ext(path))
 	detected := &DetectedFile{
