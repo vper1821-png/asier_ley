@@ -22,7 +22,7 @@ function seedAdminUser() {
             'paymentStatus' => 'active',
             'onboardingComplete' => true,
             'twoFactorEnabled' => false,
-            
+            'encryptionKey' => bin2hex(random_bytes(32)), // NUEVO
         ]);
         error_log('[SEED] Admin user created: ' . ADMIN_EMAIL);
     }
