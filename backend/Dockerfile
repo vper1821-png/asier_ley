@@ -1,30 +1,25 @@
 # Backend PHP - SecureLab2v
 # PHP-FPM + nginx + MongoDB driver + Go + wixl
-# AHORA CON EL NUEVO AGENTE securelab-agent (CGO_ENABLED=1 para SQLCipher)
 
-# ── Stage 1: compilar el NUEVO agente Go (securelab-agent) ──
+# ── Stage 1: compilar el agente Go para todas las plataformas ──
 FROM golang:1.25-alpine AS agent-builder
 WORKDIR /src
 
-# Instalar dependencias para CGO y SQLCipher (necesario para el cifrado de la base de datos)
-RUN apk add --no-cache \
-    gcc \
-    musl-dev \
-    sqlcipher-dev \
-    pkgconfig
+# Copiar TODO el código del agente (para que go mod tidy pueda analizar los imports)
+COPY agent-go/ .
 
-# Copiar el código del nuevo agente (carpeta securelab-agent)
-COPY securelab-agent/ .
-
-# Asegurar que las dependencias están correctas
+# Esto descarga TODAS las dependencias y genera el go.sum correcto
 RUN go mod tidy
 
-# Compilar con CGO_ENABLED=1 (obligatorio para SQLCipher) y enlace estático
+# Ahora compilar (ya no falla porque go.sum está completo)
 RUN mkdir -p /out && \
-    CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -v -ldflags "-s -w -extldflags '-static'" -o /out/securelab-agent-win-x64.exe . && \
-    CGO_ENABLED=1 GOOS=linux   GOARCH=amd64 go build -v -ldflags "-s -w -extldflags '-static'" -o /out/securelab-agent-linux-x64 . && \
-    CGO_ENABLED=1 GOOS=darwin  GOARCH=amd64 go build -v -ldflags "-s -w -extldflags '-static'" -o /out/securelab-agent-mac-x64 . && \
-    CGO_ENABLED=1 GOOS=darwin  GOARCH=arm64 go build -v -ldflags "-s -w -extldflags '-static'" -o /out/securelab-agent-mac-arm64 .
+    CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -v -ldflags "-s -w" -o /out/agent-win-x64.exe . && \
+    CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -v -ldflags "-s -w" -o /out/agent-linux-x64 . && \
+    CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -v -ldflags "-s -w" -o /out/agent-mac-x64 . && \
+    CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -v -ldflags "-s -w" -o /out/agent-mac-arm64 .
+    
+    
+
 
 # ── Stage 2: runtime PHP ──
 FROM php:8.3-fpm
@@ -79,11 +74,8 @@ RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoload
 COPY . .
 
 # Copiar el codigo del agente Go y los binarios pre-compilados
-COPY securelab-agent/ /var/www/html/securelab-agent/   # Cambio de nombre de carpeta
+COPY agent-go/ /var/www/html/agent-go/
 COPY --from=agent-builder /out/ /var/www/html/agent-bin/
-
-# Asegurar permisos de ejecución en los binarios del agente
-RUN chmod +x /var/www/html/agent-bin/securelab-agent-*
 
 # Crear directorios necesarios
 RUN mkdir -p /var/www/html/data /var/www/html/uploads /var/www/html/reports /var/run/nginx /run/nginx \
