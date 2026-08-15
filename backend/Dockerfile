@@ -83,8 +83,8 @@ RUN mkdir -p /var/www/html/data /var/www/html/uploads /var/www/html/reports /var
 
 EXPOSE 3838
 
-# Entrypoint
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# Entrypoint multi-proceso
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
 
-CMD ["/entrypoint.sh"]
+CMD ["/start.sh"]
