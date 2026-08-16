@@ -181,9 +181,6 @@ function downloadToken() {
     json_response(['token' => $dlToken]);
 }
 
-
-
-
 function download() {
     $user = Auth::requireAuth();
     $token = get_token();
@@ -231,7 +228,6 @@ function download() {
         'hardening_enabled'  => true,
         'persistence_mode'   => 'aggressive',
         'log_level'          => 'info',
-        // file_watch_dirs se omiten para usar los valores por defecto
     ];
 
     file_put_contents(
@@ -244,27 +240,37 @@ function download() {
         // Intentar generar MSI con wixl
         $wxsPath = __DIR__ . '/../installer/product.wxs';
         if (file_exists($wxsPath)) {
+            $exePath = realpath($tmpDir . '/' . $binaryName);
+            $configPath = realpath($tmpDir . '/config.json');
             $archiveName = 'SecureLab-Agent-win-x64.msi';
             $archivePath = sys_get_temp_dir() . '/' . $archiveName;
-            $cmd = sprintf(
-                'wixl -D ExeSource="%s" -D ConfigSource="%s" -o %s --arch x64 %s 2>&1',
-                escapeshellarg($tmpDir . '/' . $binaryName),
-                escapeshellarg($tmpDir . '/config.json'),
-                escapeshellarg($archivePath),
-                escapeshellarg($wxsPath)
-            );
-            exec($cmd, $output, $exitCode);
-            if ($exitCode === 0 && file_exists($archivePath)) {
-                // MSI generado correctamente
-                $size = filesize($archivePath);
-                header('Content-Type: application/x-msi');
-                header('Content-Disposition: attachment; filename="' . $archiveName . '"');
-                header('Content-Length: ' . $size);
-                readfile($archivePath);
-                unlink($archivePath);
-                exit;
+
+            if ($exePath && $configPath) {
+                $cmd = sprintf(
+                    'wixl -D ExeSource="%s" -D ConfigSource="%s" -o "%s" --arch x64 "%s" 2>&1',
+                    $exePath,
+                    $configPath,
+                    $archivePath,
+                    $wxsPath
+                );
+                exec($cmd, $output, $exitCode);
+
+                if ($exitCode === 0 && file_exists($archivePath)) {
+                    $size = filesize($archivePath);
+                    header('Content-Type: application/x-msi');
+                    header('Content-Disposition: attachment; filename="' . $archiveName . '"');
+                    header('Content-Length: ' . $size);
+                    readfile($archivePath);
+                    unlink($archivePath);
+                    // Limpiar
+                    array_map('unlink', glob($tmpDir . '/*'));
+                    rmdir($tmpDir);
+                    exit;
+                }
+                error_log('[Agent] wixl failed (' . $exitCode . '): ' . implode(' | ', $output));
+            } else {
+                error_log('[Agent] Archivos no encontrados para wixl: exe=' . $exePath . ', config=' . $configPath);
             }
-            error_log('[Agent] wixl failed (' . $exitCode . '): ' . implode(' | ', $output));
         }
 
         // Fallback: ZIP
@@ -276,6 +282,7 @@ function download() {
         $zip->addFile($tmpDir . '/config.json', 'config.json');
         $zip->close();
     } else {
+        // Linux / macOS: tar.gz
         $archiveName = 'SecureLab-Agent-' . $platform . '.tar.gz';
         $tarPath = sys_get_temp_dir() . '/agent-' . uniqid('', true) . '.tar';
         $phar = new PharData($tarPath);
@@ -299,7 +306,6 @@ function download() {
     unlink($archivePath);
     exit;
 }
-
 
 function message() {
     $user = Auth::requireAuth();
