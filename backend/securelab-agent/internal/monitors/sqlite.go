@@ -10,7 +10,7 @@ import (
 	"securelab-agent/internal/logger"
 	"securelab-agent/internal/ws"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3" // ← CAMBIADO
 )
 
 type SQLiteMonitor struct {
@@ -59,7 +59,8 @@ func (m *SQLiteMonitor) Start(ctx context.Context) error {
 	if dbPath == "" {
 		dbPath = m.conn.Host
 	}
-	db, err := sql.Open("sqlite", dbPath+"?mode=ro")
+	// Cambiar driver: "sqlite3" en lugar de "sqlite"
+	db, err := sql.Open("sqlite3", dbPath+"?mode=ro")
 	if err != nil {
 		return fmt.Errorf("open: %w", err)
 	}

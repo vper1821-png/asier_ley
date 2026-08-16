@@ -8,7 +8,7 @@ import (
 
 	"securelab-agent/internal/logger"
 
-	_ "github.com/mattn/go-sqlite3" // Driver SQLCipher (compatible con cifrado)
+	_ "github.com/mattn/go-sqlite3" // Driver SQLCipher (compatible con cifrado)...
 )
 
 type Assistant struct {

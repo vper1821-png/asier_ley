@@ -13,7 +13,7 @@ RUN apk add --no-cache \
     sqlcipher-dev \
     pkgconfig
 
-# 2. Copiar el código del agente (desde la raíz del proyecto)
+# 2. Copiar el código del agente (desde la raíz del proyecto)....
 COPY securelab-agent/ .
 
 # 3. Sincronizar dependencias (usando el go.mod actualizado)
