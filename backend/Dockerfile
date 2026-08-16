@@ -1,50 +1,34 @@
-# SecureLab Backend - con agente SecureLab (SQLCipher estático)
+# SecureLab Backend – con agente SecureLab (enlace dinámico SQLCipher)
 # Ejecutar desde la raíz del proyecto:
 #   docker build -f backend/Dockerfile -t securelab-backend .
 
-# ── Stage 1: Compilar agente con SQLCipher estático ──
+# ── Stage 1: Compilar agente (enlace dinámico) ──
 FROM golang:1.25-alpine AS agent-builder
 WORKDIR /src
 
-# 1. Herramientas de compilación
+# 1. Instalar dependencias: gcc, musl-dev y SQLCipher (librería dinámica)
 RUN apk add --no-cache \
     gcc \
     musl-dev \
-    make \
-    autoconf \
-    automake \
-    libtool \
-    git
+    sqlcipher-dev   # ← Proporciona libsqlcipher.so y cabeceras
 
-# 2. Compilar SQLCipher desde fuente (estático)
-RUN git clone --depth 1 https://github.com/sqlcipher/sqlcipher.git /tmp/sqlcipher \
-    && cd /tmp/sqlcipher \
-    && ./configure --enable-static --disable-shared --disable-tcl \
-    && make -j$(nproc) && make install \
-    && cp /usr/local/lib/libsqlcipher.a /usr/lib/ \
-    && rm -rf /tmp/sqlcipher
-
-# 3. Variables de entorno para CGO (apuntan a SQLCipher estático)
-ENV CGO_CFLAGS="-I/usr/local/include"
-ENV CGO_LDFLAGS="-L/usr/local/lib -lsqlcipher -lcrypto -lssl -lm -lz"
-
-# 4. Copiar el código del agente (desde el contexto de build)
+# 2. Copiar el código del agente (desde la raíz del proyecto)
 COPY securelab-agent/ .
 
-# 5. Descargar dependencias
+# 3. Descargar dependencias Go
 RUN go mod tidy
 
-# 6. Compilar binarios estáticos para todas las plataformas
+# 4. Compilar binarios para todas las plataformas (sin flags estáticas)
 RUN mkdir -p /out && \
-    CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -v -ldflags "-s -w -extldflags '-static'" -o /out/securelab-agent-win-x64.exe . && \
-    CGO_ENABLED=1 GOOS=linux   GOARCH=amd64 go build -v -ldflags "-s -w -extldflags '-static'" -o /out/securelab-agent-linux-x64 . && \
-    CGO_ENABLED=1 GOOS=darwin  GOARCH=amd64 go build -v -ldflags "-s -w -extldflags '-static'" -o /out/securelab-agent-mac-x64 . && \
-    CGO_ENABLED=1 GOOS=darwin  GOARCH=arm64 go build -v -ldflags "-s -w -extldflags '-static'" -o /out/securelab-agent-mac-arm64 .
+    CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -v -ldflags "-s -w" -o /out/securelab-agent-win-x64.exe . && \
+    CGO_ENABLED=1 GOOS=linux   GOARCH=amd64 go build -v -ldflags "-s -w" -o /out/securelab-agent-linux-x64 . && \
+    CGO_ENABLED=1 GOOS=darwin  GOARCH=amd64 go build -v -ldflags "-s -w" -o /out/securelab-agent-mac-x64 . && \
+    CGO_ENABLED=1 GOOS=darwin  GOARCH=arm64 go build -v -ldflags "-s -w" -o /out/securelab-agent-mac-arm64 .
 
 # ── Stage 2: Runtime PHP ──
 FROM php:8.3-fpm
 
-# Instalar dependencias del sistema
+# Instalar dependencias del sistema (incluyendo SQLCipher para el runtime)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nginx \
     curl \
@@ -61,6 +45,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     default-libmysqlclient-dev \
     libfreetype-dev \
     libjpeg62-turbo-dev \
+    sqlcipher \                  # ← Necesario para ejecutar el agente
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install curl mbstring zip pdo_mysql gd \
     && apt-get clean \
@@ -94,7 +79,7 @@ RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoload
 # Copiar la aplicación PHP
 COPY . .
 
-# Copiar los binarios del agente (compilados estáticamente)
+# Copiar SOLO los binarios del agente (no el código fuente)
 COPY --from=agent-builder /out/ /var/www/html/agent-bin/
 
 # Asegurar permisos de ejecución
@@ -104,7 +89,7 @@ RUN chmod +x /var/www/html/agent-bin/securelab-agent-*
 RUN mkdir -p /var/www/html/data /var/www/html/uploads /var/www/html/reports /var/run/nginx /run/nginx \
     && chown -R www-data:www-data /var/www/html
 
-# Script de inicio
+# Script de inicio (PHP-FPM + nginx + WebSocket)
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
 
