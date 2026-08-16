@@ -3,6 +3,8 @@ package audit
 import (
 	"database/sql"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -13,6 +15,12 @@ type Store struct {
 }
 
 func NewStore(dbPath string) *Store {
+	// Crear el directorio padre si no existe
+	dir := filepath.Dir(dbPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		panic("no se pudo crear el directorio para la base de datos: " + err.Error())
+	}
+
 	dsn := dbPath + "?_journal_mode=WAL&_busy_timeout=5000"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {

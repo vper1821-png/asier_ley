@@ -2,6 +2,8 @@ package assistant
 
 import (
 	"database/sql"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"unicode"
@@ -50,6 +52,13 @@ func NewAssistant(dbPath string, log *logger.Logger) *Assistant {
 }
 
 func (a *Assistant) init(dbPath string) {
+	// Crear el directorio padre si no existe
+	dir := filepath.Dir(dbPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		a.log.Error("Assistant: no se pudo crear el directorio %s: %v", dir, err)
+		return
+	}
+
 	var err error
 	a.db, err = sql.Open("sqlite", dbPath+"?_journal_mode=WAL&_foreign_keys=on")
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"sync"
 )
 
@@ -17,11 +18,16 @@ type Logger struct {
 func New(logPath, level string) *Logger {
 	l := &Logger{level: level}
 	var w io.Writer = os.Stdout
+
 	if logPath != "" {
-		f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err == nil {
-			l.file = f
-			w = io.MultiWriter(os.Stdout, f)
+		// Crear el directorio padre si no existe
+		dir := filepath.Dir(logPath)
+		if err := os.MkdirAll(dir, 0755); err == nil {
+			f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			if err == nil {
+				l.file = f
+				w = io.MultiWriter(os.Stdout, f)
+			}
 		}
 	}
 	l.logger = log.New(w, "", log.LstdFlags)

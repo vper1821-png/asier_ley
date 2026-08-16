@@ -11,6 +11,8 @@
                     <Component Id="MainExecutable" Guid="*">
                         <File Id="ExeFile" Source="$(var.ExeSource)" KeyPath="yes" />
                         <File Id="ConfigFile" Source="$(var.ConfigSource)" />
+                        <!-- Crear directorio con permisos para el servicio -->
+                        <CreateFolder />
                     </Component>
                     <Component Id="ServiceComponent" Guid="*">
                         <File Id="ServiceFile" Source="$(var.ExeSource)" KeyPath="yes" />
@@ -20,11 +22,12 @@
                             Vital="yes"
                             Name="SecureLabAgent"
                             DisplayName="SecureLab Agent"
-                            Description="SecureLab Agent - Endpoint protection and compliance monitoring."
+                            Description="SecureLab Agent - Endpoint protection and compliance monitoring (Ley 21.719)."
                             Start="auto"
                             Account="LocalSystem"
                             ErrorControl="normal"
-                            Interactive="no" />
+                            Interactive="no"
+                            WorkingDirectory="INSTALLDIR" />
                         <ServiceControl Id="StartService" Name="SecureLabAgent" Wait="yes" Start="install" Stop="both" Remove="uninstall" />
                     </Component>
                 </Directory>
