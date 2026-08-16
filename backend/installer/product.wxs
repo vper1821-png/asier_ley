@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="*" Name="SecureLab Agent" Language="1033" Version="!(bind.FileVersion.ExeSource)" Manufacturer="SecureLab" UpgradeCode="9452a7b2-9c45-4f23-9c98-b1ed23f0a59b">
+        <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" Description="SecureLab Agent - Endpoint Security &amp; Compliance" Comments="Ley 21.719" />
+        <Media Id="1" Cabinet="agent.cab" EmbedCab="yes" />
+
+        <MajorUpgrade AllowDowngrades="no" AllowSameVersionUpgrades="yes" Schedule="afterInstallValidate" />
+
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Directory Id="ProgramFilesFolder">
+                <Directory Id="INSTALLDIR" Name="SecureLab Agent">
+                    <Component Id="MainExecutable" Guid="*">
+                        <File Id="ExeSource" Source="!(wix.ExeSource)" KeyPath="yes" />
+                        <File Id="ConfigSource" Source="!(wix.ConfigSource)" />
+                        <CreateFolder>
+                            <Permission User="Everyone" GenericAll="yes" />
+                            <Permission User="SYSTEM" GenericAll="yes" />
+                        </CreateFolder>
+                    </Component>
+                    <Component Id="ServiceComponent" Guid="*">
+                        <File Id="ServiceExe" Source="!(wix.ExeSource)" KeyPath="yes" />
+                        <ServiceInstall
+                            Id="ServiceInstaller"
+                            Type="ownProcess"
+                            Vital="yes"
+                            Name="SecureLabAgent"
+                            DisplayName="SecureLab Agent"
+                            Description="SecureLab Agent - Endpoint protection and compliance monitoring (Ley 21.719)."
+                            Start="auto"
+                            Account="LocalSystem"
+                            ErrorControl="normal"
+                            Interactive="no" />
+                        <ServiceControl Id="StartService" Start="install" Stop="both" Remove="uninstall" Name="SecureLabAgent" Wait="yes" />
+                    </Component>
+                </Directory>
+            </Directory>
+            <Directory Id="ProgramMenuFolder">
+                <Directory Id="SecureLabAgentMenu" Name="SecureLab Agent">
+                    <Component Id="AppShortcut" Guid="*">
+                        <Shortcut Id="AgentShortcut" Name="SecureLab Agent" Target="[INSTALLDIR]securelab-agent-win-x64.exe" WorkingDirectory="INSTALLDIR" />
+                        <RemoveFolder Id="SecureLabAgentMenuRemove" Directory="SecureLabAgentMenu" On="uninstall" />
+                        <RegistryValue Root="HKCU" Key="Software\SecureLab\Agent" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+                    </Component>
+                </Directory>
+            </Directory>
+        </Directory>
+
+        <Feature Id="CompleteFeature" Title="SecureLab Agent" Level="1">
+            <ComponentRef Id="MainExecutable" />
+            <ComponentRef Id="ServiceComponent" />
+            <ComponentRef Id="AppShortcut" />
+        </Feature>
+
+        <WixVariable Id="ExeSource" Value="securelab-agent-win-x64.exe" />
+        <WixVariable Id="ConfigSource" Value="config.json" />
+    </Product>
+</Wix>

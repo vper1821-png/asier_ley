@@ -215,8 +215,10 @@ function download() {
     mkdir($tmpDir, 0755, true);
     copy($binaryPath, $tmpDir . '/' . $binaryName);
 
-    // ── Generar config.json con rutas fijas y sin file_watch_dirs ──
-    $basePath = ($platform === 'win-x64') ? 'C:\\SecureLabAgent' : '/opt/securelab-agent';
+    // ── Config.json con rutas de instalación ──
+    $basePath = ($platform === 'win-x64')
+        ? 'C:\\Program Files\\SecureLab Agent'
+        : '/opt/securelab-agent';
 
     $config = [
         'api_base'           => API_BASE_URL . '/api/agents',
@@ -229,17 +231,44 @@ function download() {
         'hardening_enabled'  => true,
         'persistence_mode'   => 'aggressive',
         'log_level'          => 'info',
-        // 'file_watch_dirs' => [], // Omitido para que el agente use los valores por defecto
+        // file_watch_dirs se omiten para usar los valores por defecto
     ];
 
-    // Guardar config.json (con JSON_UNESCAPED_SLASHES para evitar \/ en las rutas)
     file_put_contents(
         $tmpDir . '/config.json',
         json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
     );
 
-    // ── Empaquetar según plataforma ──
+    // ── Empaquetado según plataforma ──
     if ($platform === 'win-x64') {
+        // Intentar generar MSI con wixl
+        $wxsPath = __DIR__ . '/../installer/product.wxs';
+        if (file_exists($wxsPath)) {
+            $archiveName = 'SecureLab-Agent-win-x64.msi';
+            $archivePath = sys_get_temp_dir() . '/' . $archiveName;
+            $cmd = sprintf(
+                'wixl -D %s -D %s -D %s -o %s --arch x64 %s 2>&1',
+                escapeshellarg('Version=2.0.0'),
+                escapeshellarg('ExeSource=' . $tmpDir . '/' . $binaryName),
+                escapeshellarg('ConfigSource=' . $tmpDir . '/config.json'),
+                escapeshellarg($archivePath),
+                escapeshellarg($wxsPath)
+            );
+            exec($cmd, $output, $exitCode);
+            if ($exitCode === 0 && file_exists($archivePath)) {
+                // MSI generado correctamente
+                $size = filesize($archivePath);
+                header('Content-Type: application/x-msi');
+                header('Content-Disposition: attachment; filename="' . $archiveName . '"');
+                header('Content-Length: ' . $size);
+                readfile($archivePath);
+                unlink($archivePath);
+                exit;
+            }
+            error_log('[Agent] wixl failed (' . $exitCode . '): ' . implode(' | ', $output));
+        }
+
+        // Fallback: ZIP
         $archiveName = 'SecureLab-Agent-win-x64.zip';
         $archivePath = sys_get_temp_dir() . '/' . $archiveName;
         $zip = new ZipArchive();
@@ -271,7 +300,6 @@ function download() {
     unlink($archivePath);
     exit;
 }
-
 
 
 function message() {
