@@ -328,7 +328,7 @@ function download() {
     }
    
     // ──────────────────────────────────────────────────────────────
-    // 4. Enviar al cliente .
+    // 4. Enviar al cliente ....
     // ──────────────────────────────────────────────────────────────
     $size = filesize($archivePath);
     $contentType = $platform === 'win-x64' ? 'application/x-msi' : 'application/gzip';

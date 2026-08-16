@@ -45,7 +45,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     default-libmysqlclient-dev \
     libfreetype-dev \
     libjpeg62-turbo-dev \
-    sqlcipher \                  # ← Necesario para ejecutar el agente
+    sqlcipher \                  
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install curl mbstring zip pdo_mysql gd \
     && apt-get clean \
