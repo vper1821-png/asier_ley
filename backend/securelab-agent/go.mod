@@ -12,7 +12,7 @@ require (
 	github.com/xuri/excelize/v2 v2.11.0
 	go.mongodb.org/mongo-driver v1.17.9
 	golang.org/x/sys v0.47.0
-	modernc.org/sqlite v1.56.0
+	
 )
 
 require (
