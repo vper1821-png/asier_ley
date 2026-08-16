@@ -75,16 +75,32 @@ func main() {
 }
 
 func registerAgent(apiClient *api.Client, log *logger.Logger) string {
-	info := api.GetSystemInfo()
+	// Obtener el ID persistido (si existe)
 	agentID := config.GetAgentID()
+
+	// Si no existe, generar uno nuevo y guardarlo
+	if agentID == "" {
+		agentID = config.GenerateAgentID()
+		config.SetAgentID(agentID)
+		log.Info("Generado nuevo Agent ID: %s", agentID)
+	}
+
+	// Obtener info del sistema
+	info := api.GetSystemInfo()
+
+	// Intentar registrar (ahora con agentID)
 	resp, err := apiClient.Register(info.Hostname, info.Platform, info.Arch, info.IP, info.User, agentID)
 	if err != nil {
 		log.Fatal("Registration failed: %v", err)
 	}
-	if resp.AgentID != "" {
+
+	// Si el backend devuelve otro ID (por ejemplo, si ya existía), actualizar
+	if resp.AgentID != "" && resp.AgentID != agentID {
 		agentID = resp.AgentID
 		config.SetAgentID(agentID)
+		log.Info("Agent ID actualizado desde el backend: %s", agentID)
 	}
+
 	log.Info("Registered agent ID: %s", agentID)
 	return agentID
 }

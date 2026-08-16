@@ -176,7 +176,7 @@ func overrideFromEnv(cfg *Config) {
 	}
 }
 
-func generateAgentID() string {
+func GenerateAgentID() string {
 	b := make([]byte, 8)
 	rand.Read(b)
 	host, _ := os.Hostname()
