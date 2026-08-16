@@ -247,10 +247,9 @@ function download() {
             $archiveName = 'SecureLab-Agent-win-x64.msi';
             $archivePath = sys_get_temp_dir() . '/' . $archiveName;
             $cmd = sprintf(
-                'wixl -D %s -D %s -D %s -o %s --arch x64 %s 2>&1',
-                escapeshellarg('Version=2.0.0'),
-                escapeshellarg('ExeSource=' . $tmpDir . '/' . $binaryName),
-                escapeshellarg('ConfigSource=' . $tmpDir . '/config.json'),
+                'wixl -D ExeSource="%s" -D ConfigSource="%s" -o %s --arch x64 %s 2>&1',
+                escapeshellarg($tmpDir . '/' . $binaryName),
+                escapeshellarg($tmpDir . '/config.json'),
                 escapeshellarg($archivePath),
                 escapeshellarg($wxsPath)
             );
