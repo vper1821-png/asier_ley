@@ -18,12 +18,12 @@ COPY securelab-agent/ .
 # 3. Descargar dependencias Go
 RUN go mod tidy
 
-# 4. Compilar binarios para todas las plataformas (sin flags estáticas)
+# 4. Compilar binarios para todas las plataformas (apuntando al paquete correcto)
 RUN mkdir -p /out && \
-    CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -v -ldflags "-s -w" -o /out/securelab-agent-win-x64.exe . && \
-    CGO_ENABLED=1 GOOS=linux   GOARCH=amd64 go build -v -ldflags "-s -w" -o /out/securelab-agent-linux-x64 . && \
-    CGO_ENABLED=1 GOOS=darwin  GOARCH=amd64 go build -v -ldflags "-s -w" -o /out/securelab-agent-mac-x64 . && \
-    CGO_ENABLED=1 GOOS=darwin  GOARCH=arm64 go build -v -ldflags "-s -w" -o /out/securelab-agent-mac-arm64 .
+    CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -v -ldflags "-s -w" -o /out/securelab-agent-win-x64.exe ./cmd/agent && \
+    CGO_ENABLED=1 GOOS=linux   GOARCH=amd64 go build -v -ldflags "-s -w" -o /out/securelab-agent-linux-x64 ./cmd/agent && \
+    CGO_ENABLED=1 GOOS=darwin  GOARCH=amd64 go build -v -ldflags "-s -w" -o /out/securelab-agent-mac-x64 ./cmd/agent && \
+    CGO_ENABLED=1 GOOS=darwin  GOARCH=arm64 go build -v -ldflags "-s -w" -o /out/securelab-agent-mac-arm64 ./cmd/agent
 
 # ── Stage 2: Runtime PHP ──
 FROM php:8.3-fpm
