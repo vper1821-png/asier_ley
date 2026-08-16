@@ -30,7 +30,9 @@ type Config struct {
 	MaxLogSize        int64    `json:"max_log_size"`
 	AuditDBPath       string   `json:"audit_db_path"`
 	KnowledgeDBPath   string   `json:"knowledge_db_path"`
-	WSURL             string   `json:"ws_url"`
+	WSURL             string   `json:"ws_url"`             // NUEVO
+	SyncInterval      int      `json:"sync_interval"`      // NUEVO
+	MaxPendingEvents  int      `json:"max_pending_events"` // NUEVO
 	TelemetryInterval int      `json:"telemetry_interval"`
 	FileWatchDirs     []string `json:"file_watch_dirs"`
 	PersistenceMode   string   `json:"persistence_mode"`
@@ -52,12 +54,7 @@ type AgentState struct {
 func defaultConfig() *Config {
 	exe, _ := os.Executable()
 	dir := filepath.Dir(exe)
-
-	// Obtener el directorio home del usuario (funciona en Windows, Linux, macOS)
-	home, err := os.UserHomeDir()
-	if err != nil {
-		home = "."
-	}
+	home, _ := os.UserHomeDir()
 
 	return &Config{
 		APIBase:           "https://leysecurelab.sytes.net/api/agents",
@@ -73,6 +70,9 @@ func defaultConfig() *Config {
 		KnowledgeDBPath:   filepath.Join(dir, "knowledge.db"),
 		LogFile:           filepath.Join(dir, "agent.log"),
 		StateFile:         filepath.Join(dir, ".agent-state.json"),
+		WSURL:             "",
+		SyncInterval:      30,
+		MaxPendingEvents:  10000,
 		FileWatchDirs: []string{
 			filepath.Join(home, "Documents"),
 			filepath.Join(home, "Desktop"),
@@ -151,6 +151,12 @@ func loadConfigFile(cfg *Config) {
 	if fileCfg.PasswordPolicy.MinLength > 0 {
 		cfg.PasswordPolicy = fileCfg.PasswordPolicy
 	}
+	if fileCfg.SyncInterval > 0 {
+		cfg.SyncInterval = fileCfg.SyncInterval
+	}
+	if fileCfg.MaxPendingEvents > 0 {
+		cfg.MaxPendingEvents = fileCfg.MaxPendingEvents
+	}
 }
 
 func overrideFromEnv(cfg *Config) {
@@ -173,6 +179,11 @@ func overrideFromEnv(cfg *Config) {
 	}
 	if v := os.Getenv("PERSISTENCE_MODE"); v != "" {
 		cfg.PersistenceMode = v
+	}
+	if v := os.Getenv("SYNC_INTERVAL"); v != "" {
+		if i, err := strconv.Atoi(v); err == nil && i > 0 {
+			cfg.SyncInterval = i
+		}
 	}
 }
 
