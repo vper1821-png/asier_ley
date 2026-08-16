@@ -1,21 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
     <Product Id="*" Name="SecureLab Agent" Language="1033" Version="2.0.0" Manufacturer="SecureLab" UpgradeCode="9452a7b2-9c45-4f23-9c98-b1ed23f0a59b">
-        <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
+        <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" Platform="x64" />
 
         <Media Id="1" Cabinet="agent.cab" EmbedCab="yes" />
 
         <Directory Id="TARGETDIR" Name="SourceDir">
-            <Directory Id="ProgramFilesFolder">
+            <!-- ProgramFiles64Folder → C:\Program Files\ -->
+            <Directory Id="ProgramFiles64Folder">
                 <Directory Id="INSTALLDIR" Name="SecureLab Agent">
-                    <Component Id="MainExecutable" Guid="*">
+                    <Component Id="MainComponent" Guid="*">
                         <File Id="ExeFile" Source="$(var.ExeSource)" KeyPath="yes" />
                         <File Id="ConfigFile" Source="$(var.ConfigSource)" />
-                        <!-- Crear directorio con permisos para el servicio -->
-                        <CreateFolder />
-                    </Component>
-                    <Component Id="ServiceComponent" Guid="*">
-                        <File Id="ServiceFile" Source="$(var.ExeSource)" KeyPath="yes" />
                         <ServiceInstall
                             Id="ServiceInstaller"
                             Type="ownProcess"
@@ -28,15 +24,15 @@
                             ErrorControl="normal"
                             Interactive="no"
                             WorkingDirectory="INSTALLDIR" />
-                        <ServiceControl Id="StartService" Name="SecureLabAgent" Wait="yes" Start="install" Stop="both" Remove="uninstall" />
+                        <!-- NO Start="install" para evitar error 1920 durante la instalación -->
+                        <ServiceControl Id="StartService" Name="SecureLabAgent" Wait="yes" Stop="both" Remove="uninstall" />
                     </Component>
                 </Directory>
             </Directory>
         </Directory>
 
         <Feature Id="CompleteFeature" Title="SecureLab Agent" Level="1">
-            <ComponentRef Id="MainExecutable" />
-            <ComponentRef Id="ServiceComponent" />
+            <ComponentRef Id="MainComponent" />
         </Feature>
     </Product>
 </Wix>
