@@ -1,36 +1,45 @@
-# SecureLab Backend – con agente SecureLab (SQLCipher + mattn/go-sqlite3)
+# SecureLab Backend – con agente SecureLab (SQLCipher + cross-compile con MinGW)
 # Ejecutar desde la raíz del proyecto:
 #   docker build -f backend/Dockerfile -t securelab-backend .
 
-# ── Stage 1: Compilar agente (enlace dinámico con SQLCipher) ──
+# ── Stage 1: Compilar agente ──
 FROM golang:1.25-alpine AS agent-builder
 WORKDIR /src
 
-# 1. Instalar dependencias para CGO y SQLCipher
+# Instalar dependencias para CGO, SQLCipher y compilador cruzado para Windows
 RUN apk add --no-cache \
     gcc \
     musl-dev \
     sqlcipher-dev \
-    pkgconfig
+    pkgconfig \
+    mingw-w64-gcc \   # ← Añadido para compilar Windows
+    binutils
 
-# 2. Copiar el código del agente (desde la raíz del proyecto)....
+# Copiar el código del agente
 COPY securelab-agent/ .
 
-# 3. Sincronizar dependencias (usando el go.mod actualizado)
-#    Esto descargará todas las dependencias con las versiones actualizadas
+# Sincronizar dependencias
 RUN go mod tidy && go mod vendor
 
-# 4. Compilar binarios para todas las plataformas (enlace dinámico)
+# Compilar todas las plataformas
 RUN mkdir -p /out && \
-    CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -v -ldflags "-s -w" -o /out/securelab-agent-win-x64.exe ./cmd/agent && \
-    CGO_ENABLED=1 GOOS=linux   GOARCH=amd64 go build -v -ldflags "-s -w" -o /out/securelab-agent-linux-x64 ./cmd/agent && \
-    CGO_ENABLED=1 GOOS=darwin  GOARCH=amd64 go build -v -ldflags "-s -w" -o /out/securelab-agent-mac-x64 ./cmd/agent && \
-    CGO_ENABLED=1 GOOS=darwin  GOARCH=arm64 go build -v -ldflags "-s -w" -o /out/securelab-agent-mac-arm64 ./cmd/agent
+    # Windows (usando MinGW cross-compiler)
+    CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++ \
+    CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
+    go build -v -ldflags "-s -w" -o /out/securelab-agent-win-x64.exe ./cmd/agent && \
+    # Linux (compilador nativo de Alpine)
+    CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
+    go build -v -ldflags "-s -w" -o /out/securelab-agent-linux-x64 ./cmd/agent && \
+    # macOS (compilador nativo de Alpine)
+    CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 \
+    go build -v -ldflags "-s -w" -o /out/securelab-agent-mac-x64 ./cmd/agent && \
+    CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 \
+    go build -v -ldflags "-s -w" -o /out/securelab-agent-mac-arm64 ./cmd/agent
 
 # ── Stage 2: Runtime PHP ──
 FROM php:8.3-fpm
 
-# Instalar dependencias del sistema (incluyendo SQLCipher para el runtime)
+# Instalar dependencias del sistema
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nginx \
     curl \
@@ -47,7 +56,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     default-libmysqlclient-dev \
     libfreetype-dev \
     libjpeg62-turbo-dev \
-    sqlcipher \                  
+    sqlcipher \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install curl mbstring zip pdo_mysql gd \
     && apt-get clean \
