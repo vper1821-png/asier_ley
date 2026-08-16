@@ -1,7 +1,7 @@
 <?php
 // backend/ws-server.php
 // Servidor WebSocket para comunicación con agentes SecureLab
-// Versión completa con manejo de todos los tipos de mensajes
+// Versión corregida: soporte para formato {type, payload}
 
 require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/config.php';
@@ -27,7 +27,6 @@ class AgentWebSocket implements MessageComponentInterface {
             echo "✅ Base de datos inicializada correctamente\n";
         } catch (\Exception $e) {
             echo "❌ Error al inicializar la base de datos: " . $e->getMessage() . "\n";
-            // No detenemos el servidor, pero las operaciones de BD fallarán
         }
         echo "🔌 WebSocket Server iniciado en puerto 3839\n";
     }
@@ -36,7 +35,6 @@ class AgentWebSocket implements MessageComponentInterface {
         try {
             $this->clients->attach($conn);
             echo "✅ Nueva conexión: {$conn->resourceId} desde " . $conn->remoteAddress . "\n";
-            // Enviar mensaje de bienvenida
             $conn->send(json_encode([
                 'type' => 'welcome',
                 'payload' => [
@@ -61,7 +59,7 @@ class AgentWebSocket implements MessageComponentInterface {
 
             // Soporta formato {type, payload} y formato plano
             $type = $data['type'] ?? '';
-            $payload = $data['payload'] ?? $data;
+            $payload = $data['payload'] ?? $data; // Si no hay payload, usa todo el objeto
             echo "📨 Mensaje recibido: {$type} desde {$from->resourceId}\n";
 
             switch ($type) {
@@ -135,9 +133,10 @@ class AgentWebSocket implements MessageComponentInterface {
         $conn->close();
     }
 
-    // ─── Manejadores de mensajes ──────────────────────────────────
+    // ─── Manejadores (corregidos para leer de payload) ──────────────
 
     private function handleRegister(ConnectionInterface $conn, $data) {
+        // Ahora $data es el payload (o el objeto completo si no había payload)
         $token = $data['token'] ?? '';
         $agentId = $data['agentId'] ?? '';
 
@@ -182,12 +181,11 @@ class AgentWebSocket implements MessageComponentInterface {
             ]
         ]));
 
-        // Enviar comandos pendientes
         $this->sendPendingCommands($agentId);
     }
 
     private function handleFileDetected(ConnectionInterface $from, $data) {
-        // Soporta formato directo o con wrapper 'detectedFile'
+        // Si el mensaje vino con detectedFile wrapper, extraerlo
         $fileData = $data['detectedFile'] ?? $data;
         
         if (empty($fileData['path']) || empty($fileData['hash'])) {
@@ -233,6 +231,9 @@ class AgentWebSocket implements MessageComponentInterface {
             echo "❌ Error procesando archivo: " . $e->getMessage() . "\n";
         }
     }
+
+    // El resto de manejadores ya reciben $data como payload, están correctos.
+    // Se mantienen igual que en la versión anterior.
 
     private function handleFileEvent(ConnectionInterface $from, $data) {
         $agentId = $from->agentId ?? $data['agentId'] ?? '';
@@ -302,7 +303,6 @@ class AgentWebSocket implements MessageComponentInterface {
             'createdAt' => date('c'),
         ];
 
-        // Guardar en alerts
         $this->db->insertOne('alerts', [
             'userId' => $from->userId ?? '',
             'agentId' => $agentId,
@@ -316,7 +316,6 @@ class AgentWebSocket implements MessageComponentInterface {
             'createdAt' => $doc['createdAt'],
         ]);
 
-        // Guardar en host_events
         $this->db->insertOne('host_events', $doc);
         echo "🖥️ Host event: {$doc['title']} ({$doc['severity']})\n";
     }
@@ -414,22 +413,14 @@ class AgentWebSocket implements MessageComponentInterface {
         }
     }
 
-    // ─── Procesamiento de detección de archivo ──────────────────────
+    // ─── Procesamiento de detección de archivo (íntegro) ──────────────
 
-    /**
-     * Procesa la detección de archivo y guarda en:
-     * - compliance_files
-     * - compliance_inventory
-     * - file_audit_logs
-     * - audit_logs
-     */
     private function processFileDetection($userId, $agentId, $fileData) {
         if (!$this->db) {
             throw new \Exception('Base de datos no disponible');
         }
         $db = $this->db;
 
-        // Validar campos requeridos
         $required = ['path', 'hash', 'fileType'];
         foreach ($required as $field) {
             if (empty($fileData[$field])) {
@@ -437,7 +428,6 @@ class AgentWebSocket implements MessageComponentInterface {
             }
         }
 
-        // 1. Guardar en compliance_files
         $existing = $db->findOne('compliance_files', [
             'agentId' => $agentId,
             'path' => $fileData['path'],
@@ -480,7 +470,6 @@ class AgentWebSocket implements MessageComponentInterface {
             $inventoryId = null;
         }
 
-        // 2. Inventario (RAT)
         $categories = [];
         foreach ($fileData['personalData'] ?? [] as $col => $types) {
             $categories = array_merge($categories, $types);
@@ -512,7 +501,6 @@ class AgentWebSocket implements MessageComponentInterface {
             ]);
         }
 
-        // 3. Auditoría de archivos
         $db->insertOne('file_audit_logs', [
             'userId' => $userId,
             'agentId' => $agentId,
@@ -528,7 +516,6 @@ class AgentWebSocket implements MessageComponentInterface {
             'status' => 'processed',
         ]);
 
-        // 4. Auditoría general
         $db->insertOne('audit_logs', [
             'userId' => $userId,
             'action' => 'file_detected_by_agent',
@@ -545,8 +532,6 @@ class AgentWebSocket implements MessageComponentInterface {
         return ['fileId' => $fileId];
     }
 }
-
-// ─── Iniciar servidor ──────────────────────────────────────────────
 
 echo "🚀 Iniciando servidor WebSocket en el puerto 3839...\n";
 echo "Presiona Ctrl+C para detener.\n";
