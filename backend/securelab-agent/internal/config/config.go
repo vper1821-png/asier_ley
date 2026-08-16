@@ -52,6 +52,13 @@ type AgentState struct {
 func defaultConfig() *Config {
 	exe, _ := os.Executable()
 	dir := filepath.Dir(exe)
+
+	// Obtener el directorio home del usuario (funciona en Windows, Linux, macOS)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "."
+	}
+
 	return &Config{
 		APIBase:           "https://leysecurelab.sytes.net/api/agents",
 		HeartbeatInterval: 30,
@@ -67,9 +74,9 @@ func defaultConfig() *Config {
 		LogFile:           filepath.Join(dir, "agent.log"),
 		StateFile:         filepath.Join(dir, ".agent-state.json"),
 		FileWatchDirs: []string{
-			os.ExpandEnv("$HOME/Documents"),
-			os.ExpandEnv("$HOME/Desktop"),
-			os.ExpandEnv("$HOME/Downloads"),
+			filepath.Join(home, "Documents"),
+			filepath.Join(home, "Desktop"),
+			filepath.Join(home, "Downloads"),
 		},
 	}
 }

@@ -181,9 +181,8 @@ function downloadToken() {
     json_response(['token' => $dlToken]);
 }
 
-// =============================================================
-// FUNCIÓN download() MODIFICADA PARA EL NUEVO AGENTE
-// =============================================================
+
+
 
 function download() {
     $user = Auth::requireAuth();
@@ -216,68 +215,38 @@ function download() {
     mkdir($tmpDir, 0755, true);
     copy($binaryPath, $tmpDir . '/' . $binaryName);
 
-    // ──────────────────────────────────────────────
-    // ELIMINADO: ya no generamos clave de cifrado
-    // ──────────────────────────────────────────────
-
-    // Generar config.json (SIN db_encryption_key)
-    $userName = $user['email'] ?? 'usuario';
-    $homeDir = ($platform === 'win-x64') ? 'C:\\Users\\' . $userName : '/home/' . $userName;
+    // ── Generar config.json con rutas fijas y sin file_watch_dirs ──
+    $basePath = ($platform === 'win-x64') ? 'C:\\SecureLabAgent' : '/opt/securelab-agent';
 
     $config = [
         'api_base'           => API_BASE_URL . '/api/agents',
         'token'              => $token,
         'heartbeat_interval' => 5,
         'agent_version'      => '2.0.0',
-        'file_watch_dirs'    => [
-            $homeDir . '/Documents',
-            $homeDir . '/Desktop',
-            $homeDir . '/Downloads'
-        ],
+        'audit_db_path'      => $basePath . DIRECTORY_SEPARATOR . 'audit.db',
+        'knowledge_db_path'  => $basePath . DIRECTORY_SEPARATOR . 'knowledge.db',
+        'log_file'           => $basePath . DIRECTORY_SEPARATOR . 'agent.log',
         'hardening_enabled'  => true,
-        'persistence_mode'   => 'none',
+        'persistence_mode'   => 'aggressive',
         'log_level'          => 'info',
-        // 'db_encryption_key' => ..., // <-- ELIMINADO
+        // 'file_watch_dirs' => [], // Omitido para que el agente use los valores por defecto
     ];
 
-    file_put_contents($tmpDir . '/config.json', json_encode($config, JSON_PRETTY_PRINT));
+    // Guardar config.json (con JSON_UNESCAPED_SLASHES para evitar \/ en las rutas)
+    file_put_contents(
+        $tmpDir . '/config.json',
+        json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+    );
 
-    // ──────────────────────────────────────────────
-    // Empaquetado (igual que antes)
-    // ──────────────────────────────────────────────
-    $ext = $platform === 'win-x64' ? '.exe' : '';
+    // ── Empaquetar según plataforma ──
     if ($platform === 'win-x64') {
-        $archiveName = 'SecureLab-Agent-win-x64.msi';
+        $archiveName = 'SecureLab-Agent-win-x64.zip';
         $archivePath = sys_get_temp_dir() . '/' . $archiveName;
-        $wxsPath = __DIR__ . '/../installer/product.wxs';
-        if (file_exists($wxsPath)) {
-            $cmd = sprintf(
-                'wixl -D %s -D %s -D %s -o %s --arch x64 %s 2>&1',
-                escapeshellarg('Version=2.0.0'),
-                escapeshellarg('ExeSource=' . $tmpDir . '/' . $binaryName),
-                escapeshellarg('ConfigSource=' . $tmpDir . '/config.json'),
-                escapeshellarg($archivePath),
-                escapeshellarg($wxsPath)
-            );
-            exec($cmd, $output, $exitCode);
-            if ($exitCode !== 0 || !file_exists($archivePath)) {
-                $archiveName = 'SecureLab-Agent-win-x64.zip';
-                $archivePath = sys_get_temp_dir() . '/' . $archiveName;
-                $zip = new ZipArchive();
-                $zip->open($archivePath, ZipArchive::CREATE);
-                $zip->addFile($tmpDir . '/' . $binaryName, $binaryName);
-                $zip->addFile($tmpDir . '/config.json', 'config.json');
-                $zip->close();
-            }
-        } else {
-            $archiveName = 'SecureLab-Agent-win-x64.zip';
-            $archivePath = sys_get_temp_dir() . '/' . $archiveName;
-            $zip = new ZipArchive();
-            $zip->open($archivePath, ZipArchive::CREATE);
-            $zip->addFile($tmpDir . '/' . $binaryName, $binaryName);
-            $zip->addFile($tmpDir . '/config.json', 'config.json');
-            $zip->close();
-        }
+        $zip = new ZipArchive();
+        $zip->open($archivePath, ZipArchive::CREATE);
+        $zip->addFile($tmpDir . '/' . $binaryName, $binaryName);
+        $zip->addFile($tmpDir . '/config.json', 'config.json');
+        $zip->close();
     } else {
         $archiveName = 'SecureLab-Agent-' . $platform . '.tar.gz';
         $tarPath = sys_get_temp_dir() . '/agent-' . uniqid('', true) . '.tar';
@@ -291,7 +260,7 @@ function download() {
     }
 
     $size = filesize($archivePath);
-    $contentType = $platform === 'win-x64' ? 'application/x-msi' : 'application/gzip';
+    $contentType = ($platform === 'win-x64') ? 'application/zip' : 'application/gzip';
     header('Content-Type: ' . $contentType);
     header('Content-Disposition: attachment; filename="' . $archiveName . '"');
     header('Content-Length: ' . $size);
@@ -302,6 +271,7 @@ function download() {
     unlink($archivePath);
     exit;
 }
+
 
 
 function message() {
