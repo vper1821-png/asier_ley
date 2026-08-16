@@ -10,6 +10,7 @@ import (
 	"securelab-agent/internal/audit"
 	"securelab-agent/internal/logger"
 	"securelab-agent/internal/scanner"
+	"securelab-agent/internal/utils" // <-- Importar utils para HashFile
 	"securelab-agent/internal/ws"
 )
 
@@ -105,10 +106,26 @@ func (m *Monitor) processEvents() {
 }
 
 // scanFileAndReport escanea el archivo en busca de PII y guarda los resultados
+// Ahora calcula el hash SHA256 del archivo antes de enviarlo al backend.
 func (m *Monitor) scanFileAndReport(ev audit.FileEvent) {
 	// Verificar que el archivo aún existe (puede haber sido eliminado)
 	if _, err := os.Stat(ev.Path); os.IsNotExist(err) {
 		return
+	}
+
+	// ── CALCULAR HASH (NUEVO) ──
+	// El watcher original no calcula hash, lo hacemos aquí para que el backend
+	// pueda identificar el archivo de forma única.
+	if ev.Hash == "" {
+		hash, err := utils.HashFile(ev.Path)
+		if err != nil {
+			m.log.Warn("Error calculando hash de %s: %v", ev.Path, err)
+			// Continuamos sin hash, pero el backend rechazará el mensaje.
+			// Podríamos generar un hash alternativo o simplemente dejarlo vacío.
+		} else {
+			ev.Hash = hash
+			m.log.Debug("Hash calculado para %s: %s", ev.Path, hash[:8])
+		}
 	}
 
 	// Analizar el contenido del archivo en busca de PII
@@ -127,7 +144,7 @@ func (m *Monitor) scanFileAndReport(ev audit.FileEvent) {
 		// Guardar el evento actualizado con los datos de PII
 		m.store.SaveFileEvent(ev)
 
-		// Enviar alerta por WebSocket
+		// Enviar alerta por WebSocket (AHORA CON HASH Y PATH)
 		m.wsClient.SendFileDetection(ev)
 
 		m.log.Info("PII detectada en %s: %v", ev.Path, result)
