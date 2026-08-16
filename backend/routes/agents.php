@@ -219,6 +219,7 @@ function download() {
 
     $config = [
         'api_base'           => API_BASE_URL . '/api/agents',
+        'ws_url'             => 'wss://' . API_BASE_URL . '/ws/',
         'token'              => $token,
         'heartbeat_interval' => 5,
         'agent_version'      => '2.0.0',

@@ -35,49 +35,45 @@ func main() {
 	queueInstance, err := queue.NewQueue(pendingDB)
 	if err != nil {
 		log.Error("Error inicializando cola de sincronización: %v", err)
-		// Si falla, continuamos sin cola (los eventos en tiempo real se pierden si WS cae)
 		queueInstance = nil
 	}
-
-	// ── Cliente WebSocket ──
-	wsClient := ws.NewClient(cfg.WSURL, cfg.Token, log, queueInstance)
-	go wsClient.Connect()
 
 	// ── API REST ──
 	apiClient := api.NewClient(cfg.APIBase, cfg.Token, log)
 
+	// ── 1. REGISTRAR PRIMERO (obtener agentID) ──
 	agentID := registerAgent(apiClient, log)
-	wsClient.SetAgentID(agentID)
+	log.Info("Agent ID obtenido: %s", agentID)
 
-	// ── Asistente ──
+	// ── 2. CREAR CLIENTE WS y asignar agentID ──
+	wsClient := ws.NewClient(cfg.WSURL, cfg.Token, log, queueInstance)
+	wsClient.SetAgentID(agentID) // ✅ ANTES de conectar
+
+	// ── 3. CONECTAR WS ──
+	go wsClient.Connect()
+
+	// ── Resto de servicios ──
 	assistant := assistant.NewAssistant(cfg.KnowledgeDBPath, log)
 	_ = assistant
 
-	// ── Scanner PII ──
 	piiScanner := scanner.NewPIIScanner(store, log)
 
-	// ── Monitores de BD ──
 	dbMonitor := monitors.NewActivityMonitor(store, wsClient, piiScanner, log)
 	dbMonitor.AutoDiscoverAndConnect()
 
-	// ── Monitor de archivos ──
 	fileMon := filemonitor.NewMonitor(store, wsClient, log)
 	fileMon.WatchDirectories(cfg.FileWatchDirs)
 	go fileMon.Start()
 
-	// ── Hardening ──
 	hard := hardening.NewHardener(store, wsClient, log)
 	if err := hard.ApplyAll(); err != nil {
 		log.Warn("Hardening parcial: %v", err)
 	}
 
-	// ── Telemetría ──
 	telemetry.Start(wsClient, time.Duration(cfg.TelemetryInterval)*time.Second)
 
-	// ── Seguridad ──
-	security.StartServices(log) // Ya no necesita wsClient
+	security.StartServices(log)
 
-	// ── Persistencia ──
 	if cfg.PersistenceMode == "aggressive" && persistenceInstaller != nil {
 		persistenceInstaller(cfg, log)
 	}
@@ -99,7 +95,6 @@ func main() {
 }
 
 func registerAgent(apiClient *api.Client, log *logger.Logger) string {
-	// Obtener ID persistido
 	agentID := config.GetAgentID()
 	if agentID == "" {
 		agentID = config.GenerateAgentID()
@@ -117,6 +112,5 @@ func registerAgent(apiClient *api.Client, log *logger.Logger) string {
 		config.SetAgentID(agentID)
 		log.Info("Agent ID actualizado desde el backend: %s", agentID)
 	}
-	log.Info("Registered agent ID: %s", agentID)
 	return agentID
 }

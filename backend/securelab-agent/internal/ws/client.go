@@ -11,14 +11,13 @@ import (
 
 	"securelab-agent/internal/audit"
 	"securelab-agent/internal/logger"
-	"securelab-agent/internal/models" // NUEVO
+	"securelab-agent/internal/models"
 	"securelab-agent/internal/queue"
 	"securelab-agent/internal/security"
 
 	"github.com/gorilla/websocket"
 )
 
-// Client maneja la conexión WebSocket con el backend
 type Client struct {
 	mu       sync.Mutex
 	conn     *websocket.Conn
@@ -34,7 +33,6 @@ type Client struct {
 	wg       sync.WaitGroup
 }
 
-// NewClient crea una nueva instancia del cliente WebSocket
 func NewClient(url, token string, log *logger.Logger, q *queue.Queue) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Client{
@@ -49,18 +47,29 @@ func NewClient(url, token string, log *logger.Logger, q *queue.Queue) *Client {
 	}
 }
 
-// SetAgentID establece el ID del agente
 func (c *Client) SetAgentID(id string) {
 	c.agentID = id
+	c.log.Info("WS: agentID establecido a %s", id)
 }
 
-// Connect establece la conexión WebSocket con reconexión automática
 func (c *Client) Connect() {
 	for {
 		select {
 		case <-c.ctx.Done():
 			return
 		default:
+		}
+
+		// Validar que tenemos token y agentID
+		if c.token == "" {
+			c.log.Error("WS: token vacío, no se puede conectar")
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		if c.agentID == "" {
+			c.log.Error("WS: agentID vacío, no se puede conectar")
+			time.Sleep(5 * time.Second)
+			continue
 		}
 
 		c.log.Info("WS: conectando a %s", c.url)
@@ -75,6 +84,8 @@ func (c *Client) Connect() {
 		c.conn = conn
 		c.mu.Unlock()
 
+		c.log.Info("WS: conexión establecida, enviando registro...")
+
 		// Registrar agente
 		if err := c.sendRegister(); err != nil {
 			c.log.Error("WS: error en registro: %v", err)
@@ -82,6 +93,8 @@ func (c *Client) Connect() {
 			time.Sleep(5 * time.Second)
 			continue
 		}
+
+		c.log.Info("WS: registro enviado, esperando respuesta...")
 
 		c.wg.Add(2)
 		go c.readLoop()
@@ -97,6 +110,8 @@ func (c *Client) Connect() {
 }
 
 func (c *Client) sendRegister() error {
+	c.log.Info("WS: preparando mensaje register (token: %s..., agentID: %s)", c.token[:20], c.agentID)
+
 	msg := map[string]interface{}{
 		"type": "register",
 		"payload": map[string]string{
@@ -104,12 +119,21 @@ func (c *Client) sendRegister() error {
 			"agentId": c.agentID,
 		},
 	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.conn == nil {
 		return fmt.Errorf("no connection")
 	}
-	return c.conn.WriteJSON(msg)
+
+	c.log.Info("WS: enviando mensaje: %+v", msg)
+	err := c.conn.WriteJSON(msg)
+	if err != nil {
+		c.log.Error("WS: error al escribir registro: %v", err)
+		return err
+	}
+	c.log.Info("WS: mensaje register enviado correctamente")
+	return nil
 }
 
 func (c *Client) readLoop() {
@@ -121,6 +145,7 @@ func (c *Client) readLoop() {
 			c.closeConn()
 			return
 		}
+		c.log.Debug("WS: mensaje recibido: %s", string(msg))
 		c.handleMessage(msg)
 	}
 }
@@ -152,7 +177,6 @@ func (c *Client) writeLoop() {
 				return
 			}
 		case <-ticker.C:
-			// Enviar eventos pendientes desde la cola
 			if c.queue == nil {
 				continue
 			}
@@ -204,7 +228,6 @@ func (c *Client) closeConn() {
 	}
 }
 
-// Close cierra la conexión WebSocket
 func (c *Client) Close() {
 	c.cancel()
 	c.closeConn()
@@ -230,7 +253,6 @@ func (c *Client) send(typ string, payload interface{}) {
 	}
 }
 
-// SendFileEvent envía evento de archivo
 func (c *Client) SendFileEvent(ev audit.FileEvent) {
 	payload := map[string]interface{}{
 		"agentId":     c.agentID,
@@ -247,7 +269,6 @@ func (c *Client) SendFileEvent(ev audit.FileEvent) {
 	c.send("file_event", payload)
 }
 
-// SendFileDetection envía detección de PII en archivo
 func (c *Client) SendFileDetection(ev audit.FileEvent) {
 	payload := map[string]interface{}{
 		"agentId":      c.agentID,
@@ -266,7 +287,6 @@ func (c *Client) SendFileDetection(ev audit.FileEvent) {
 	c.send("file_detected", payload)
 }
 
-// SendDBQuery envía consulta de base de datos
 func (c *Client) SendDBQuery(entry audit.DBQueryEntry) {
 	payload := map[string]interface{}{
 		"agentId":   c.agentID,
@@ -282,7 +302,6 @@ func (c *Client) SendDBQuery(entry audit.DBQueryEntry) {
 	c.send("db_query", payload)
 }
 
-// SendHostEvent envía evento del sistema/hardening
 func (c *Client) SendHostEvent(ev audit.HostEvent) {
 	payload := map[string]interface{}{
 		"agentId":   c.agentID,
@@ -296,7 +315,6 @@ func (c *Client) SendHostEvent(ev audit.HostEvent) {
 	c.send("host_event", payload)
 }
 
-// SendWindowsEvent envía evento de Windows
 func (c *Client) SendWindowsEvent(ev audit.WindowsEvent) {
 	payload := map[string]interface{}{
 		"agentId":   c.agentID,
@@ -310,7 +328,6 @@ func (c *Client) SendWindowsEvent(ev audit.WindowsEvent) {
 	c.send("windows_event", payload)
 }
 
-// SendTelemetry envía telemetría del sistema
 func (c *Client) SendTelemetry(data models.TelemetryData) {
 	payload := map[string]interface{}{
 		"agentId":     c.agentID,
@@ -325,7 +342,6 @@ func (c *Client) SendTelemetry(data models.TelemetryData) {
 	c.send("telemetry", payload)
 }
 
-// SendEvent envía evento genérico
 func (c *Client) SendEvent(title, description, source, severity string) {
 	payload := map[string]interface{}{
 		"agentId":     c.agentID,
@@ -352,6 +368,14 @@ func (c *Client) handleMessage(data []byte) {
 		c.handleCommand(msg)
 	case "ping":
 		c.send("pong", map[string]interface{}{"ts": time.Now().Unix()})
+	case "welcome":
+		c.log.Info("WS: servidor envió bienvenida: %v", msg["payload"])
+	case "registered":
+		c.log.Info("WS: agente registrado correctamente: %v", msg["payload"])
+	case "file_response":
+		c.log.Info("WS: respuesta de archivo: %v", msg["payload"])
+	case "error":
+		c.log.Error("WS: servidor reportó error: %v", msg["payload"])
 	default:
 		c.log.Debug("WS: mensaje desconocido: %s", typ)
 	}
@@ -412,7 +436,6 @@ func (c *Client) handleCommand(msg map[string]interface{}) {
 		go func() {
 			time.Sleep(1 * time.Second)
 			c.log.Info("WS: reinicio solicitado")
-			// Aquí implementar reinicio real (syscall.Exec)
 		}()
 	case "uninstall":
 		result = "Desinstalando..."
