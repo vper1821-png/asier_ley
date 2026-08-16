@@ -1,22 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
     <Product Id="*" Name="SecureLab Agent" Language="1033" Version="!(bind.FileVersion.ExeSource)" Manufacturer="SecureLab" UpgradeCode="9452a7b2-9c45-4f23-9c98-b1ed23f0a59b">
-        <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" Description="SecureLab Agent - Endpoint Security &amp; Compliance" Comments="Ley 21.719" />
+        <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
+
         <Media Id="1" Cabinet="agent.cab" EmbedCab="yes" />
 
-        <MajorUpgrade AllowDowngrades="no" AllowSameVersionUpgrades="yes" Schedule="afterInstallValidate" />
+        <!-- MajorUpgrade sin atributos no soportados -->
+        <MajorUpgrade AllowDowngrades="no" AllowSameVersionUpgrades="yes" />
 
         <Directory Id="TARGETDIR" Name="SourceDir">
             <Directory Id="ProgramFilesFolder">
                 <Directory Id="INSTALLDIR" Name="SecureLab Agent">
+                    <!-- Componente principal (ejecutable + config) -->
                     <Component Id="MainExecutable" Guid="*">
                         <File Id="ExeSource" Source="!(wix.ExeSource)" KeyPath="yes" />
                         <File Id="ConfigSource" Source="!(wix.ConfigSource)" />
-                        <CreateFolder>
-                            <Permission User="Everyone" GenericAll="yes" />
-                            <Permission User="SYSTEM" GenericAll="yes" />
-                        </CreateFolder>
+                        <!-- Sin Permission (wixl no lo soporta) -->
                     </Component>
+                    <!-- Componente del servicio -->
                     <Component Id="ServiceComponent" Guid="*">
                         <File Id="ServiceExe" Source="!(wix.ExeSource)" KeyPath="yes" />
                         <ServiceInstall
@@ -25,15 +26,16 @@
                             Vital="yes"
                             Name="SecureLabAgent"
                             DisplayName="SecureLab Agent"
-                            Description="SecureLab Agent - Endpoint protection and compliance monitoring (Ley 21.719)."
+                            Description="SecureLab Agent - Endpoint protection and compliance monitoring."
                             Start="auto"
                             Account="LocalSystem"
                             ErrorControl="normal"
                             Interactive="no" />
-                        <ServiceControl Id="StartService" Start="install" Stop="both" Remove="uninstall" Name="SecureLabAgent" Wait="yes" />
+                        <ServiceControl Id="StartService" Name="SecureLabAgent" Wait="yes" />
                     </Component>
                 </Directory>
             </Directory>
+            <!-- Acceso directo en Menú Inicio -->
             <Directory Id="ProgramMenuFolder">
                 <Directory Id="SecureLabAgentMenu" Name="SecureLab Agent">
                     <Component Id="AppShortcut" Guid="*">
