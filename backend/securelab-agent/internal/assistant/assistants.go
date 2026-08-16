@@ -8,7 +8,7 @@ import (
 
 	"securelab-agent/internal/logger"
 
-	_ "github.com/mattn/go-sqlite3" // Driver SQLCipher (compatible con cifrado)...
+	_ "modernc.org/sqlite"
 )
 
 type Assistant struct {
@@ -43,7 +43,6 @@ type AskResult struct {
 	Categories map[string]float64 `json:"categories,omitempty"`
 }
 
-// NewAssistant crea una nueva instancia del asistente.
 func NewAssistant(dbPath string, log *logger.Logger) *Assistant {
 	a := &Assistant{log: log}
 	a.init(dbPath)
@@ -52,8 +51,7 @@ func NewAssistant(dbPath string, log *logger.Logger) *Assistant {
 
 func (a *Assistant) init(dbPath string) {
 	var err error
-	// Usamos el driver sqlite3 (mattn/go-sqlite3) para compatibilidad con SQLCipher
-	a.db, err = sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_foreign_keys=on")
+	a.db, err = sql.Open("sqlite", dbPath+"?_journal_mode=WAL&_foreign_keys=on")
 	if err != nil {
 		a.log.Error("Assistant: open db failed: %v", err)
 		return

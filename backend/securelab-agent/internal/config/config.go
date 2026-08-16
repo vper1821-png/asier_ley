@@ -36,7 +36,6 @@ type Config struct {
 	PersistenceMode   string   `json:"persistence_mode"`
 	HardeningEnabled  bool     `json:"hardening_enabled"`
 	Platform          string   `json:"platform"`
-	DBEncryptionKey   string   `json:"db_encryption_key"` // ← NUEVO: clave para cifrar audit.db
 	PasswordPolicy    struct {
 		MinLength      int  `json:"min_length"`
 		RequireUpper   bool `json:"require_upper"`
@@ -67,7 +66,6 @@ func defaultConfig() *Config {
 		KnowledgeDBPath:   filepath.Join(dir, "knowledge.db"),
 		LogFile:           filepath.Join(dir, "agent.log"),
 		StateFile:         filepath.Join(dir, ".agent-state.json"),
-		DBEncryptionKey:   os.Getenv("DB_KEY"), // ← clave desde variable de entorno
 		FileWatchDirs: []string{
 			os.ExpandEnv("$HOME/Documents"),
 			os.ExpandEnv("$HOME/Desktop"),
@@ -143,9 +141,6 @@ func loadConfigFile(cfg *Config) {
 	if fileCfg.MaxLogSize > 0 {
 		cfg.MaxLogSize = fileCfg.MaxLogSize
 	}
-	if fileCfg.DBEncryptionKey != "" {
-		cfg.DBEncryptionKey = fileCfg.DBEncryptionKey
-	}
 	if fileCfg.PasswordPolicy.MinLength > 0 {
 		cfg.PasswordPolicy = fileCfg.PasswordPolicy
 	}
@@ -172,12 +167,8 @@ func overrideFromEnv(cfg *Config) {
 	if v := os.Getenv("PERSISTENCE_MODE"); v != "" {
 		cfg.PersistenceMode = v
 	}
-	if v := os.Getenv("DB_KEY"); v != "" {
-		cfg.DBEncryptionKey = v
-	}
 }
 
-// ---- Gestión del Agent ID ----
 func generateAgentID() string {
 	b := make([]byte, 8)
 	rand.Read(b)

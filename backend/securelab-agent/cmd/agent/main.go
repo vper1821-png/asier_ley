@@ -26,8 +26,8 @@ func main() {
 	cfg := config.Load()
 	log := logger.New(cfg.LogFile, cfg.LogLevel)
 
-	// Crear store con clave de cifrado
-	store := audit.NewStore(cfg.AuditDBPath, cfg.DBEncryptionKey)
+	// Ya no pasamos clave de cifrado
+	store := audit.NewStore(cfg.AuditDBPath)
 
 	wsClient := ws.NewClient(cfg.WSURL, cfg.Token, log, store)
 	go wsClient.Connect()

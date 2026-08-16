@@ -3,24 +3,18 @@ package audit
 import (
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 type Store struct {
 	db *sql.DB
 }
 
-func NewStore(dbPath, encryptionKey string) *Store {
+func NewStore(dbPath string) *Store {
 	dsn := dbPath + "?_journal_mode=WAL&_busy_timeout=5000"
-	if encryptionKey != "" {
-		keyHex := stringToHex(encryptionKey)
-		dsn += fmt.Sprintf("&_pragma_key=x'%s'&_pragma_cipher_page_size=4096", keyHex)
-	}
-
-	db, err := sql.Open("sqlite3", dsn)
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		panic(err)
 	}
@@ -28,14 +22,6 @@ func NewStore(dbPath, encryptionKey string) *Store {
 	s.init()
 	s.migrateColumns()
 	return s
-}
-
-func stringToHex(s string) string {
-	hex := ""
-	for _, c := range []byte(s) {
-		hex += fmt.Sprintf("%02x", c)
-	}
-	return hex
 }
 
 func (s *Store) init() {
@@ -87,7 +73,6 @@ func (s *Store) init() {
 	}
 }
 
-// migrateColumns añade columnas faltantes a la tabla file_events
 func (s *Store) migrateColumns() {
 	rows, err := s.db.Query("PRAGMA table_info(file_events)")
 	if err != nil {
@@ -104,7 +89,6 @@ func (s *Store) migrateColumns() {
 		}
 		columns[name] = true
 	}
-	// Verificar errores después del bucle (corrige la advertencia)
 	if err := rows.Err(); err != nil {
 		return
 	}

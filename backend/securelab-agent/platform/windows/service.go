@@ -12,14 +12,12 @@ import (
 	"golang.org/x/sys/windows/svc/mgr"
 )
 
-// AgentService implementa la interfaz svc.Handler
 type AgentService struct {
-	runFunc func() // función de arranque del agente
+	runFunc func()
 }
 
 func (s *AgentService) Execute(args []string, r <-chan svc.ChangeRequest, changes chan<- svc.Status) (bool, uint32) {
 	changes <- svc.Status{State: svc.Running, Accepts: svc.AcceptStop | svc.AcceptShutdown}
-	// Iniciar el agente en una goroutine
 	if s.runFunc != nil {
 		go s.runFunc()
 	}
@@ -35,34 +33,31 @@ func (s *AgentService) Execute(args []string, r <-chan svc.ChangeRequest, change
 	}
 }
 
-// RunService inicia el servicio con la función de arranque proporcionada.
-// Esta función debe ser llamada desde main cuando se ejecute como servicio.
 func RunService(run func()) error {
 	inService, err := svc.IsWindowsService()
 	if err != nil {
 		return fmt.Errorf("service check: %w", err)
 	}
 	if !inService {
-		return nil // no es un servicio, ejecutar en foreground
+		return nil
 	}
 	return svc.Run("SecureLabAgent", &AgentService{runFunc: run})
 }
 
-// InstallService instala el servicio.
 func InstallService() error {
 	m, err := mgr.Connect()
 	if err != nil {
-		return err
+		return fmt.Errorf("connect: %w", err)
 	}
 	defer m.Disconnect()
 	exe, _ := os.Executable()
 	s, err := m.CreateService("SecureLabAgent", exe, mgr.Config{
 		DisplayName: "SecureLab Agent",
-		Description: "SecureLab Security Agent",
+		Description: "SecureLab Security Agent - Endpoint protection and compliance monitoring.",
 		StartType:   mgr.StartAutomatic,
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("create service: %w", err)
 	}
 	defer s.Close()
 	s.SetRecoveryActions([]mgr.RecoveryAction{
