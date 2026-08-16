@@ -7,12 +7,13 @@ FROM golang:1.25-alpine AS agent-builder
 WORKDIR /src
 
 # Instalar dependencias para CGO, SQLCipher y compilador cruzado para Windows
+# (el comentario debe ir aquí, no en la línea con \)
 RUN apk add --no-cache \
     gcc \
     musl-dev \
     sqlcipher-dev \
     pkgconfig \
-    mingw-w64-gcc \   # ← Añadido para compilar Windows
+    mingw-w64-gcc \
     binutils
 
 # Copiar el código del agente
@@ -106,4 +107,5 @@ RUN chmod +x /start.sh
 
 EXPOSE 3838
 
+CMD ["/start.sh"]
 CMD ["/start.sh"]
