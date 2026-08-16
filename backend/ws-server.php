@@ -1,7 +1,7 @@
 <?php
 // backend/ws-server.php
 // Servidor WebSocket para comunicación con agentes SecureLab
-// Versión corregida: soporte para formato {type, payload}
+// Versión: 2.0 - con logging detallado y soporte para {type, payload}
 
 require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/config.php';
@@ -35,6 +35,7 @@ class AgentWebSocket implements MessageComponentInterface {
         try {
             $this->clients->attach($conn);
             echo "✅ Nueva conexión: {$conn->resourceId} desde " . $conn->remoteAddress . "\n";
+            // Mensaje de bienvenida
             $conn->send(json_encode([
                 'type' => 'welcome',
                 'payload' => [
@@ -50,18 +51,39 @@ class AgentWebSocket implements MessageComponentInterface {
 
     public function onMessage(ConnectionInterface $from, $msg) {
         try {
+            // 📥 Log del mensaje RAW (útil para depurar)
+            $rawLength = strlen($msg);
+            echo "📥 Mensaje RAW ({$rawLength} bytes): " . $msg . "\n";
+
+            // Decodificar JSON
             $data = json_decode($msg, true);
             if (!$data) {
-                echo "⚠️ Mensaje inválido (no JSON)\n";
-                $from->send(json_encode(['type' => 'error', 'payload' => ['message' => 'JSON inválido']]));
+                echo "⚠️ Mensaje no es JSON válido\n";
+                $from->send(json_encode([
+                    'type' => 'error',
+                    'payload' => ['message' => 'JSON inválido']
+                ]));
                 return;
             }
 
-            // Soporta formato {type, payload} y formato plano
-            $type = $data['type'] ?? '';
-            $payload = $data['payload'] ?? $data; // Si no hay payload, usa todo el objeto
-            echo "📨 Mensaje recibido: {$type} desde {$from->resourceId}\n";
+            // 📦 Log del mensaje decodificado (pretty print)
+            echo "📦 Mensaje decodificado:\n" . json_encode($data, JSON_PRETTY_PRINT) . "\n";
 
+            // Extraer type y payload
+            $type = $data['type'] ?? '';
+            
+            // Si existe 'payload', úsalo; si no, usa todo el objeto (compatibilidad)
+            if (isset($data['payload']) && is_array($data['payload'])) {
+                $payload = $data['payload'];
+            } else {
+                $payload = $data;
+                unset($payload['type']); // Quitamos 'type' para no confundir
+            }
+
+            echo "📨 Tipo: {$type}\n";
+            echo "📦 Payload: " . json_encode($payload) . "\n";
+
+            // ─── Router de mensajes ──────────────────────────────────
             switch ($type) {
                 case 'register':
                     $this->handleRegister($from, $payload);
@@ -92,12 +114,13 @@ class AgentWebSocket implements MessageComponentInterface {
                         'type' => 'pong',
                         'payload' => ['ts' => microtime(true)]
                     ]));
+                    echo "🏓 Ping recibido, enviando pong\n";
                     break;
                 default:
                     echo "⚠️ Tipo de mensaje desconocido: {$type}\n";
                     $from->send(json_encode([
                         'type' => 'error',
-                        'payload' => ['message' => 'Tipo de mensaje no soportado']
+                        'payload' => ['message' => "Tipo de mensaje no soportado: {$type}"]
                     ]));
             }
         } catch (\Exception $e) {
@@ -110,6 +133,7 @@ class AgentWebSocket implements MessageComponentInterface {
     }
 
     public function onClose(ConnectionInterface $conn) {
+        // Buscar el agentId asociado a esta conexión
         $agentId = null;
         foreach ($this->agentSessions as $id => $c) {
             if ($c === $conn) {
@@ -129,50 +153,74 @@ class AgentWebSocket implements MessageComponentInterface {
     }
 
     public function onError(ConnectionInterface $conn, \Exception $e) {
-        echo "🔥 Error: " . $e->getMessage() . "\n";
+        echo "🔥 Error en la conexión: " . $e->getMessage() . "\n";
         $conn->close();
     }
 
-    // ─── Manejadores (corregidos para leer de payload) ──────────────
+    // ─── HANDLER: REGISTER ──────────────────────────────────────────
 
     private function handleRegister(ConnectionInterface $conn, $data) {
-        // Ahora $data es el payload (o el objeto completo si no había payload)
-        $token = $data['token'] ?? '';
+        echo "🔍 handleRegister llamado con datos: " . json_encode($data) . "\n";
+
+        // Extraer token y agentId (soporta tanto 'token' como 'accessToken' para compatibilidad)
+        $token = $data['token'] ?? $data['accessToken'] ?? '';
         $agentId = $data['agentId'] ?? '';
 
-        if (!$token || !$agentId) {
+        echo "🔎 Token: '{$token}' (longitud: " . strlen($token) . ")\n";
+        echo "🔎 AgentId: '{$agentId}'\n";
+
+        // Validar campos requeridos
+        if (empty($token)) {
+            echo "❌ Token vacío\n";
             $conn->send(json_encode([
                 'type' => 'error',
-                'payload' => ['message' => 'Token y agentId requeridos']
+                'payload' => ['message' => 'Token requerido']
             ]));
             $conn->close();
-            echo "❌ Registro fallido: faltan datos\n";
             return;
         }
 
+        if (empty($agentId)) {
+            echo "❌ AgentId vacío\n";
+            $conn->send(json_encode([
+                'type' => 'error',
+                'payload' => ['message' => 'AgentId requerido']
+            ]));
+            $conn->close();
+            return;
+        }
+
+        // Verificar token JWT
         $decoded = Auth::verifyToken($token);
         if (!$decoded) {
+            echo "❌ Token inválido o expirado\n";
             $conn->send(json_encode([
                 'type' => 'error',
-                'payload' => ['message' => 'Token inválido']
+                'payload' => ['message' => 'Token inválido o expirado']
             ]));
             $conn->close();
-            echo "❌ Registro fallido: token inválido\n";
             return;
         }
 
-        $conn->userId = $decoded['userId'];
+        $userId = $decoded['userId'] ?? '';
+        echo "✅ Token válido para usuario: {$userId}\n";
+
+        // Asignar el agente a esta conexión
+        $conn->userId = $userId;
         $conn->agentId = $agentId;
         $this->agentSessions[$agentId] = $conn;
 
+        // Actualizar estado en la base de datos
         if ($this->db) {
             $this->db->updateOne('agents', ['agentId' => $agentId], [
                 'status' => 'online',
-                'lastSeen' => date('c')
+                'lastSeen' => date('c'),
+                'userId' => $userId
             ]);
+            echo "📝 Agente actualizado en BD: {$agentId}\n";
         }
 
-        echo "✅ Agente registrado: {$agentId} (usuario: {$conn->userId})\n";
+        echo "✅ Agente registrado: {$agentId} (usuario: {$userId})\n";
         $conn->send(json_encode([
             'type' => 'registered',
             'payload' => [
@@ -181,21 +229,17 @@ class AgentWebSocket implements MessageComponentInterface {
             ]
         ]));
 
+        // Enviar comandos pendientes
         $this->sendPendingCommands($agentId);
     }
 
+    // ─── HANDLER: FILE_DETECTED ─────────────────────────────────────
+
     private function handleFileDetected(ConnectionInterface $from, $data) {
-        // Si el mensaje vino con detectedFile wrapper, extraerlo
+        // Soporta formato directo o con wrapper 'detectedFile'
         $fileData = $data['detectedFile'] ?? $data;
         
-        if (empty($fileData['path']) || empty($fileData['hash'])) {
-            $from->send(json_encode([
-                'type' => 'error',
-                'payload' => ['message' => 'Faltan datos del archivo (path, hash)']
-            ]));
-            echo "❌ file_detected: datos incompletos\n";
-            return;
-        }
+        echo "📄 file_detected recibido: " . json_encode($fileData) . "\n";
 
         $agentId = $from->agentId ?? $fileData['agentId'] ?? '';
         $userId = $from->userId ?? '';
@@ -209,6 +253,15 @@ class AgentWebSocket implements MessageComponentInterface {
             return;
         }
 
+        if (empty($fileData['path']) || empty($fileData['hash'])) {
+            $from->send(json_encode([
+                'type' => 'error',
+                'payload' => ['message' => 'Faltan datos del archivo (path, hash)']
+            ]));
+            echo "❌ file_detected: datos incompletos\n";
+            return;
+        }
+
         try {
             $result = $this->processFileDetection($userId, $agentId, $fileData);
             $from->send(json_encode([
@@ -219,7 +272,7 @@ class AgentWebSocket implements MessageComponentInterface {
                     'message' => 'Archivo procesado correctamente'
                 ]
             ]));
-            echo "📄 Archivo reportado por agente {$agentId}: " . basename($fileData['path']) . "\n";
+            echo "✅ Archivo procesado: {$fileData['path']}\n";
         } catch (\Exception $e) {
             $from->send(json_encode([
                 'type' => 'file_response',
@@ -232,16 +285,14 @@ class AgentWebSocket implements MessageComponentInterface {
         }
     }
 
-    // El resto de manejadores ya reciben $data como payload, están correctos.
-    // Se mantienen igual que en la versión anterior.
+    // ─── HANDLERS: FILE_EVENT, DB_QUERY, HOST_EVENT, TELEMETRY, EVENT ──
 
     private function handleFileEvent(ConnectionInterface $from, $data) {
         $agentId = $from->agentId ?? $data['agentId'] ?? '';
         if (!$agentId || !$this->db) {
-            echo "⚠️ file_event ignorado: agente no registrado o BD no disponible\n";
+            echo "⚠️ file_event ignorado (agente no registrado o BD no disponible)\n";
             return;
         }
-
         $doc = [
             'agentId' => $agentId,
             'userId' => $from->userId ?? '',
@@ -263,10 +314,9 @@ class AgentWebSocket implements MessageComponentInterface {
     private function handleDBQuery(ConnectionInterface $from, $data) {
         $agentId = $from->agentId ?? $data['agentId'] ?? '';
         if (!$agentId || !$this->db) {
-            echo "⚠️ db_query ignorado: agente no registrado o BD no disponible\n";
+            echo "⚠️ db_query ignorado\n";
             return;
         }
-
         $doc = [
             'agentId' => $agentId,
             'userId' => $from->userId ?? '',
@@ -286,11 +336,7 @@ class AgentWebSocket implements MessageComponentInterface {
 
     private function handleHostEvent(ConnectionInterface $from, $data) {
         $agentId = $from->agentId ?? $data['agentId'] ?? '';
-        if (!$agentId || !$this->db) {
-            echo "⚠️ host_event ignorado: agente no registrado o BD no disponible\n";
-            return;
-        }
-
+        if (!$agentId || !$this->db) return;
         $doc = [
             'agentId' => $agentId,
             'userId' => $from->userId ?? '',
@@ -302,7 +348,6 @@ class AgentWebSocket implements MessageComponentInterface {
             'source' => $data['source'] ?? 'agent',
             'createdAt' => date('c'),
         ];
-
         $this->db->insertOne('alerts', [
             'userId' => $from->userId ?? '',
             'agentId' => $agentId,
@@ -315,7 +360,6 @@ class AgentWebSocket implements MessageComponentInterface {
             'resolved' => false,
             'createdAt' => $doc['createdAt'],
         ]);
-
         $this->db->insertOne('host_events', $doc);
         echo "🖥️ Host event: {$doc['title']} ({$doc['severity']})\n";
     }
@@ -323,10 +367,9 @@ class AgentWebSocket implements MessageComponentInterface {
     private function handleTelemetry(ConnectionInterface $from, $data) {
         $agentId = $from->agentId ?? $data['agentId'] ?? '';
         if (!$agentId || !$this->db) {
-            echo "⚠️ telemetry ignorado: agente no registrado o BD no disponible\n";
+            echo "⚠️ telemetry ignorado\n";
             return;
         }
-
         $doc = [
             'userId' => $from->userId ?? '',
             'agentId' => $agentId,
@@ -337,7 +380,6 @@ class AgentWebSocket implements MessageComponentInterface {
             'status' => 'online',
             'lastSeen' => date('c'),
         ];
-
         $existing = $this->db->findOne('host_monitor', ['agentId' => $agentId]);
         if ($existing) {
             $this->db->updateOne('host_monitor', ['_id' => $existing['_id']], $doc);
@@ -350,11 +392,7 @@ class AgentWebSocket implements MessageComponentInterface {
 
     private function handleGenericEvent(ConnectionInterface $from, $data) {
         $agentId = $from->agentId ?? $data['agentId'] ?? '';
-        if (!$agentId || !$this->db) {
-            echo "⚠️ event ignorado: agente no registrado o BD no disponible\n";
-            return;
-        }
-
+        if (!$agentId || !$this->db) return;
         $this->db->insertOne('alerts', [
             'userId' => $from->userId ?? '',
             'agentId' => $agentId,
@@ -367,7 +405,7 @@ class AgentWebSocket implements MessageComponentInterface {
             'resolved' => false,
             'createdAt' => date('c'),
         ]);
-        echo "📢 Evento genérico: {$data['title']} ({$data['severity']})\n";
+        echo "📢 Evento genérico: {$data['title']}\n";
     }
 
     private function handleCommandResponse(ConnectionInterface $from, $data) {
@@ -382,12 +420,10 @@ class AgentWebSocket implements MessageComponentInterface {
                 'status' => $status,
             ]);
             echo "📨 Command response: {$commandId} - {$status}\n";
-        } else {
-            echo "⚠️ Command response sin commandId\n";
         }
     }
 
-    // ─── Envío de comandos pendientes ──────────────────────────────
+    // ─── COMANDOS PENDIENTES ──────────────────────────────────────
 
     private function sendPendingCommands($agentId) {
         if (!$this->db) return;
@@ -409,11 +445,11 @@ class AgentWebSocket implements MessageComponentInterface {
                     'commandId' => $cmd['_id'],
                 ]
             ]));
-            echo "📨 Comando enviado a {$agentId}: {$cmd['command']}\n";
+            echo "📨 Comando enviado a {$agentId}: " . json_encode($cmd['command']) . "\n";
         }
     }
 
-    // ─── Procesamiento de detección de archivo (íntegro) ──────────────
+    // ─── PROCESAMIENTO DE DETECCIÓN DE ARCHIVO ──────────────────
 
     private function processFileDetection($userId, $agentId, $fileData) {
         if (!$this->db) {
@@ -421,6 +457,7 @@ class AgentWebSocket implements MessageComponentInterface {
         }
         $db = $this->db;
 
+        // Validar campos requeridos
         $required = ['path', 'hash', 'fileType'];
         foreach ($required as $field) {
             if (empty($fileData[$field])) {
@@ -428,6 +465,7 @@ class AgentWebSocket implements MessageComponentInterface {
             }
         }
 
+        // 1. Guardar en compliance_files
         $existing = $db->findOne('compliance_files', [
             'agentId' => $agentId,
             'path' => $fileData['path'],
@@ -470,6 +508,7 @@ class AgentWebSocket implements MessageComponentInterface {
             $inventoryId = null;
         }
 
+        // 2. Inventario (RAT)
         $categories = [];
         foreach ($fileData['personalData'] ?? [] as $col => $types) {
             $categories = array_merge($categories, $types);
@@ -501,6 +540,7 @@ class AgentWebSocket implements MessageComponentInterface {
             ]);
         }
 
+        // 3. Auditoría de archivos
         $db->insertOne('file_audit_logs', [
             'userId' => $userId,
             'agentId' => $agentId,
@@ -516,6 +556,7 @@ class AgentWebSocket implements MessageComponentInterface {
             'status' => 'processed',
         ]);
 
+        // 4. Auditoría general
         $db->insertOne('audit_logs', [
             'userId' => $userId,
             'action' => 'file_detected_by_agent',
@@ -532,6 +573,8 @@ class AgentWebSocket implements MessageComponentInterface {
         return ['fileId' => $fileId];
     }
 }
+
+// ─── INICIAR SERVIDOR ──────────────────────────────────────────
 
 echo "🚀 Iniciando servidor WebSocket en el puerto 3839...\n";
 echo "Presiona Ctrl+C para detener.\n";
