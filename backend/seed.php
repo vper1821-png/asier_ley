@@ -1,5 +1,5 @@
 <?php
-// SecureLab2v - Database seeding .
+// SecureLab2v - Database seeding ....
 
 function seedAdminUser() {
     static $seeded = false;

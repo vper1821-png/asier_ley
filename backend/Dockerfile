@@ -1,24 +1,26 @@
-# SecureLab Backend – con agente SecureLab (enlace dinámico SQLCipher)
+# SecureLab Backend – con agente SecureLab (SQLCipher + mattn/go-sqlite3)
 # Ejecutar desde la raíz del proyecto:
 #   docker build -f backend/Dockerfile -t securelab-backend .
 
-# ── Stage 1: Compilar agente (enlace dinámico) ──
+# ── Stage 1: Compilar agente (enlace dinámico con SQLCipher) ──
 FROM golang:1.25-alpine AS agent-builder
 WORKDIR /src
 
-# 1. Instalar dependencias: gcc, musl-dev y SQLCipher (librería dinámica)
+# 1. Instalar dependencias para CGO y SQLCipher
 RUN apk add --no-cache \
     gcc \
     musl-dev \
-    sqlcipher-dev   # ← Proporciona libsqlcipher.so y cabeceras
+    sqlcipher-dev \
+    pkgconfig
 
 # 2. Copiar el código del agente (desde la raíz del proyecto)
 COPY securelab-agent/ .
 
-# 3. Descargar dependencias Go
-RUN go mod tidy
+# 3. Sincronizar dependencias (usando el go.mod actualizado)
+#    Esto descargará todas las dependencias con las versiones actualizadas
+RUN go mod tidy && go mod vendor
 
-# 4. Compilar binarios para todas las plataformas (apuntando al paquete correcto)
+# 4. Compilar binarios para todas las plataformas (enlace dinámico)
 RUN mkdir -p /out && \
     CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -v -ldflags "-s -w" -o /out/securelab-agent-win-x64.exe ./cmd/agent && \
     CGO_ENABLED=1 GOOS=linux   GOARCH=amd64 go build -v -ldflags "-s -w" -o /out/securelab-agent-linux-x64 ./cmd/agent && \
