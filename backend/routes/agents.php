@@ -186,11 +186,10 @@ function downloadToken() {
 // =============================================================
 
 function download() {
-    $user = Auth::requireAuth(); // Asegura que el usuario está autenticado
-    $token = get_token(); // Obtener el token JWT del usuario (para incluirlo en el config.json)
+    $user = Auth::requireAuth();
+    $token = get_token();
 
     $platform = $_GET['platform'] ?? 'linux-x64';
-    // Normalizar plataforma
     if (preg_match('#^win#', $platform)) {
         $platform = 'win-x64';
     }
@@ -199,7 +198,6 @@ function download() {
         json_error('plataforma no válida');
     }
 
-    // Mapeo de plataformas a nombres de binarios (NUEVO AGENTE)
     $binaryMap = [
         'win-x64'    => 'securelab-agent-win-x64.exe',
         'linux-x64'  => 'securelab-agent-linux-x64',
@@ -210,80 +208,48 @@ function download() {
     $binDir = __DIR__ . '/../agent-bin';
     $binaryPath = $binDir . '/' . $binaryName;
 
-    // Verificar que el binario existe
     if (!file_exists($binaryPath) || filesize($binaryPath) < 1000000) {
         json_error('Agente aún no compilado, intenta de nuevo en unos segundos', 503);
     }
 
-    // Preparar directorio temporal
     $tmpDir = sys_get_temp_dir() . '/agent-dl-' . uniqid();
     mkdir($tmpDir, 0755, true);
-
-    // Copiar el binario al temporal
     copy($binaryPath, $tmpDir . '/' . $binaryName);
 
-    // ──────────────────────────────────────────────────────────────
-    // 1. Generar/recuperar clave de cifrado para el usuario (NUEVO)
-    // ──────────────────────────────────────────────────────────────
-    $db = Database::getInstance();
-    $user = $db->findOne('users', ['_id' => $user['_id']]);
-    if (empty($user['encryptionKey'])) {
-        $key = bin2hex(random_bytes(32)); // 64 caracteres hexadecimales
-        $db->updateOne('users', ['_id' => $user['_id']], ['encryptionKey' => $key]);
-        $user['encryptionKey'] = $key;
-    }
-    $encryptionKey = $user['encryptionKey'];
+    // ──────────────────────────────────────────────
+    // ELIMINADO: ya no generamos clave de cifrado
+    // ──────────────────────────────────────────────
 
-    // ──────────────────────────────────────────────────────────────
-    // 2. Generar config.json (NUEVO con más campos y db_encryption_key)
-    // ──────────────────────────────────────────────────────────────
-    $userName = $user['email'] ?? 'usuario'; // Para las rutas de archivos
-    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-    preg_match('/:([0-9]+)$/', $host, $portMatch);
-    $port = $portMatch[1] ?? ($_SERVER['SERVER_PORT'] ?? '3838');
-    $hostName = preg_replace('/:[0-9]+$/', '', $host);
-    if (in_array(strtolower($hostName), ['localhost', '127.0.0.1', '::1', '[::1]'], true)) {
-        $hostName = '127.0.0.1';
-    }
-
-    // Los directorios a vigilar se pueden personalizar, pero usamos los directorios típicos del usuario
-    // NOTA: En Windows, el agente necesita rutas absolutas. Usamos el nombre de usuario para armar las rutas.
-    $homeDir = '';
-    if ($platform === 'win-x64') {
-        $homeDir = 'C:\\Users\\' . $userName;
-    } else {
-        $homeDir = '/home/' . $userName; // Linux/macOS
-    }
+    // Generar config.json (SIN db_encryption_key)
+    $userName = $user['email'] ?? 'usuario';
+    $homeDir = ($platform === 'win-x64') ? 'C:\\Users\\' . $userName : '/home/' . $userName;
 
     $config = [
         'api_base'           => API_BASE_URL . '/api/agents',
         'token'              => $token,
         'heartbeat_interval' => 5,
         'agent_version'      => '2.0.0',
-        // Directorios a vigilar (file_watch_dirs) – ajusta según lo que necesites
         'file_watch_dirs'    => [
             $homeDir . '/Documents',
             $homeDir . '/Desktop',
             $homeDir . '/Downloads'
         ],
         'hardening_enabled'  => true,
-        'persistence_mode'   => 'aggressive',  // o 'respectful' según prefieras
+        'persistence_mode'   => 'none',
         'log_level'          => 'info',
-        'db_encryption_key'  => $encryptionKey, // <-- CLAVE DE CIFRADO (NUEVO)
+        // 'db_encryption_key' => ..., // <-- ELIMINADO
     ];
 
-    // Guardar config.json
     file_put_contents($tmpDir . '/config.json', json_encode($config, JSON_PRETTY_PRINT));
 
-    // ──────────────────────────────────────────────────────────────
-    // 3. Empaquetar según plataforma (ZIP o MSI)
-    // ──────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────
+    // Empaquetado (igual que antes)
+    // ──────────────────────────────────────────────
     $ext = $platform === 'win-x64' ? '.exe' : '';
     if ($platform === 'win-x64') {
         $archiveName = 'SecureLab-Agent-win-x64.msi';
         $archivePath = sys_get_temp_dir() . '/' . $archiveName;
-        $wxsPath = __DIR__ . '/../installer/product.wxs'; // Ruta al archivo .wxs si existe
-
+        $wxsPath = __DIR__ . '/../installer/product.wxs';
         if (file_exists($wxsPath)) {
             $cmd = sprintf(
                 'wixl -D %s -D %s -D %s -o %s --arch x64 %s 2>&1',
@@ -295,8 +261,6 @@ function download() {
             );
             exec($cmd, $output, $exitCode);
             if ($exitCode !== 0 || !file_exists($archivePath)) {
-                error_log('[Agent] wixl failed (' . $exitCode . '): ' . implode(' | ', $output));
-                // Fallback: ZIP
                 $archiveName = 'SecureLab-Agent-win-x64.zip';
                 $archivePath = sys_get_temp_dir() . '/' . $archiveName;
                 $zip = new ZipArchive();
@@ -315,7 +279,6 @@ function download() {
             $zip->close();
         }
     } else {
-        // Linux, macOS: tar.gz
         $archiveName = 'SecureLab-Agent-' . $platform . '.tar.gz';
         $tarPath = sys_get_temp_dir() . '/agent-' . uniqid('', true) . '.tar';
         $phar = new PharData($tarPath);
@@ -326,24 +289,20 @@ function download() {
         Phar::unlinkArchive($tarPath);
         $archivePath = $tarPath . '.gz';
     }
-   
-    // ──────────────────────────────────────────────────────────────
-    // 4. Enviar al cliente .
-    // ──────────────────────────────────────────────────────────────
+
     $size = filesize($archivePath);
     $contentType = $platform === 'win-x64' ? 'application/x-msi' : 'application/gzip';
-
     header('Content-Type: ' . $contentType);
     header('Content-Disposition: attachment; filename="' . $archiveName . '"');
     header('Content-Length: ' . $size);
     readfile($archivePath);
 
-    // Limpiar archivos temporales
     array_map('unlink', glob($tmpDir . '/*'));
     rmdir($tmpDir);
     unlink($archivePath);
     exit;
 }
+
 
 function message() {
     $user = Auth::requireAuth();
