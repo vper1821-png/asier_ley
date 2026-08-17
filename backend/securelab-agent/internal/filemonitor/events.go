@@ -1,10 +1,14 @@
 package filemonitor
 
-import "securelab-agent/internal/audit"
+import (
+	"securelab-agent/internal/audit"
+	"securelab-agent/internal/logger"
+)
 
-// fileWatcher es la interfaz interna (definida en watcher_*.go)
+// fileWatcher representa un watcher para un directorio específico
 type fileWatcher struct {
 	dir    string
 	events chan<- audit.FileEvent
 	done   chan struct{}
+	log    *logger.Logger // <-- NUEVO campo
 }

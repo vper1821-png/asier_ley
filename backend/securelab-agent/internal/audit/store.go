@@ -3,6 +3,7 @@ package audit
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -15,7 +16,6 @@ type Store struct {
 }
 
 func NewStore(dbPath string) *Store {
-	// Crear el directorio padre si no existe
 	dir := filepath.Dir(dbPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		panic("no se pudo crear el directorio para la base de datos: " + err.Error())
@@ -109,39 +109,48 @@ func (s *Store) migrateColumns() {
 	}
 }
 
-func (s *Store) SaveFileEvent(ev FileEvent) {
-	personalDataJSON, _ := json.Marshal(ev.PersonalData)
+// SaveFileEvent guarda un evento de archivo en la base de datos local
+func (s *Store) SaveFileEvent(ev FileEvent) error {
+	personalDataJSON, err := json.Marshal(ev.PersonalData)
+	if err != nil {
+		return fmt.Errorf("serializando personal_data: %w", err)
+	}
 	sensitive := 0
 	if ev.Sensitive {
 		sensitive = 1
 	}
-	_, err := s.db.Exec(`
+	_, err = s.db.Exec(`
 		INSERT INTO file_events (timestamp, path, event_type, process_name, pid, user, size, hash, destination, personal_data, sensitive)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, ev.Timestamp.Format(time.RFC3339), ev.Path, ev.EventType, ev.ProcessName, ev.PID, ev.User, ev.Size, ev.Hash, ev.Destination, string(personalDataJSON), sensitive)
 	if err != nil {
-		// log interno
+		return fmt.Errorf("insertando file_event: %w", err)
 	}
+	return nil
 }
 
-func (s *Store) SaveDBQuery(entry DBQueryEntry) {
+// SaveDBQuery guarda una consulta de base de datos
+func (s *Store) SaveDBQuery(entry DBQueryEntry) error {
 	_, err := s.db.Exec(`
 		INSERT INTO db_queries (timestamp, engine, database, user, host, query, operation, risk_score)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`, entry.Timestamp.Format(time.RFC3339), entry.Engine, entry.Database, entry.User, entry.Host, entry.Query, entry.Operation, entry.RiskScore)
 	if err != nil {
-		// log
+		return fmt.Errorf("insertando db_query: %w", err)
 	}
+	return nil
 }
 
-func (s *Store) SaveHostEvent(ev HostEvent) {
+// SaveHostEvent guarda un evento del sistema/hardening
+func (s *Store) SaveHostEvent(ev HostEvent) error {
 	_, err := s.db.Exec(`
 		INSERT INTO host_events (timestamp, event_type, severity, title, detail, source)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`, ev.Timestamp.Format(time.RFC3339), ev.Type, ev.Severity, ev.Title, ev.Detail, ev.Source)
 	if err != nil {
-		// log
+		return fmt.Errorf("insertando host_event: %w", err)
 	}
+	return nil
 }
 
 func (s *Store) Close() {

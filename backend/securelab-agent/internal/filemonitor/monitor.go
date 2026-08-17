@@ -10,7 +10,7 @@ import (
 	"securelab-agent/internal/audit"
 	"securelab-agent/internal/logger"
 	"securelab-agent/internal/scanner"
-	"securelab-agent/internal/utils" // <-- Importar utils para HashFile
+	"securelab-agent/internal/utils"
 	"securelab-agent/internal/ws"
 )
 
@@ -42,13 +42,13 @@ func NewMonitor(store *audit.Store, wsClient *ws.Client, log *logger.Logger) *Mo
 // WatchDirectories añade directorios a vigilar
 func (m *Monitor) WatchDirectories(dirs []string) {
 	for _, dir := range dirs {
-		// Verificar que el directorio existe
 		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 			m.log.Warn("Directorio no existe o no es válido: %s", dir)
 			continue
 		}
-		w := newFileWatcher(dir, m.eventChan)
+		w := newFileWatcher(dir, m.eventChan, m.log)
 		m.watchers = append(m.watchers, w)
+		m.log.Debug("FileMonitor: directorio añadido: %s", dir)
 	}
 }
 
@@ -60,7 +60,6 @@ func (m *Monitor) Start() {
 	}
 	m.log.Info("FileMonitor: iniciando vigilancia sobre %d directorios", len(m.watchers))
 
-	// Iniciar cada watcher en su propia goroutine
 	for _, w := range m.watchers {
 		m.wg.Add(1)
 		go func(w *fileWatcher) {
@@ -71,7 +70,6 @@ func (m *Monitor) Start() {
 		}(w)
 	}
 
-	// Procesar eventos en una goroutine separada
 	m.wg.Add(1)
 	go m.processEvents()
 }
@@ -82,18 +80,25 @@ func (m *Monitor) processEvents() {
 	for {
 		select {
 		case ev := <-m.eventChan:
-			// Guardar el evento base en la base de datos
-			m.store.SaveFileEvent(ev)
+			m.log.Debug("FileMonitor: evento recibido: %s - %s", ev.Path, ev.EventType)
 
-			// Enviar evento por WebSocket al backend
+			// Guardar localmente
+			if err := m.store.SaveFileEvent(ev); err != nil {
+				m.log.Error("FileMonitor: error guardando evento local: %v", err)
+			} else {
+				m.log.Debug("FileMonitor: evento guardado localmente: %s", ev.Path)
+			}
+
+			// Enviar por WebSocket
 			m.wsClient.SendFileEvent(ev)
 
-			// Si es un archivo que puede contener PII, escanearlo
+			// Si es scaneable, analizar en background
 			if isScannableFile(ev.Path) {
+				m.log.Debug("FileMonitor: archivo scaneable, iniciando análisis: %s", ev.Path)
 				go m.scanFileAndReport(ev)
 			}
 
-			// Loggear eventos críticos (copias, eliminaciones, movimientos)
+			// Logs de eventos críticos
 			if ev.EventType == "copy" || ev.EventType == "delete" || ev.EventType == "move" {
 				m.log.Warn("File %s: %s by %s (PID %d)", ev.Path, ev.EventType, ev.ProcessName, ev.PID)
 			}
@@ -106,49 +111,50 @@ func (m *Monitor) processEvents() {
 }
 
 // scanFileAndReport escanea el archivo en busca de PII y guarda los resultados
-// Ahora calcula el hash SHA256 del archivo antes de enviarlo al backend.
 func (m *Monitor) scanFileAndReport(ev audit.FileEvent) {
-	// Verificar que el archivo aún existe (puede haber sido eliminado)
+	// Verificar que el archivo aún existe
 	if _, err := os.Stat(ev.Path); os.IsNotExist(err) {
+		m.log.Debug("FileMonitor: archivo eliminado antes de escanear: %s", ev.Path)
 		return
 	}
 
-	// ── CALCULAR HASH (NUEVO) ──
-	// El watcher original no calcula hash, lo hacemos aquí para que el backend
-	// pueda identificar el archivo de forma única.
+	// Calcular hash si es necesario
 	if ev.Hash == "" {
 		hash, err := utils.HashFile(ev.Path)
 		if err != nil {
-			m.log.Warn("Error calculando hash de %s: %v", ev.Path, err)
-			// Continuamos sin hash, pero el backend rechazará el mensaje.
-			// Podríamos generar un hash alternativo o simplemente dejarlo vacío.
+			m.log.Warn("FileMonitor: error calculando hash de %s: %v", ev.Path, err)
 		} else {
 			ev.Hash = hash
-			m.log.Debug("Hash calculado para %s: %s", ev.Path, hash[:8])
+			m.log.Debug("FileMonitor: hash calculado para %s: %s", ev.Path, hash[:8])
 		}
 	}
 
-	// Analizar el contenido del archivo en busca de PII
+	// Escanear contenido
 	result, err := scanner.ScanFile(ev.Path)
 	if err != nil {
-		m.log.Warn("Error escaneando %s: %v", ev.Path, err)
+		m.log.Warn("FileMonitor: error escaneando %s: %v", ev.Path, err)
 		return
 	}
 
-	// Si se encontraron datos personales, guardar y reportar
-	if len(result) > 0 {
-		// Actualizar el evento con la información de PII
-		ev.PersonalData = result
-		ev.Sensitive = hasSensitiveData(result)
-
-		// Guardar el evento actualizado con los datos de PII
-		m.store.SaveFileEvent(ev)
-
-		// Enviar alerta por WebSocket (AHORA CON HASH Y PATH)
-		m.wsClient.SendFileDetection(ev)
-
-		m.log.Info("PII detectada en %s: %v", ev.Path, result)
+	if len(result) == 0 {
+		return
 	}
+
+	// Actualizar evento con PII
+	ev.PersonalData = result
+	ev.Sensitive = hasSensitiveData(result)
+
+	// Guardar evento actualizado localmente
+	if err := m.store.SaveFileEvent(ev); err != nil {
+		m.log.Error("FileMonitor: error guardando evento con PII local: %v", err)
+	} else {
+		m.log.Debug("FileMonitor: evento con PII guardado localmente: %s", ev.Path)
+	}
+
+	// Enviar detección al backend
+	m.wsClient.SendFileDetection(ev)
+
+	m.log.Info("PII detectada en %s: %v", ev.Path, result)
 }
 
 // isScannableFile comprueba si el archivo puede contener PII según su extensión
