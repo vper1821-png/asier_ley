@@ -34,6 +34,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'complianceLevel' => $_POST['complianceLevel'] ?? 'basic',
         ]);
         $msg = 'Configuración guardada.';
+    } elseif (isset($_POST['assign_training'])) {
+        $res = api_post_form('/api/compliance/invites/' . urlencode($_POST['invite_id'] ?? '') . '/assign-training', [
+            'token' => $token,
+            'trainingId' => $_POST['training_id'] ?? '',
+        ]);
+        if (!empty($res['success'])) $msg = 'Firma asignada a la capacitación.';
+        else $err = $res['error'] ?? 'Error al asignar la firma.';
+    } elseif (isset($_POST['unassign_invite'])) {
+        $res = api_post_form('/api/compliance/invites/' . urlencode($_POST['invite_id'] ?? '') . '/unassign', ['token' => $token]);
+        if (!empty($res['success'])) $msg = 'Firma removida de la capacitación.';
+        else $err = $res['error'] ?? 'Error al quitar la firma.';
     }
 }
 
@@ -52,6 +63,8 @@ $inventory = $fetchList('inventory');
 $breaches = $fetchList('breaches');
 $trainings = $fetchList('trainings');
 $pseudoRules = $fetchList('pseudonymization');
+$allInvites = $fetchList('invites');
+$signedInvites = array_values(array_filter($allInvites, fn($i) => !empty($i['signed'])));
 
 $items = [];
 if (!in_array($tab, ['overview', 'violations'])) {
@@ -370,9 +383,21 @@ require_once __DIR__ . '/../includes/header.php';
             </div>
 
             <?php elseif ($tab === 'consents'): ?>
-            <?php renderSectionHeader('Consentimientos', 'Gestión de consentimientos de titulares de datos'); ?>
+            <?php
+            $cActive = count(array_filter($items, fn($it) => !empty($it['active']) && empty($it['revokedAt'])));
+            $cRevoked = count($items) - $cActive;
+            ?>
+            <?php renderSectionHeader('Consentimientos', 'Gestión de consentimientos de titulares de datos — Art. 12 de la Ley 21.719'); ?>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <?php renderComplianceStat('Total', count($items), 'text-white', cIcon('check')); ?>
+                <?php renderComplianceStat('Activos', $cActive, 'text-emerald-400', cIcon('check')); ?>
+                <?php renderComplianceStat('Revocados', $cRevoked, 'text-red-400', cIcon('xmark')); ?>
+            </div>
             <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5">
-                <p class="text-[12px] font-semibold text-white mb-4">Nuevo consentimiento</p>
+                <div class="flex items-center justify-between mb-4">
+                    <p class="text-[12px] font-semibold text-white">Nuevo consentimiento</p>
+                    <?php renderImportBtn('consents'); ?>
+                </div>
                 <form method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-3">
                     <input type="hidden" name="collection" value="consents">
                     <input type="text" name="fields[name]" required placeholder="Nombre del titular" class="input-premium">
@@ -380,18 +405,42 @@ require_once __DIR__ . '/../includes/header.php';
                     <input type="text" name="fields[purpose]" required placeholder="Finalidad del tratamiento" class="input-premium">
                     <div class="flex gap-2">
                         <input type="hidden" name="fields[active]" value="1">
-                        <button type="submit" name="create_item" value="1" class="flex-1 px-3 py-2 rounded-lg text-[11px] font-medium bg-primary-500 hover:bg-primary-600 text-white transition-all">Registrar</button>
+                        <button type="submit" name="create_item" value="1" class="flex-1 px-3 py-2 rounded-lg text-[11px] font-medium bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white transition-all">Registrar</button>
                     </div>
                 </form>
             </div>
-            <?php renderComplianceList($items, 'consents', function ($it) {
-                echo '<p class="text-[12px] font-medium text-text-heading truncate">' . h($it['name'] ?? 'Titular') . ' <span class="text-[10px] text-text-subtle">' . h($it['email'] ?? '') . '</span></p>';
-                echo '<p class="text-[10px] text-text-subtle mt-0.5">Finalidad: ' . h($it['purpose'] ?? '-') . ' · ' . h(substr($it['createdAt'] ?? '', 0, 10)) . '</p>';
-            }, function ($it) {
-                $active = !empty($it['active']) && $it['active'] !== 'false' && empty($it['revokedAt']);
-                echo '<span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border ' . ($active ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20') . '">' . ($active ? 'Activo' : 'Revocado') . '</span>';
-                if ($active) renderActionBtn('consents', $it['_id'] ?? '', 'revoke', 'Revocar');
-            }); ?>
+            <?php if (empty($items)): ?>
+            <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-10 text-center">
+                <p class="text-[11px] text-text-subtle">Sin consentimientos todavía. Crea uno o usa «Importar masivo».</p>
+            </div>
+            <?php else: ?>
+            <div class="space-y-2">
+                <?php foreach ($items as $it):
+                    $active = !empty($it['active']) && $it['active'] !== 'false' && empty($it['revokedAt']);
+                    $initial = strtoupper(substr($it['name'] ?? '?', 0, 1));
+                ?>
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm hover:border-border-theme/60 transition-colors p-4 flex flex-col md:flex-row md:items-center gap-3">
+                    <div class="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-[12px] font-bold <?= $active ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400' ?>"><?= h($initial) ?></div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <p class="text-[12px] font-medium text-text-heading truncate"><?= h($it['name'] ?? 'Titular') ?></p>
+                            <span class="text-[10px] text-text-subtle font-mono"><?= h($it['email'] ?? '') ?></span>
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border <?= $active ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20' ?>"><?= $active ? 'Activo' : 'Revocado' ?></span>
+                        </div>
+                        <p class="text-[10px] text-text-subtle mt-0.5">Finalidad: <?= h($it['purpose'] ?? '-') ?> · <?= h(substr($it['createdAt'] ?? '', 0, 10)) ?></p>
+                    </div>
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <?php if ($active) renderActionBtn('consents', $it['_id'] ?? '', 'revoke', 'Revocar'); ?>
+                        <form method="POST" class="inline">
+                            <input type="hidden" name="collection" value="consents">
+                            <input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>">
+                            <button type="submit" name="delete_item" value="1" onclick="return confirm('¿Eliminar este consentimiento?')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all">Eliminar</button>
+                        </form>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
 
             <!-- ═══ INVENTARIO (VERSIÓN MEJORADA) ═══ -->
             <?php elseif ($tab === 'inventory'): ?>
@@ -467,31 +516,27 @@ require_once __DIR__ . '/../includes/header.php';
             <?php endif; ?>
 
             <!-- ═══ BARRA DE ESTADÍSTICAS ═══ -->
-            <div class="grid grid-cols-2 md:grid-cols-6 gap-3 mb-5">
-                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-3">
-                    <p class="text-[9px] text-text-subtle uppercase tracking-wider">Total</p>
-                    <p class="text-[18px] font-bold text-white"><?= $totalItems ?></p>
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
+                <?php
+                $invStats = [
+                    ['label' => 'Total', 'value' => $totalItems, 'color' => '#94a3b8', 'bg' => 'rgba(148,163,184,0.1)', 'icon' => 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4'],
+                    ['label' => 'Bases de Datos', 'value' => $dbItems, 'color' => '#38bdf8', 'bg' => 'rgba(56,189,248,0.1)', 'icon' => 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4'],
+                    ['label' => 'Archivos', 'value' => $fileItems, 'color' => '#fbbf24', 'bg' => 'rgba(251,191,36,0.1)', 'icon' => 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'],
+                    ['label' => 'Datos Sensibles', 'value' => $sensitiveItemsCount, 'color' => '#f87171', 'bg' => 'rgba(248,113,113,0.1)', 'icon' => 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z'],
+                    ['label' => 'Completos', 'value' => $completeItems . ' / ' . $totalItems, 'color' => '#34d399', 'bg' => 'rgba(52,211,153,0.1)', 'icon' => 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z'],
+                    ['label' => 'Riesgo Alto', 'value' => $riskCounts['high'] + $riskCounts['critical'], 'color' => '#fbbf24', 'bg' => 'rgba(251,191,36,0.1)', 'icon' => 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z'],
+                ];
+                foreach ($invStats as $s): ?>
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-3.5 flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style="background:<?= $s['bg'] ?>;color:<?= $s['color'] ?>">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="<?= $s['icon'] ?>"/></svg>
+                    </div>
+                    <div class="min-w-0">
+                        <p class="text-[9px] text-text-subtle uppercase tracking-wider truncate"><?= h($s['label']) ?></p>
+                        <p class="text-[18px] font-bold leading-none tracking-tight" style="color:<?= $s['color'] ?>"><?= h($s['value']) ?></p>
+                    </div>
                 </div>
-                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-3">
-                    <p class="text-[9px] text-text-subtle uppercase tracking-wider">Bases de Datos</p>
-                    <p class="text-[18px] font-bold text-cyan-400"><?= $dbItems ?></p>
-                </div>
-                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-3">
-                    <p class="text-[9px] text-text-subtle uppercase tracking-wider">Archivos</p>
-                    <p class="text-[18px] font-bold text-amber-400"><?= $fileItems ?></p>
-                </div>
-                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-3">
-                    <p class="text-[9px] text-text-subtle uppercase tracking-wider">Datos Sensibles</p>
-                    <p class="text-[18px] font-bold text-red-400"><?= $sensitiveItemsCount ?></p>
-                </div>
-                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-3">
-                    <p class="text-[9px] text-text-subtle uppercase tracking-wider">Completos</p>
-                    <p class="text-[18px] font-bold text-emerald-400"><?= $completeItems ?> / <?= $totalItems ?></p>
-                </div>
-                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-3">
-                    <p class="text-[9px] text-text-subtle uppercase tracking-wider">⚠️ Riesgo Alto</p>
-                    <p class="text-[18px] font-bold text-yellow-400"><?= $riskCounts['high'] + $riskCounts['critical'] ?></p>
-                </div>
+                <?php endforeach; ?>
             </div>
 
             <!-- ═══ FILTROS Y BÚSQUEDA ═══ -->
@@ -509,24 +554,24 @@ require_once __DIR__ . '/../includes/header.php';
                     <!-- Filtro: Riesgo -->
                     <select id="filter-risk" class="bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all" onchange="updateFilters()">
                         <option value="">Todos los riesgos</option>
-                        <option value="low" <?= $filterRisk === 'low' ? 'selected' : '' ?>>🟢 Bajo</option>
-                        <option value="medium" <?= $filterRisk === 'medium' ? 'selected' : '' ?>>🟡 Medio</option>
-                        <option value="high" <?= $filterRisk === 'high' ? 'selected' : '' ?>>🟠 Alto</option>
-                        <option value="critical" <?= $filterRisk === 'critical' ? 'selected' : '' ?>>🔴 Crítico</option>
+                        <option value="low" <?= $filterRisk === 'low' ? 'selected' : '' ?>>Bajo</option>
+                        <option value="medium" <?= $filterRisk === 'medium' ? 'selected' : '' ?>>Medio</option>
+                        <option value="high" <?= $filterRisk === 'high' ? 'selected' : '' ?>>Alto</option>
+                        <option value="critical" <?= $filterRisk === 'critical' ? 'selected' : '' ?>>Crítico</option>
                     </select>
 
                     <!-- Filtro: Sensibles -->
                     <select id="filter-sensitive" class="bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all" onchange="updateFilters()">
                         <option value="">Todos los datos</option>
-                        <option value="1" <?= $filterSensitive === '1' ? 'selected' : '' ?>>🔒 Sensibles</option>
-                        <option value="0" <?= $filterSensitive === '0' ? 'selected' : '' ?>>📄 No sensibles</option>
+                        <option value="1" <?= $filterSensitive === '1' ? 'selected' : '' ?>>Sensibles</option>
+                        <option value="0" <?= $filterSensitive === '0' ? 'selected' : '' ?>>No sensibles</option>
                     </select>
 
                     <!-- Filtro: Origen -->
                     <select id="filter-source" class="bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all" onchange="updateFilters()">
                         <option value="">Todos los orígenes</option>
-                        <option value="database" <?= $filterSource === 'database' ? 'selected' : '' ?>>🗄️ Base de datos</option>
-                        <option value="file" <?= $filterSource === 'file' ? 'selected' : '' ?>>📄 Archivo</option>
+                        <option value="database" <?= $filterSource === 'database' ? 'selected' : '' ?>>Base de datos</option>
+                        <option value="file" <?= $filterSource === 'file' ? 'selected' : '' ?>>Archivo</option>
                     </select>
 
                     <!-- Botón limpiar -->
@@ -540,6 +585,7 @@ require_once __DIR__ . '/../includes/header.php';
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                         Nuevo
                     </button>
+                    <?php renderImportBtn('inventory'); ?>
                 </div>
 
                 <!-- Resultados de filtro -->
@@ -555,17 +601,23 @@ require_once __DIR__ . '/../includes/header.php';
             <!-- ═══ FORMULARIO DE CREACIÓN (colapsable) ═══ -->
             <div id="inventory-create-form" class="hidden rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5 mb-5">
                 <div class="flex items-center justify-between mb-4">
-                    <p class="text-[12px] font-semibold text-white">📝 Nueva actividad de tratamiento</p>
+                    <p class="text-[12px] font-semibold text-white flex items-center gap-2">
+                        <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"/></svg>
+                        Nueva actividad de tratamiento
+                    </p>
                     <button onclick="document.getElementById('inventory-create-form').classList.add('hidden')" class="text-text-muted hover:text-text-heading">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                     </button>
                 </div>
 
-                <div class="bg-cyan-500/[0.04] border border-cyan-500/20 rounded-lg p-3 mb-4 text-[10px] text-text-muted leading-relaxed">
-                    <p><span class="text-cyan-400 font-semibold">📖 ¿Qué es una actividad de tratamiento?</span></p>
-                    <p>Toda operación que realices con datos personales: recopilar, almacenar, usar, modificar, compartir o eliminar.
-                       Cada actividad debe registrarse con su finalidad, base legal y medidas de seguridad.</p>
-                    <p class="mt-1"><span class="text-cyan-400">⚖️ Art. 14 Ley 21.719:</span> El responsable debe mantener un registro documentado de todas las actividades de tratamiento.</p>
+                <div class="bg-indigo-500/[0.05] border border-indigo-500/20 rounded-lg p-3.5 mb-4 text-[10px] text-text-muted leading-relaxed flex gap-2.5">
+                    <svg class="w-4 h-4 text-indigo-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <div>
+                        <p><span class="text-indigo-300 font-semibold">¿Qué es una actividad de tratamiento?</span></p>
+                        <p>Toda operación que realices con datos personales: recopilar, almacenar, usar, modificar, compartir o eliminar.
+                           Cada actividad debe registrarse con su finalidad, base legal y medidas de seguridad.</p>
+                        <p class="mt-1"><span class="text-indigo-300 font-semibold">Art. 14 Ley 21.719:</span> El responsable debe mantener un registro documentado de todas las actividades de tratamiento.</p>
+                    </div>
                 </div>
 
                 <form method="POST" class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -593,11 +645,11 @@ require_once __DIR__ . '/../includes/header.php';
                         <label class="label-premium">Base de licitud *</label>
                         <select name="legalBasis" required class="input-premium w-full">
                             <option value="">Seleccionar...</option>
-                            <option value="Consentimiento">✅ Consentimiento del titular (Art. 12)</option>
-                            <option value="Ejecución de contrato">📄 Ejecución de contrato (Art. 13)</option>
-                            <option value="Obligación legal">⚖️ Obligación legal (Art. 13)</option>
-                            <option value="Interés legítimo">🎯 Interés legítimo (Art. 13)</option>
-                            <option value="Interés público">🏛️ Interés público (Art. 13)</option>
+                            <option value="Consentimiento">Consentimiento del titular (Art. 12)</option>
+                            <option value="Ejecución de contrato">Ejecución de contrato (Art. 13)</option>
+                            <option value="Obligación legal">Obligación legal (Art. 13)</option>
+                            <option value="Interés legítimo">Interés legítimo (Art. 13)</option>
+                            <option value="Interés público">Interés público (Art. 13)</option>
                         </select>
                         <p class="text-[8px] text-text-subtle mt-0.5">Base legal que justifica el tratamiento. Sin esta, el tratamiento es ilegal.</p>
                     </div>
@@ -605,10 +657,10 @@ require_once __DIR__ . '/../includes/header.php';
                     <div>
                         <label class="label-premium">Nivel de riesgo</label>
                         <select name="risk" class="input-premium w-full">
-                            <option value="low">🟢 Bajo - Datos básicos</option>
-                            <option value="medium">🟡 Medio - Datos personales comunes</option>
-                            <option value="high">🟠 Alto - Datos sensibles o muchos registros</option>
-                            <option value="critical">🔴 Crítico - Datos muy sensibles (salud, biometría)</option>
+                            <option value="low">Bajo - Datos básicos</option>
+                            <option value="medium">Medio - Datos personales comunes</option>
+                            <option value="high">Alto - Datos sensibles o muchos registros</option>
+                            <option value="critical">Crítico - Datos muy sensibles (salud, biometría)</option>
                         </select>
                         <p class="text-[8px] text-text-subtle mt-0.5">Evalúa el impacto si estos datos se ven comprometidos.</p>
                     </div>
@@ -616,8 +668,8 @@ require_once __DIR__ . '/../includes/header.php';
                     <div>
                         <label class="label-premium">Datos sensibles</label>
                         <select name="sensitive" class="input-premium w-full">
-                            <option value="0">❌ No</option>
-                            <option value="1">🔒 Sí - Salud, biometría, religión, etc.</option>
+                            <option value="0">No</option>
+                            <option value="1">Sí - Salud, biometría, religión, etc.</option>
                         </select>
                         <p class="text-[8px] text-text-subtle mt-0.5">Según Art. 16: datos de salud, origen racial, creencias, etc.</p>
                     </div>
@@ -671,7 +723,10 @@ require_once __DIR__ . '/../includes/header.php';
                             </div>
                             <h3 class="text-white font-semibold mb-2">Sin actividades de tratamiento</h3>
                             <p class="text-text-muted text-[12px]">Haz clic en <span class="text-primary-400">"Nuevo"</span> para registrar tu primera actividad.</p>
-                            <p class="text-text-subtle text-[11px] mt-2">💡 <span class="text-cyan-400">Consejo:</span> Sube un archivo o conecta una base de datos para generar actividades automáticamente.</p>
+                            <p class="text-text-subtle text-[11px] mt-2 flex items-center gap-1.5">
+                                <svg class="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                                <span><span class="text-cyan-400">Consejo:</span> Sube un archivo o conecta una base de datos para generar actividades automáticamente.</span>
+                            </p>
                         <?php endif; ?>
                     </div>
                 <?php else: ?>
@@ -725,16 +780,19 @@ require_once __DIR__ . '/../includes/header.php';
                                 <?php foreach ($filtered as $it):
                                     $risk = $it['risk'] ?? 'low';
                                     $riskColors = [
-                                        'critical' => ['text' => 'text-red-400', 'bg' => 'bg-red-500/15', 'border' => 'border-red-500/25', 'label' => '🔴 Crítico'],
-                                        'high' => ['text' => 'text-yellow-400', 'bg' => 'bg-yellow-500/15', 'border' => 'border-yellow-500/25', 'label' => '🟠 Alto'],
-                                        'medium' => ['text' => 'text-blue-400', 'bg' => 'bg-blue-500/15', 'border' => 'border-blue-500/25', 'label' => '🟡 Medio'],
-                                        'low' => ['text' => 'text-text-muted', 'bg' => 'bg-bg-elevated/50', 'border' => 'border-border-theme', 'label' => '🟢 Bajo'],
+                                        'critical' => ['text' => 'text-red-400', 'bg' => 'bg-red-500/15', 'border' => 'border-red-500/25', 'dot' => 'bg-red-400', 'label' => 'Crítico'],
+                                        'high' => ['text' => 'text-yellow-400', 'bg' => 'bg-yellow-500/15', 'border' => 'border-yellow-500/25', 'dot' => 'bg-yellow-400', 'label' => 'Alto'],
+                                        'medium' => ['text' => 'text-blue-400', 'bg' => 'bg-blue-500/15', 'border' => 'border-blue-500/25', 'dot' => 'bg-blue-400', 'label' => 'Medio'],
+                                        'low' => ['text' => 'text-text-muted', 'bg' => 'bg-bg-elevated/50', 'border' => 'border-border-theme', 'dot' => 'bg-text-subtle', 'label' => 'Bajo'],
                                     ];
                                     $rc = $riskColors[$risk] ?? $riskColors['low'];
                                     $dc = $it['dataCategories'] ?? '';
                                     if (is_array($dc)) $dc = implode(', ', $dc);
                                     $sourceType = $it['sourceType'] ?? 'database';
-                                    $sourceLabel = $sourceType === 'file' ? '📄 Archivo' : '🗄️ Base de datos';
+                                    $sourceLabel = $sourceType === 'file' ? 'Archivo' : 'Base de datos';
+                                    $sourceIcon = $sourceType === 'file'
+                                        ? '<svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>'
+                                        : '<svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>';
                                     $sourceId = $it['sourceId'] ?? null;
                                     $isComplete = !empty($it['name']) && !empty($it['legalBasis']) && !empty($it['dataCategories']);
                                 ?>
@@ -742,10 +800,10 @@ require_once __DIR__ . '/../includes/header.php';
                                     <td class="py-2.5 px-3">
                                         <span class="text-[12px] font-medium text-text-heading"><?= h($it['name'] ?? 'Sin nombre') ?></span>
                                         <?php if (!$isComplete): ?>
-                                            <span class="ml-1 text-[8px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">⚠️ Incompleto</span>
+                                            <span class="ml-1 text-[8px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">Incompleto</span>
                                         <?php endif; ?>
                                         <?php if (!empty($it['purpose'])): ?>
-                                            <span class="block text-[9px] text-text-subtle mt-0.5">🎯 <?= h($it['purpose']) ?></span>
+                                            <span class="block text-[9px] text-text-subtle mt-0.5"><?= h($it['purpose']) ?></span>
                                         <?php endif; ?>
                                     </td>
                                     <td class="py-2.5 px-3 text-text-body max-w-[120px] truncate" title="<?= h($dc) ?>">
@@ -753,13 +811,14 @@ require_once __DIR__ . '/../includes/header.php';
                                     </td>
                                     <td class="py-2.5 px-3 text-text-muted text-[11px]"><?= h($it['legalBasis'] ?? '-') ?></td>
                                     <td class="py-2.5 px-3">
-                                        <span class="text-[10px] px-2 py-0.5 rounded-full border <?= $rc['bg'] ?> <?= $rc['text'] ?> <?= $rc['border'] ?>">
+                                        <span class="inline-flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full border <?= $rc['bg'] ?> <?= $rc['text'] ?> <?= $rc['border'] ?>">
+                                            <span class="w-1.5 h-1.5 rounded-full <?= $rc['dot'] ?>"></span>
                                             <?= $rc['label'] ?>
                                         </span>
                                     </td>
                                     <td class="py-2.5 px-3">
                                         <?php if (!empty($it['sensitive'])): ?>
-                                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 flex items-center gap-1 w-fit">
+                                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 inline-flex items-center gap-1 w-fit">
                                                 <span class="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse"></span>
                                                 Sensible
                                             </span>
@@ -768,32 +827,38 @@ require_once __DIR__ . '/../includes/header.php';
                                         <?php endif; ?>
                                     </td>
                                     <td class="py-2.5 px-3">
-                                        <span class="text-[10px] text-text-muted flex items-center gap-1">
+                                        <span class="text-[10px] text-text-muted inline-flex items-center gap-1">
+                                            <?= $sourceIcon ?>
                                             <?= $sourceLabel ?>
                                             <?php if ($sourceType === 'file' && $sourceId): ?>
-                                                <a href="/compliance?tab=files" class="text-cyan-400 hover:text-cyan-300 text-[9px]">🔗</a>
+                                                <a href="/compliance?tab=files" class="text-cyan-400 hover:text-cyan-300 text-[9px] inline-flex items-center" title="Ver archivo origen">
+                                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                                                </a>
                                             <?php elseif ($sourceType === 'database' && $sourceId): ?>
-                                                <a href="/databases" class="text-cyan-400 hover:text-cyan-300 text-[9px]">🔗</a>
+                                                <a href="/databases" class="text-cyan-400 hover:text-cyan-300 text-[9px] inline-flex items-center" title="Ver base de datos origen">
+                                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                                                </a>
                                             <?php endif; ?>
                                         </span>
                                     </td>
                                     <td class="py-2.5 px-3 text-text-muted text-[11px]">
                                         <?= !empty($it['retentionDays']) ? h($it['retentionDays'] . ' días') : '-' ?>
                                     </td>
-                                    <td class="py-2.5 px-3 text-center">
+                                    <td class="py-2.5 px-3">
                                         <div class="flex items-center justify-center gap-1.5">
                                             <!-- Ver Detalle -->
                                             <button onclick="openInventoryDetailModal('<?= h($it['_id'] ?? '') ?>')"
-                                                    class="p-1.5 rounded-lg text-text-muted hover:text-text-heading hover:bg-bg-elevated transition-all"
+                                                    class="p-2 rounded-lg text-text-muted hover:text-indigo-400 hover:bg-indigo-500/10 transition-all"
                                                     title="Ver detalle completo">
                                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                                             </button>
 
-                                            <!-- Editar -->
+                                            <!-- Editar (más grande) -->
                                             <button onclick="openInventoryEditModal('<?= h($it['_id'] ?? '') ?>')"
-                                                    class="p-1.5 rounded-lg text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/10 transition-all"
+                                                    class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-cyan-500/10 border border-cyan-500/25 text-cyan-400 hover:bg-cyan-500/20 transition-all"
                                                     title="Editar actividad">
                                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                                                Editar
                                             </button>
 
                                             <!-- Eliminar -->
@@ -857,126 +922,119 @@ require_once __DIR__ . '/../includes/header.php';
             <!-- ============================================================ -->
             <!-- ═══ MODAL: EDICIÓN COMPLETA (con guía) ═══ -->
             <!-- ============================================================ -->
-            <div id="inventory-edit-modal" class="hidden fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
-                <div class="bg-bg-panel border border-border-theme rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <div id="inventory-edit-modal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                <div class="bg-bg-panel border border-border-theme rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col">
                     <!-- Header -->
-                    <div class="flex items-center justify-between px-5 py-4 border-b border-border-theme flex-shrink-0">
+                    <div class="flex items-center justify-between px-6 py-4 border-b border-border-theme flex-shrink-0">
                         <div>
-                            <h3 class="text-[15px] font-semibold text-white">✏️ Editar actividad de tratamiento</h3>
-                            <p class="text-[10px] text-text-subtle">Actualiza los datos de esta actividad según lo requerido por la Ley 21.719</p>
+                            <h3 class="text-[15px] font-semibold text-white">Editar actividad de tratamiento</h3>
+                            <p class="text-[11px] text-text-subtle mt-0.5">Actualiza los datos de esta actividad según lo requerido por la Ley 21.719</p>
                         </div>
                         <button onclick="document.getElementById('inventory-edit-modal').classList.add('hidden')"
-                                class="text-text-muted hover:text-text-heading transition-colors p-1 rounded-lg">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                                class="text-text-muted hover:text-text-heading transition-colors p-1.5 rounded-lg hover:bg-bg-elevated">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                         </button>
                     </div>
 
                     <!-- Cuerpo con formulario -->
-                    <div class="flex-1 overflow-y-auto p-5 scrollbar-custom">
-                        <!-- Leyenda de ayuda (siempre visible) -->
-                        <div class="bg-cyan-500/[0.04] border border-cyan-500/20 rounded-lg p-3 mb-4 text-[10px] text-text-muted leading-relaxed">
-                            <p><span class="text-cyan-400 font-semibold">⚖️ ¿Por qué es importante este registro?</span></p>
-                            <p>El Art. 14 de la Ley 21.719 exige que mantengas un <strong class="text-white">Registro de Actividades de Tratamiento (RAT)</strong> actualizado.
-                               Este registro es lo primero que revisará la APDP en una fiscalización.</p>
-                            <p class="mt-1">Cada campo tiene un propósito legal. Completa toda la información posible para estar mejor protegido.</p>
+                    <div class="flex-1 overflow-y-auto p-6 scrollbar-custom">
+                        <!-- Leyenda de ayuda -->
+                        <div class="bg-indigo-500/[0.05] border border-indigo-500/20 rounded-lg p-3.5 mb-5 text-[11px] text-text-muted leading-relaxed flex gap-2.5">
+                            <svg class="w-4 h-4 text-indigo-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            <div>
+                                <p><span class="text-indigo-300 font-semibold">¿Por qué es importante este registro?</span></p>
+                                <p>El Art. 14 de la Ley 21.719 exige mantener un <strong class="text-white">Registro de Actividades de Tratamiento (RAT)</strong> actualizado.
+                                   Este registro es lo primero que revisará la APDP en una fiscalización.</p>
+                            </div>
                         </div>
 
-                        <form id="inventory-edit-form" method="POST" class="space-y-3">
+                        <form id="inventory-edit-form" method="POST" class="space-y-4">
                             <input type="hidden" name="update_inventory_item" value="1">
                             <input type="hidden" name="item_id" id="edit-item-id">
 
-                            <!-- Nombre -->
-                            <div>
-                                <label class="label-premium flex items-center gap-1">
-                                    Nombre de la actividad <span class="text-red-400">*</span>
-                                    <span class="text-[9px] text-text-subtle font-normal ml-1">(requerido)</span>
-                                </label>
-                                <input type="text" name="name" id="edit-name" required class="input-premium w-full" placeholder="Ej: Gestión de clientes">
-                                <p class="text-[8px] text-text-subtle mt-0.5">📌 Identifica claramente qué tratamiento realizas. Debe ser específico.</p>
-                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <!-- Nombre -->
+                                <div>
+                                    <label class="label-premium">Nombre de la actividad <span class="text-red-400">*</span></label>
+                                    <input type="text" name="name" id="edit-name" required class="input-premium w-full" placeholder="Ej: Gestión de clientes">
+                                    <p class="text-[9px] text-text-subtle mt-1">Identifica claramente qué tratamiento realizas. Debe ser específico.</p>
+                                </div>
 
-                            <!-- Propósito -->
-                            <div>
-                                <label class="label-premium flex items-center gap-1">
-                                    Finalidad / Propósito
-                                    <span class="text-[9px] text-text-subtle font-normal">(Art. 3 letra b)</span>
-                                </label>
-                                <input type="text" name="purpose" id="edit-purpose" class="input-premium w-full" placeholder="Ej: Enviar facturación y promociones">
-                                <p class="text-[8px] text-text-subtle mt-0.5">🎯 Define claramente para qué usas estos datos. La ley exige finalidades determinadas y explícitas.</p>
-                            </div>
+                                <!-- Propósito -->
+                                <div>
+                                    <label class="label-premium">Finalidad / Propósito <span class="text-[9px] text-text-subtle font-normal">(Art. 3 letra b)</span></label>
+                                    <input type="text" name="purpose" id="edit-purpose" class="input-premium w-full" placeholder="Ej: Enviar facturación y promociones">
+                                    <p class="text-[9px] text-text-subtle mt-1">La ley exige finalidades determinadas y explícitas.</p>
+                                </div>
 
-                            <!-- Categorías -->
-                            <div>
-                                <label class="label-premium flex items-center gap-1">
-                                    Categorías de datos
-                                    <span class="text-[9px] text-text-subtle font-normal">(recomendado)</span>
-                                </label>
-                                <input type="text" name="dataCategories" id="edit-categories" class="input-premium w-full" placeholder="Ej: nombres, RUT, emails, teléfonos">
-                                <p class="text-[8px] text-text-subtle mt-0.5">📋 Enumera los tipos de datos personales que tratas. Esto ayuda a clasificar el riesgo.</p>
-                            </div>
+                                <!-- Categorías -->
+                                <div>
+                                    <label class="label-premium">Categorías de datos</label>
+                                    <input type="text" name="dataCategories" id="edit-categories" class="input-premium w-full" placeholder="Ej: nombres, RUT, emails, teléfonos">
+                                    <p class="text-[9px] text-text-subtle mt-1">Enumera los tipos de datos personales que tratas.</p>
+                                </div>
 
-                            <!-- Base legal -->
-                            <div>
-                                <label class="label-premium flex items-center gap-1">
-                                    Base de licitud <span class="text-red-400">*</span>
-                                    <span class="text-[9px] text-text-subtle font-normal">(requerido)</span>
-                                </label>
-                                <select name="legalBasis" id="edit-legalBasis" required class="input-premium w-full">
-                                    <option value="">Seleccionar...</option>
-                                    <option value="Consentimiento">✅ Consentimiento del titular (Art. 12)</option>
-                                    <option value="Ejecución de contrato">📄 Ejecución de contrato (Art. 13)</option>
-                                    <option value="Obligación legal">⚖️ Obligación legal (Art. 13)</option>
-                                    <option value="Interés legítimo">🎯 Interés legítimo (Art. 13)</option>
-                                    <option value="Interés público">🏛️ Interés público (Art. 13)</option>
-                                </select>
-                                <p class="text-[8px] text-text-subtle mt-0.5">⚖️ Sin una base legal válida, el tratamiento es ilegal. Elige la que corresponda a tu caso.</p>
-                            </div>
+                                <!-- Base legal -->
+                                <div>
+                                    <label class="label-premium">Base de licitud <span class="text-red-400">*</span></label>
+                                    <select name="legalBasis" id="edit-legalBasis" required class="input-premium w-full">
+                                        <option value="">Seleccionar...</option>
+                                        <option value="Consentimiento">Consentimiento del titular (Art. 12)</option>
+                                        <option value="Ejecución de contrato">Ejecución de contrato (Art. 13)</option>
+                                        <option value="Obligación legal">Obligación legal (Art. 13)</option>
+                                        <option value="Interés legítimo">Interés legítimo (Art. 13)</option>
+                                        <option value="Interés público">Interés público (Art. 13)</option>
+                                    </select>
+                                    <p class="text-[9px] text-text-subtle mt-1">Sin una base legal válida, el tratamiento es ilegal.</p>
+                                </div>
 
-                            <!-- Riesgo -->
-                            <div>
-                                <label class="label-premium">Nivel de riesgo</label>
-                                <select name="risk" id="edit-risk" class="input-premium w-full">
-                                    <option value="low">🟢 Bajo - Datos básicos (nombres, teléfonos)</option>
-                                    <option value="medium">🟡 Medio - Datos personales comunes (RUT, dirección)</option>
-                                    <option value="high">🟠 Alto - Datos sensibles o muchos registros</option>
-                                    <option value="critical">🔴 Crítico - Datos muy sensibles (salud, biometría)</option>
-                                </select>
-                                <p class="text-[8px] text-text-subtle mt-0.5">📊 Evalúa el impacto si estos datos se ven comprometidos. A mayor riesgo, mayores medidas de seguridad.</p>
-                            </div>
+                                <!-- Riesgo -->
+                                <div>
+                                    <label class="label-premium">Nivel de riesgo</label>
+                                    <select name="risk" id="edit-risk" class="input-premium w-full">
+                                        <option value="low">Bajo - Datos básicos (nombres, teléfonos)</option>
+                                        <option value="medium">Medio - Datos personales comunes (RUT, dirección)</option>
+                                        <option value="high">Alto - Datos sensibles o muchos registros</option>
+                                        <option value="critical">Crítico - Datos muy sensibles (salud, biometría)</option>
+                                    </select>
+                                    <p class="text-[9px] text-text-subtle mt-1">A mayor riesgo, mayores medidas de seguridad.</p>
+                                </div>
 
-                            <!-- Sensibles -->
-                            <div>
-                                <label class="label-premium">Datos sensibles</label>
-                                <select name="sensitive" id="edit-sensitive" class="input-premium w-full">
-                                    <option value="0">❌ No contiene datos sensibles</option>
-                                    <option value="1">🔒 Sí - Salud, biometría, religión, origen racial, etc.</option>
-                                </select>
-                                <p class="text-[8px] text-text-subtle mt-0.5">🔐 Según Art. 16: datos de salud, origen racial, creencias religiosas, vida sexual, etc.</p>
-                            </div>
+                                <!-- Sensibles -->
+                                <div>
+                                    <label class="label-premium">Datos sensibles</label>
+                                    <select name="sensitive" id="edit-sensitive" class="input-premium w-full">
+                                        <option value="0">No contiene datos sensibles</option>
+                                        <option value="1">Sí - Salud, biometría, religión, origen racial, etc.</option>
+                                    </select>
+                                    <p class="text-[9px] text-text-subtle mt-1">Según Art. 16: salud, origen racial, creencias religiosas, vida sexual, etc.</p>
+                                </div>
 
-                            <!-- Retención -->
-                            <div>
-                                <label class="label-premium">Días de retención</label>
-                                <input type="number" name="retentionDays" id="edit-retention" class="input-premium w-full" placeholder="Ej: 365" min="0">
-                                <p class="text-[8px] text-text-subtle mt-0.5">📅 ¿Cuánto tiempo conservas estos datos? La ley exige que no se conserven más tiempo del necesario (Art. 14).</p>
-                            </div>
+                                <!-- Retención -->
+                                <div>
+                                    <label class="label-premium">Días de retención</label>
+                                    <input type="number" name="retentionDays" id="edit-retention" class="input-premium w-full" placeholder="Ej: 365" min="0">
+                                    <p class="text-[9px] text-text-subtle mt-1">No conservar más tiempo del necesario (Art. 14).</p>
+                                </div>
 
-                            <!-- Almacenamiento -->
-                            <div>
-                                <label class="label-premium">Almacenamiento</label>
-                                <input type="text" name="storage" id="edit-storage" class="input-premium w-full" placeholder="Ej: AWS, servidor local, Google Drive">
-                                <p class="text-[8px] text-text-subtle mt-0.5">💾 ¿Dónde se guardan físicamente estos datos? Ayuda a identificar riesgos de seguridad.</p>
+                                <!-- Almacenamiento -->
+                                <div>
+                                    <label class="label-premium">Almacenamiento</label>
+                                    <input type="text" name="storage" id="edit-storage" class="input-premium w-full" placeholder="Ej: AWS, servidor local, Google Drive">
+                                    <p class="text-[9px] text-text-subtle mt-1">¿Dónde se guardan físicamente estos datos?</p>
+                                </div>
                             </div>
 
                             <!-- Mensaje de estado -->
                             <div id="edit-msg" class="hidden p-3 rounded-lg text-[11px]"></div>
 
                             <!-- Botones -->
-                            <div class="flex justify-end gap-2 pt-2 border-t border-border-theme">
+                            <div class="flex justify-end gap-2 pt-3 border-t border-border-theme">
                                 <button type="button" onclick="document.getElementById('inventory-edit-modal').classList.add('hidden')"
-                                        class="px-3 py-1.5 text-[11px] font-medium rounded-lg bg-bg-elevated text-text-body border border-border-theme transition-all">Cancelar</button>
-                                <button type="submit" class="px-4 py-1.5 text-[11px] font-medium rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white transition-all hover:from-blue-500 hover:to-indigo-500">
-                                    💾 Guardar cambios
+                                        class="px-4 py-2 text-[11px] font-medium rounded-lg bg-bg-elevated text-text-body border border-border-theme transition-all">Cancelar</button>
+                                <button type="submit" class="inline-flex items-center gap-1.5 px-5 py-2 text-[12px] font-semibold rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white transition-all hover:from-blue-500 hover:to-indigo-500">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                    Guardar cambios
                                 </button>
                             </div>
                         </form>
@@ -1035,29 +1093,33 @@ require_once __DIR__ . '/../includes/header.php';
 
                 // Mapeo de riesgo
                 const riskLabels = {
-                    'critical': '🔴 Crítico',
-                    'high': '🟠 Alto',
-                    'medium': '🟡 Medio',
-                    'low': '🟢 Bajo'
+                    'critical': 'Crítico',
+                    'high': 'Alto',
+                    'medium': 'Medio',
+                    'low': 'Bajo'
                 };
 
                 // Mapeo de origen
                 const sourceLabels = {
-                    'database': '🗄️ Base de datos',
-                    'file': '📄 Archivo'
+                    'database': 'Base de datos',
+                    'file': 'Archivo'
                 };
 
                 body.innerHTML = `
                     <!-- Estado de cumplimiento -->
                     <div class="rounded-lg p-3 ${isComplete ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-amber-500/10 border border-amber-500/20'}">
                         <div class="flex items-center gap-2">
-                            <span>${isComplete ? '✅' : '⚠️'}</span>
+                            <span class="${isComplete ? 'text-emerald-400' : 'text-amber-400'}">
+                                ${isComplete
+                                    ? '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>'
+                                    : '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>'}
+                            </span>
                             <span class="text-[12px] font-semibold ${isComplete ? 'text-emerald-400' : 'text-amber-400'}">
                                 ${isComplete ? 'Registro completo' : 'Registro incompleto'}
                             </span>
                         </div>
                         ${!isComplete ? `<p class="text-[10px] text-text-muted mt-1">Faltan campos obligatorios: ${missingFields.join(', ')}</p>` : ''}
-                        <p class="text-[9px] text-text-subtle mt-1">${isComplete ? '✅ Cumple con los requisitos mínimos del Art. 14' : '⚠️ Completa los campos faltantes para estar al día con la ley'}</p>
+                        <p class="text-[9px] text-text-subtle mt-1">${isComplete ? 'Cumple con los requisitos mínimos del Art. 14' : 'Completa los campos faltantes para estar al día con la ley'}</p>
                     </div>
 
                     <!-- Información principal -->
@@ -1077,18 +1139,18 @@ require_once __DIR__ . '/../includes/header.php';
                         <div class="bg-bg-base/40 border border-border-theme/25 rounded-lg p-3">
                             <p class="text-[9px] text-text-subtle uppercase tracking-wider">Base legal</p>
                             <p class="text-[13px] font-medium text-cyan-400">${escHtml(item.legalBasis || 'No definida')}</p>
-                            ${item.legalBasis ? `<p class="text-[8px] text-text-subtle mt-0.5">⚖️ Art. ${item.legalBasis === 'Consentimiento' ? '12' : '13'} Ley 21.719</p>` : ''}
+                            ${item.legalBasis ? `<p class="text-[8px] text-text-subtle mt-0.5">Art. ${item.legalBasis === 'Consentimiento' ? '12' : '13'} Ley 21.719</p>` : ''}
                         </div>
                         <div class="bg-bg-base/40 border border-border-theme/25 rounded-lg p-3">
                             <p class="text-[9px] text-text-subtle uppercase tracking-wider">Nivel de riesgo</p>
-                            <p class="text-[13px] font-medium">${riskLabels[item.risk] || '🟢 Bajo'}</p>
+                            <p class="text-[13px] font-medium">${riskLabels[item.risk] || 'Bajo'}</p>
                         </div>
                         <div class="bg-bg-base/40 border border-border-theme/25 rounded-lg p-3">
                             <p class="text-[9px] text-text-subtle uppercase tracking-wider">Datos sensibles</p>
                             <p class="text-[13px] font-medium ${item.sensitive ? 'text-red-400' : 'text-text-muted'}">
-                                ${item.sensitive ? '🔒 Sí - Requiere protección especial' : '📄 No'}
+                                ${item.sensitive ? 'Sí - Requiere protección especial' : 'No'}
                             </p>
-                            ${item.sensitive ? `<p class="text-[8px] text-text-subtle mt-0.5">🔐 Art. 16 - Requiere consentimiento explícito</p>` : ''}
+                            ${item.sensitive ? `<p class="text-[8px] text-text-subtle mt-0.5">Art. 16 - Requiere consentimiento explícito</p>` : ''}
                         </div>
                     </div>
 
@@ -1097,14 +1159,14 @@ require_once __DIR__ . '/../includes/header.php';
                         <div class="bg-bg-base/40 border border-border-theme/25 rounded-lg p-3">
                             <p class="text-[9px] text-text-subtle uppercase tracking-wider">Origen</p>
                             <p class="text-[13px] text-white flex items-center gap-2">
-                                ${sourceLabels[item.sourceType] || '🗄️ Base de datos'}
-                                ${item.sourceId ? `<a href="${item.sourceType === 'file' ? '/compliance?tab=files' : '/databases'}" class="text-[10px] text-cyan-400 hover:text-cyan-300">🔗 Ver origen</a>` : ''}
+                                ${sourceLabels[item.sourceType] || 'Base de datos'}
+                                ${item.sourceId ? `<a href="${item.sourceType === 'file' ? '/compliance?tab=files' : '/databases'}" class="text-[10px] text-cyan-400 hover:text-cyan-300 inline-flex items-center gap-1"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg> Ver origen</a>` : ''}
                             </p>
                         </div>
                         <div class="bg-bg-base/40 border border-border-theme/25 rounded-lg p-3">
                             <p class="text-[9px] text-text-subtle uppercase tracking-wider">Retención</p>
                             <p class="text-[13px] text-white">${item.retentionDays ? item.retentionDays + ' días' : 'No definida'}</p>
-                            ${!item.retentionDays ? `<p class="text-[8px] text-text-subtle mt-0.5">⚠️ Recomendado: define un plazo de retención (Art. 14)</p>` : ''}
+                            ${!item.retentionDays ? `<p class="text-[8px] text-text-subtle mt-0.5">Recomendado: define un plazo de retención (Art. 14)</p>` : ''}
                         </div>
                         <div class="bg-bg-base/40 border border-border-theme/25 rounded-lg p-3">
                             <p class="text-[9px] text-text-subtle uppercase tracking-wider">Almacenamiento</p>
@@ -1119,15 +1181,16 @@ require_once __DIR__ . '/../includes/header.php';
                     <!-- Consejos de cumplimiento -->
                     <div class="bg-emerald-500/[0.03] border border-emerald-500/20 rounded-lg p-3">
                         <p class="text-[10px] font-semibold text-emerald-400 flex items-center gap-2">
-                            📋 <span>Consejos de cumplimiento para esta actividad</span>
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                            <span>Consejos de cumplimiento para esta actividad</span>
                         </p>
                         <ul class="text-[10px] text-text-muted space-y-1 mt-1.5 list-disc list-inside">
-                            ${!item.legalBasis ? '<li>⚠️ <span class="text-amber-400">Falta base legal:</span> Define si el tratamiento se basa en consentimiento, contrato, obligación legal, interés legítimo o interés público.</li>' : ''}
-                            ${!item.dataCategories ? '<li>📋 <span class="text-amber-400">Faltan categorías:</span> Especifica qué tipos de datos personales tratas (nombres, RUT, emails, etc.).</li>' : ''}
-                            ${!item.retentionDays ? '<li>📅 Define un plazo de retención para estos datos. La ley exige que no se conserven más tiempo del necesario.</li>' : ''}
-                            ${item.sensitive ? '<li>🔐 <span class="text-red-400">Dato sensible detectado:</span> Asegúrate de tener consentimiento explícito por escrito y medidas de seguridad reforzadas.</li>' : ''}
-                            ${item.risk === 'high' || item.risk === 'critical' ? '<li>🛡️ <span class="text-yellow-400">Riesgo alto/crítico:</span> Considera realizar una Evaluación de Impacto (DPIA) según Art. 14 quater.</li>' : ''}
-                            ${isComplete ? '<li>✅ Este registro cumple con los requisitos mínimos del Art. 14 de la Ley 21.719.</li>' : ''}
+                            ${!item.legalBasis ? '<li><span class="text-amber-400">Falta base legal:</span> Define si el tratamiento se basa en consentimiento, contrato, obligación legal, interés legítimo o interés público.</li>' : ''}
+                            ${!item.dataCategories ? '<li><span class="text-amber-400">Faltan categorías:</span> Especifica qué tipos de datos personales tratas (nombres, RUT, emails, etc.).</li>' : ''}
+                            ${!item.retentionDays ? '<li>Define un plazo de retención para estos datos. La ley exige que no se conserven más tiempo del necesario.</li>' : ''}
+                            ${item.sensitive ? '<li><span class="text-red-400">Dato sensible detectado:</span> Asegúrate de tener consentimiento explícito por escrito y medidas de seguridad reforzadas.</li>' : ''}
+                            ${item.risk === 'high' || item.risk === 'critical' ? '<li><span class="text-yellow-400">Riesgo alto/crítico:</span> Considera realizar una Evaluación de Impacto (DPIA) según Art. 14 quater.</li>' : ''}
+                            ${isComplete ? '<li>Este registro cumple con los requisitos mínimos del Art. 14 de la Ley 21.719.</li>' : ''}
                         </ul>
                     </div>
                 `;
@@ -1187,7 +1250,7 @@ require_once __DIR__ . '/../includes/header.php';
                 };
 
                 msg.classList.remove('hidden');
-                msg.textContent = '⏳ Guardando cambios...';
+                msg.textContent = 'Guardando cambios...';
                 msg.className = 'p-3 rounded-lg text-[11px] bg-blue-500/10 border border-blue-500/20 text-blue-400';
 
                 try {
@@ -1198,15 +1261,15 @@ require_once __DIR__ . '/../includes/header.php';
                     });
                     const data = await res.json();
                     if (data.success) {
-                        msg.textContent = '✅ ¡Cambios guardados correctamente! Recargando...';
+                        msg.textContent = 'Cambios guardados correctamente. Recargando...';
                         msg.className = 'p-3 rounded-lg text-[11px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400';
                         setTimeout(() => location.reload(), 1200);
                     } else {
-                        msg.textContent = '❌ ' + (data.error || 'Error al guardar los cambios');
+                        msg.textContent = (data.error || 'Error al guardar los cambios');
                         msg.className = 'p-3 rounded-lg text-[11px] bg-red-500/10 border border-red-500/20 text-red-400';
                     }
                 } catch (e) {
-                    msg.textContent = '❌ Error de conexión: ' + e.message;
+                    msg.textContent = 'Error de conexión: ' + e.message;
                     msg.className = 'p-3 rounded-lg text-[11px] bg-red-500/10 border border-red-500/20 text-red-400';
                 }
             });
@@ -1221,102 +1284,306 @@ require_once __DIR__ . '/../includes/header.php';
             </script>
 
             <?php elseif ($tab === 'breaches'): ?>
-            <?php renderSectionHeader('Brechas', 'Registro de incidentes de seguridad y violaciones de datos'); ?>
-            <div class="px-4 py-3 rounded-lg bg-red-500/[0.06] border border-red-500/20">
-                <p class="text-[11px] text-text-body"><span class="font-semibold text-red-300">Ley 21.719:</span> Las brechas de seguridad deben notificarse a la APDP sin dilación indebida y, cuando proceda, a los titulares afectados.</p>
+            <?php
+            $bOpen = count(array_filter($items, fn($it) => ($it['status'] ?? '') !== 'resolved'));
+            $bResolved = count($items) - $bOpen;
+            $bCritical = count(array_filter($items, fn($it) => ($it['severity'] ?? '') === 'critical' && ($it['status'] ?? '') !== 'resolved'));
+            $sevBadge = ['critical' => 'bg-red-500/15 text-red-400 border-red-500/30', 'high' => 'bg-orange-500/15 text-orange-400 border-orange-500/30', 'medium' => 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30', 'low' => 'bg-green-500/15 text-green-400 border-green-500/30'];
+            $sevLabel = ['critical' => 'Crítica', 'high' => 'Alta', 'medium' => 'Media', 'low' => 'Baja'];
+            ?>
+            <?php renderSectionHeader('Brechas', 'Registro de incidentes de seguridad y violaciones de datos — Art. 26 de la Ley 21.719'); ?>
+            <div class="px-4 py-3 rounded-lg bg-red-500/[0.06] border border-red-500/20 text-[11px] text-text-body">
+                <b class="text-red-300">Ley 21.719:</b> Las brechas deben notificarse a la APDP sin dilación indebida y, cuando proceda, a los titulares afectados.
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <?php renderComplianceStat('Total', count($items), 'text-white', cIcon('alert')); ?>
+                <?php renderComplianceStat('Abiertas', $bOpen, $bOpen ? 'text-amber-400' : 'text-emerald-400', cIcon('alert')); ?>
+                <?php renderComplianceStat('Críticas activas', $bCritical, $bCritical ? 'text-red-400' : 'text-text-subtle', cIcon('alert')); ?>
+                <?php renderComplianceStat('Resueltas', $bResolved, 'text-emerald-400', cIcon('check')); ?>
             </div>
             <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5">
-                <p class="text-[12px] font-semibold text-white mb-4">Reportar brecha</p>
+                <div class="flex items-center justify-between mb-4">
+                    <p class="text-[12px] font-semibold text-white">Reportar brecha</p>
+                    <?php renderImportBtn('breaches'); ?>
+                </div>
                 <form method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-3">
                     <input type="hidden" name="collection" value="breaches">
                     <input type="text" name="fields[title]" required placeholder="Título de la brecha" class="input-premium">
                     <input type="text" name="fields[description]" placeholder="Descripción" class="input-premium">
                     <select name="fields[severity]" class="input-premium">
-                        <option value="low">Baja</option><option value="medium">Media</option>
-                        <option value="high">Alta</option><option value="critical">Crítica</option>
+                        <option value="low">🟢 Baja</option><option value="medium">🟡 Media</option>
+                        <option value="high">🟠 Alta</option><option value="critical">🔴 Crítica</option>
                     </select>
                     <div class="flex gap-2">
                         <input type="hidden" name="fields[status]" value="open">
-                        <button type="submit" name="create_item" value="1" class="flex-1 px-3 py-2 rounded-lg text-[11px] font-medium bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all">Reportar</button>
+                        <button type="submit" name="create_item" value="1" class="flex-1 px-3 py-2 rounded-lg text-[11px] font-medium bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white transition-all">Reportar</button>
                     </div>
                 </form>
             </div>
-            <?php renderComplianceList($items, 'breaches', function ($it) {
-                echo '<p class="text-[12px] font-medium text-text-heading truncate">' . h($it['title'] ?? 'Brecha') . '</p>';
-                echo '<p class="text-[10px] text-text-subtle mt-0.5">' . h($it['description'] ?? '') . ' · Severidad: ' . h($it['severity'] ?? '-') . ' · ' . h(substr($it['createdAt'] ?? '', 0, 10)) . '</p>';
-            }, function ($it) {
-                $resolved = ($it['status'] ?? '') === 'resolved';
-                echo '<span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border ' . ($resolved ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20') . '">' . ($resolved ? 'Resuelta' : 'Abierta') . '</span>';
-                if (!$resolved) renderActionBtn('breaches', $it['_id'] ?? '', 'resolve', 'Resolver');
-            }); ?>
+            <?php if (empty($items)): ?>
+            <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-10 text-center">
+                <p class="text-[11px] text-text-subtle">Sin brechas registradas. Reporta una o usa «Importar masivo».</p>
+            </div>
+            <?php else: ?>
+            <div class="space-y-2">
+                <?php foreach ($items as $it):
+                    $resolved = ($it['status'] ?? '') === 'resolved';
+                    $sev = $it['severity'] ?? 'medium';
+                    $sb = $sevBadge[$sev] ?? $sevBadge['medium'];
+                ?>
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm hover:border-border-theme/60 transition-colors p-4 flex flex-col md:flex-row md:items-center gap-3">
+                    <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 <?= $resolved ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400' ?>">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <p class="text-[12px] font-medium text-text-heading truncate"><?= h($it['title'] ?? 'Brecha') ?></p>
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border <?= $sb ?>"><?= h($sevLabel[$sev] ?? $sev) ?></span>
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border <?= $resolved ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20' ?>"><?= $resolved ? 'Resuelta' : 'Abierta' ?></span>
+                        </div>
+                        <p class="text-[10px] text-text-subtle mt-0.5"><?= h($it['description'] ?? '') ?> · <?= h(substr($it['createdAt'] ?? '', 0, 10)) ?></p>
+                    </div>
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <?php if (!$resolved) renderActionBtn('breaches', $it['_id'] ?? '', 'resolve', 'Resolver'); ?>
+                        <form method="POST" class="inline">
+                            <input type="hidden" name="collection" value="breaches">
+                            <input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>">
+                            <button type="submit" name="delete_item" value="1" onclick="return confirm('¿Eliminar esta brecha?')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all">Eliminar</button>
+                        </form>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
 
             <?php elseif ($tab === 'dpia'): ?>
-            <?php renderSectionHeader('Evaluación de Impacto — DPIA', 'Evaluación de riesgos para tratamientos de alto riesgo (Art. 14 quater / Art. 16)'); ?>
+            <?php
+            $dApproved = count(array_filter($items, fn($it) => ($it['status'] ?? '') === 'approved'));
+            $dPending = count($items) - $dApproved;
+            $dHighRisk = count(array_filter($items, fn($it) => in_array($it['riskLevel'] ?? '', ['high', 'critical']) && ($it['status'] ?? '') !== 'approved'));
+            $riskBadge = ['high' => 'bg-orange-500/15 text-orange-400 border-orange-500/30', 'medium' => 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30', 'low' => 'bg-green-500/15 text-green-400 border-green-500/30', 'critical' => 'bg-red-500/15 text-red-400 border-red-500/30'];
+            $riskLabel = ['high' => 'Alto', 'medium' => 'Medio', 'low' => 'Bajo', 'critical' => 'Crítico'];
+            ?>
+            <?php renderSectionHeader('Evaluación de Impacto — DPIA', 'Evaluación de riesgos para tratamientos de alto riesgo — Art. 14 quater / Art. 16'); ?>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <?php renderComplianceStat('Total DPIA', count($items), 'text-white', cIcon('shield')); ?>
+                <?php renderComplianceStat('Aprobadas', $dApproved, 'text-emerald-400', cIcon('check')); ?>
+                <?php renderComplianceStat('Pendientes', $dPending, $dPending ? 'text-amber-400' : 'text-emerald-400', cIcon('pen')); ?>
+                <?php renderComplianceStat('Alto riesgo', $dHighRisk, $dHighRisk ? 'text-red-400' : 'text-text-subtle', cIcon('alert')); ?>
+            </div>
             <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5">
-                <p class="text-[12px] font-semibold text-white mb-4">Nueva evaluación de impacto (DPIA)</p>
+                <div class="flex items-center justify-between mb-4">
+                    <p class="text-[12px] font-semibold text-white">Nueva evaluación de impacto (DPIA)</p>
+                    <?php renderImportBtn('dpia'); ?>
+                </div>
                 <form method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-3">
                     <input type="hidden" name="collection" value="dpia">
                     <input type="text" name="fields[name]" required placeholder="Nombre del proyecto" class="input-premium">
                     <input type="text" name="fields[description]" placeholder="Descripción del tratamiento" class="input-premium">
                     <select name="fields[riskLevel]" class="input-premium">
-                        <option value="low">Riesgo bajo</option><option value="medium">Riesgo medio</option><option value="high">Riesgo alto</option>
+                        <option value="low">🟢 Riesgo bajo</option><option value="medium">🟡 Riesgo medio</option><option value="high">🟠 Riesgo alto</option>
                     </select>
-                    <button type="submit" name="create_item" value="1" class="px-3 py-2 rounded-lg text-[11px] font-medium bg-primary-500 hover:bg-primary-600 text-white transition-all">Crear DPIA</button>
+                    <button type="submit" name="create_item" value="1" class="px-3 py-2 rounded-lg text-[11px] font-medium bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white transition-all">Crear DPIA</button>
                 </form>
             </div>
-            <?php renderComplianceList($items, 'dpia', function ($it) {
-                echo '<p class="text-[12px] font-medium text-text-heading truncate">' . h($it['name'] ?? 'DPIA') . '</p>';
-                echo '<p class="text-[10px] text-text-subtle mt-0.5">' . h($it['description'] ?? '') . ' · Riesgo: ' . h($it['riskLevel'] ?? '-') . '</p>';
-            }, function ($it) {
-                $approved = ($it['status'] ?? '') === 'approved';
-                echo '<span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border ' . ($approved ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20') . '">' . ($approved ? 'Aprobada' : 'Pendiente') . '</span>';
-                if (!$approved) renderActionBtn('dpia', $it['_id'] ?? '', 'approve', 'Aprobar');
-            }); ?>
+            <?php if (empty($items)): ?>
+            <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-10 text-center">
+                <p class="text-[11px] text-text-subtle">Sin evaluaciones de impacto todavía. Crea una o usa «Importar masivo».</p>
+            </div>
+            <?php else: ?>
+            <div class="space-y-2">
+                <?php foreach ($items as $it):
+                    $approved = ($it['status'] ?? '') === 'approved';
+                    $rl = $it['riskLevel'] ?? 'medium';
+                    $rb = $riskBadge[$rl] ?? $riskBadge['medium'];
+                ?>
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm hover:border-border-theme/60 transition-colors p-4 flex flex-col md:flex-row md:items-center gap-3">
+                    <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 <?= $approved ? 'bg-emerald-500/10 text-emerald-400' : 'bg-blue-500/10 text-blue-400' ?>">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <p class="text-[12px] font-medium text-text-heading truncate"><?= h($it['name'] ?? 'DPIA') ?></p>
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border <?= $rb ?>">Riesgo <?= h($riskLabel[$rl] ?? $rl) ?></span>
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border <?= $approved ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' ?>"><?= $approved ? 'Aprobada' : 'Pendiente' ?></span>
+                        </div>
+                        <p class="text-[10px] text-text-subtle mt-0.5"><?= h($it['description'] ?? '') ?> · <?= h(substr($it['createdAt'] ?? '', 0, 10)) ?></p>
+                    </div>
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <?php if (!$approved) renderActionBtn('dpia', $it['_id'] ?? '', 'approve', 'Aprobar'); ?>
+                        <form method="POST" class="inline">
+                            <input type="hidden" name="collection" value="dpia">
+                            <input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>">
+                            <button type="submit" name="delete_item" value="1" onclick="return confirm('¿Eliminar esta evaluación?')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all">Eliminar</button>
+                        </form>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
 
             <?php elseif ($tab === 'trainings'): ?>
+            <?php
+            $tDone = count(array_filter($items, fn($it) => !empty($it['completed'])));
+            $tPending = count($items) - $tDone;
+            ?>
             <?php renderSectionHeader('Capacitaciones Ley 21.719', 'Registro de empleados capacitados en protección de datos personales — Art. 28 letra c)'); ?>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <?php renderComplianceStat('Total', count($items), 'text-white', cIcon('info')); ?>
+                <?php renderComplianceStat('Completadas', $tDone, 'text-emerald-400', cIcon('check')); ?>
+                <?php renderComplianceStat('Pendientes', $tPending, $tPending ? 'text-amber-400' : 'text-emerald-400', cIcon('pen')); ?>
+                <?php renderComplianceStat('Avance', $items ? round($tDone / count($items) * 100) . '%' : '—', 'text-indigo-400', cIcon('shield')); ?>
+            </div>
             <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5">
-                <p class="text-[12px] font-semibold text-white mb-4">Nueva capacitación</p>
+                <div class="flex items-center justify-between mb-4">
+                    <p class="text-[12px] font-semibold text-white">Nueva capacitación</p>
+                    <?php renderImportBtn('trainings'); ?>
+                </div>
                 <form method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-3">
                     <input type="hidden" name="collection" value="trainings">
                     <input type="text" name="fields[title]" required placeholder="Título de la capacitación" class="input-premium">
                     <input type="text" name="fields[attendee]" placeholder="Participante / equipo" class="input-premium">
                     <input type="date" name="fields[date]" class="input-premium">
-                    <button type="submit" name="create_item" value="1" class="px-3 py-2 rounded-lg text-[11px] font-medium bg-primary-500 hover:bg-primary-600 text-white transition-all">Registrar</button>
+                    <button type="submit" name="create_item" value="1" class="px-3 py-2 rounded-lg text-[11px] font-medium bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white transition-all">Registrar</button>
                 </form>
             </div>
-            <?php renderComplianceList($items, 'trainings', function ($it) {
-                echo '<p class="text-[12px] font-medium text-text-heading truncate">' . h($it['title'] ?? 'Capacitación') . '</p>';
-                echo '<p class="text-[10px] text-text-subtle mt-0.5">' . h($it['attendee'] ?? '') . ' · ' . h($it['date'] ?? substr($it['createdAt'] ?? '', 0, 10)) . '</p>';
-            }, function ($it) {
-                $done = !empty($it['completed']);
-                echo '<span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border ' . ($done ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20') . '">' . ($done ? 'Completada' : 'Pendiente') . '</span>';
-                if (!$done) renderActionBtn('trainings', $it['_id'] ?? '', 'complete', 'Completar');
-            }); ?>
+            <?php if (empty($items)): ?>
+            <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-10 text-center">
+                <p class="text-[11px] text-text-subtle">Sin capacitaciones registradas. Crea una o usa «Importar masivo».</p>
+            </div>
+            <?php else: ?>
+            <div class="space-y-2">
+                <?php foreach ($items as $it):
+                    $done = !empty($it['completed']) || !empty($it['signatureAssignedAt']) || !empty($it['inviteId']);
+                    $initial = strtoupper(substr($it['title'] ?? '?', 0, 1));
+                ?>
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm hover:border-border-theme/60 transition-colors p-4 flex flex-col md:flex-row md:items-center gap-3">
+                    <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 text-[12px] font-bold <?= $done ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400' ?>"><?= h($initial) ?></div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <p class="text-[12px] font-medium text-text-heading truncate"><?= h($it['title'] ?? 'Capacitación') ?></p>
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border <?= $done ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' ?>"><?= $done ? 'Completada' : 'Pendiente' ?></span>
+                            <?php if (!empty($it['signatureAssignedAt']) || !empty($it['inviteId'])): ?>
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-indigo-500/10 text-indigo-400 border-indigo-500/25">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                Firma asignada
+                            </span>
+                            <?php endif; ?>
+                        </div>
+                        <p class="text-[10px] text-text-subtle mt-0.5"><?= h($it['attendee'] ?? '') ?> · <?= h($it['date'] ?? substr($it['createdAt'] ?? '', 0, 10)) ?></p>
+                    </div>
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <?php if (!empty($it['inviteId'])): ?>
+                        <form method="POST" class="inline">
+                            <input type="hidden" name="invite_id" value="<?= h($it['inviteId']) ?>">
+                            <button type="submit" name="unassign_invite" value="1" onclick="return confirm('¿Quitar la firma de esta capacitación?')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-red-900/10 border border-red-800/20 text-red-400 hover:bg-red-900/20 transition-all">Quitar firma</button>
+                        </form>
+                        <?php endif; ?>
+                        <form method="POST" class="inline">
+                            <input type="hidden" name="collection" value="trainings">
+                            <input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>">
+                            <button type="submit" name="delete_item" value="1" onclick="return confirm('¿Eliminar esta capacitación?')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all">Eliminar</button>
+                        </form>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
 
             <?php elseif ($tab === 'invites'): ?>
+            <?php
+            $invSigned = count(array_filter($items, fn($it) => !empty($it['signed'])));
+            $invPending = count($items) - $invSigned;
+            $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+            $baseHost = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            ?>
             <?php renderSectionHeader('Firmas', 'Invitaciones de firma electrónica de documentos de cumplimiento'); ?>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <?php renderComplianceStat('Total', count($items), 'text-white', cIcon('pen')); ?>
+                <?php renderComplianceStat('Firmadas', $invSigned, 'text-emerald-400', cIcon('check')); ?>
+                <?php renderComplianceStat('Pendientes', $invPending, $invPending ? 'text-amber-400' : 'text-emerald-400', cIcon('pen')); ?>
+            </div>
             <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5">
-                <p class="text-[12px] font-semibold text-white mb-4">Nueva invitación de firma</p>
+                <div class="flex items-center justify-between mb-4">
+                    <p class="text-[12px] font-semibold text-white">Nueva invitación de firma</p>
+                    <?php renderImportBtn('invites'); ?>
+                </div>
                 <form method="POST" class="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <input type="hidden" name="collection" value="invites">
                     <input type="text" name="fields[title]" required placeholder="Título del documento" class="input-premium">
                     <input type="text" name="fields[description]" placeholder="Descripción" class="input-premium">
-                    <button type="submit" name="create_item" value="1" class="px-3 py-2 rounded-lg text-[11px] font-medium bg-primary-500 hover:bg-primary-600 text-white transition-all">Crear invitación</button>
+                    <button type="submit" name="create_item" value="1" class="px-3 py-2 rounded-lg text-[11px] font-medium bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white transition-all">Crear invitación</button>
                 </form>
             </div>
-            <?php renderComplianceList($items, 'invites', function ($it) {
-                $host = explode(':', $_SERVER['HTTP_HOST'] ?? 'localhost')[0];
-                echo '<p class="text-[12px] font-medium text-text-heading truncate">' . h($it['title'] ?? 'Documento') . '</p>';
-                echo '<p class="text-[10px] text-text-subtle mt-0.5 break-all">Enlace: http://' . h($host) . ':8090/sign-invite?token=' . h($it['token'] ?? '') . '</p>';
-                if (!empty($it['signed'])) {
-                    echo '<p class="text-[10px] text-emerald-400 mt-0.5">Firmado por ' . h($it['signerName'] ?? '-') . ' el ' . h(substr($it['signedAt'] ?? '', 0, 16)) . '</p>';
-                }
-            }, function ($it) {
-                $signed = !empty($it['signed']);
-                echo '<span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border ' . ($signed ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20') . '">' . ($signed ? 'Firmado' : 'Pendiente') . '</span>';
-                if ($signed) renderActionBtn('invites', $it['_id'] ?? '', 'unsign', 'Anular firma');
-            }); ?>
+            <?php if (empty($items)): ?>
+            <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-10 text-center">
+                <p class="text-[11px] text-text-subtle">Sin invitaciones de firma todavía. Crea una o usa «Importar masivo».</p>
+            </div>
+            <?php else: ?>
+            <div class="space-y-2">
+                <?php foreach ($items as $it):
+                    $signed = !empty($it['signed']);
+                    $signUrl = $scheme . '://' . $baseHost . '/firmar/' . ($it['token'] ?? '');
+                    $urlId = 'invurl-' . substr((string)($it['_id'] ?? ''), 0, 8);
+                ?>
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm hover:border-border-theme/60 transition-colors p-4">
+                    <div class="flex flex-col md:flex-row md:items-center gap-3">
+                        <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 <?= $signed ? 'bg-emerald-500/10 text-emerald-400' : 'bg-blue-500/10 text-blue-400' ?>">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <p class="text-[12px] font-medium text-text-heading truncate"><?= h($it['title'] ?? 'Documento') ?></p>
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border <?= $signed ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' ?>"><?= $signed ? 'Firmado' : 'Pendiente' ?></span>
+                            </div>
+                            <?php if ($signed): ?>
+                            <p class="text-[10px] text-emerald-400 mt-0.5">Firmado por <?= h($it['signerName'] ?? '-') ?> el <?= h(substr($it['signedAt'] ?? '', 0, 16)) ?></p>
+                            <?php if (!empty($it['signature']) && str_starts_with((string)$it['signature'], 'data:image/')): ?>
+                            <div class="mt-2 rounded-lg border border-emerald-500/20 bg-white p-2 w-40">
+                                <p class="text-[8px] text-slate-400 uppercase tracking-widest mb-1">Firma manuscrita</p>
+                                <img src="<?= h($it['signature']) ?>" alt="Firma" class="w-full h-16 object-contain">
+                            </div>
+                            <?php endif; ?>
+                            <?php if (!empty($it['assignedTrainingName'])): ?>
+                            <p class="text-[10px] text-indigo-400 mt-2 inline-flex items-center gap-1">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                                Firma asignada a: <b class="text-indigo-300"><?= h($it['assignedTrainingName']) ?></b>
+                            </p>
+                            <?php endif; ?>
+                            <button type="button" onclick="openAssignFirma('<?= h($it['_id'] ?? '') ?>')" class="mt-2 px-3 py-1.5 rounded-lg text-[10px] font-medium bg-indigo-500/10 border border-indigo-500/25 text-indigo-400 hover:bg-indigo-500/20 transition-all inline-flex items-center gap-1.5">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                                Asignar firma
+                            </button>
+                            <?php else: ?>
+                            <p class="text-[10px] text-text-subtle mt-0.5"><?= h($it['description'] ?? '') ?> · Creada: <?= h(substr($it['createdAt'] ?? '', 0, 10)) ?></p>
+                            <?php endif; ?>
+                        </div>
+                        <div class="flex items-center gap-2 flex-shrink-0">
+                            <?php if ($signed) renderActionBtn('invites', $it['_id'] ?? '', 'unsign', 'Anular firma'); ?>
+                            <?php if ($signed && !empty($it['assignedTrainingId'])): ?>
+                            <form method="POST" class="inline">
+                                <input type="hidden" name="invite_id" value="<?= h($it['_id'] ?? '') ?>">
+                                <button type="submit" name="unassign_invite" value="1" onclick="return confirm('¿Quitar la asignación de esta firma?')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-amber-900/10 border border-amber-800/20 text-amber-400 hover:bg-amber-900/20 transition-all">Quitar asignación</button>
+                            </form>
+                            <?php endif; ?>
+                            <form method="POST" class="inline">
+                                <input type="hidden" name="collection" value="invites">
+                                <input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>">
+                                <button type="submit" name="delete_item" value="1" onclick="return confirm('¿Eliminar esta invitación?')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all">Eliminar</button>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="mt-3 flex flex-col sm:flex-row gap-2">
+                        <input type="text" readonly value="<?= h($signUrl) ?>" id="<?= h($urlId) ?>" class="flex-1 bg-bg-base border border-border-theme text-[11px] font-mono text-text-muted rounded-lg px-3 py-2 focus:outline-none focus:border-accent">
+                        <button type="button" onclick="copyInviteUrl('<?= h($urlId) ?>', this)" class="px-3 py-2 rounded-lg text-[11px] font-medium bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] text-text-muted hover:text-text-body transition-all inline-flex items-center gap-1.5">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m9 0l-3-3m0 0l-3 3"/></svg>
+                            <span>Copiar enlace</span>
+                        </button>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
 
             <?php elseif ($tab === 'files'): ?>
             <!-- ═══ SECCIÓN ARCHIVOS (CORREGIDA) ═══ -->
@@ -1788,6 +2055,295 @@ function renderActionBtn($collection, $id, $action, $label) {
     echo '<button type="submit" name="item_action" value="' . h($action) . '" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-primary-500/10 border border-accent-border text-accent hover:bg-primary-500/20 transition-all">' . h($label) . '</button>';
     echo '</form>';
 }
+
+function renderImportBtn($collection) {
+    echo '<button type="button" onclick="openBulkImport(\'' . h($collection) . '\')" title="Importación masiva"
+        class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-medium bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] text-text-muted hover:text-text-body transition-all">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M16 8l-4-4m0 0L8 8m4-4v12"/></svg>
+        Importar masivo
+    </button>';
+}
+
+function renderComplianceStat($label, $value, $color = 'text-white', $icon = '') {
+    echo '<div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-3.5">';
+    if ($icon) echo '<span class="text-text-subtle block mb-1.5">' . $icon . '</span>';
+    echo '<p class="text-[9px] text-text-subtle uppercase tracking-wider mb-1">' . h($label) . '</p>';
+    echo '<p class="text-[20px] font-bold leading-none tracking-tight ' . $color . '">' . h($value) . '</p>';
+    echo '</div>';
+}
+?>
+
+<!-- ═══ MODAL IMPORTACIÓN MASIVA ═══ -->
+<div id="bulk-import-modal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-sm items-center justify-center z-[60] p-4">
+    <div class="bg-bg-panel border border-border-theme rounded-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto scrollbar-custom shadow-2xl">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-border-theme">
+            <div>
+                <h3 class="text-[14px] font-semibold text-white">Importación masiva</h3>
+                <p class="text-[11px] text-text-muted mt-0.5" id="bulk-import-subtitle">Pega tus filas en formato CSV</p>
+            </div>
+            <button onclick="closeBulkImport()" class="text-text-muted hover:text-white transition-colors p-1.5 rounded-lg hover:bg-bg-elevated">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="p-6 space-y-4">
+            <div>
+                <p class="text-[11px] text-text-muted mb-2 leading-relaxed">
+                    La <b class="text-text-body">primera línea</b> debe contener los nombres de los campos y cada línea siguiente es un registro.
+                    Acepta CSV o valores separados por tabulaciones. <b class="text-text-body">Ejemplo:</b>
+                </p>
+                <pre id="bulk-import-example" class="text-[10px] font-mono text-text-subtle bg-bg-base border border-border-theme rounded-lg p-3 overflow-x-auto whitespace-pre-wrap mb-2"></pre>
+                <textarea id="bulk-import-data" rows="8" class="w-full input-premium font-mono text-[11px]" placeholder="campo1,campo2,campo3&#10;valor1,valor2,valor3"></textarea>
+            </div>
+            <button onclick="runBulkImport()" class="w-full px-4 py-2.5 rounded-lg text-[12px] font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white transition-all inline-flex items-center justify-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 17l3 3 3-3m-3 3V9"/></svg>
+                Importar registros
+            </button>
+            <div id="bulk-import-result" class="hidden px-4 py-3 rounded-lg text-[11px]"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ MODAL ASIGNAR (firma ↔ capacitación) ═══ -->
+<div id="assign-modal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-[65] p-4">
+    <div class="bg-bg-panel border border-border-theme rounded-2xl w-full max-w-md h-[80vh] flex flex-col shadow-2xl overflow-hidden">
+        <div class="px-5 py-4 border-b border-border-theme flex items-center justify-between flex-shrink-0">
+            <div>
+                <h3 id="assign-title" class="text-[14px] font-semibold text-white">Asignar</h3>
+                <p id="assign-subtitle" class="text-[11px] text-text-muted mt-0.5">Selecciona un elemento</p>
+            </div>
+            <button onclick="closeAssignModal()" class="text-text-muted hover:text-white transition-colors p-1.5 rounded-lg hover:bg-bg-elevated">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="px-4 pt-3 flex-shrink-0">
+            <div class="relative">
+                <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-subtle" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                <input id="assign-search" type="text" placeholder="Buscar..." class="w-full input-premium pl-9" oninput="filterAssignList()">
+            </div>
+        </div>
+        <div class="flex flex-1 overflow-hidden pt-2">
+            <div id="assign-list" class="flex-1 overflow-y-auto scrollbar-custom px-3 pb-4 space-y-0.5"></div>
+            <div id="assign-alphabet" class="flex-shrink-0 overflow-y-auto py-2 px-1 pr-2 scrollbar-custom select-none"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+const IMPORT_EXAMPLES = {
+    consents: 'name,email,purpose\nJuan Pérez,juan@empresa.cl,Envío de facturación\nMaría López,maria@empresa.cl,Atención al cliente',
+    breaches: 'title,description,severity\nFuga de credenciales,Correo interno expuesto,high\nAcceso no autorizado,Intento de acceso al sistema,medium',
+    dpia: 'name,description,riskLevel\nApp móvil clientes,Trazabilidad de geolocalización,high\nPortal de empleados,Acceso a datos de RRHH,medium',
+    trainings: 'title,attendee,date\nLey 21.719 Básico,Juan Pérez,2026-08-01\nProtección de datos avanzado,María López,2026-08-15',
+    inventory: 'name,purpose,dataCategories,legalBasis,risk,sensitive\nGestión de clientes,Facturación,nombres;emails;RUT,Consentimiento,low,1\nNómina de empleados,Riesgo laboral,salud;remuneraciones,Consentimiento,high,1',
+    invites: 'title,description\nPolítica de Privacidad,Aceptación de la nueva política\nContrato de servicios,Aprobación del contrato'
+};
+let bulkCollection = '';
+
+function openBulkImport(col) {
+    bulkCollection = col;
+    const labels = { consents:'Consentimientos', breaches:'Brechas', dpia:'Eval. Impacto', trainings:'Capacitaciones', inventory:'Inventario', invites:'Firmas' };
+    document.getElementById('bulk-import-subtitle').textContent = 'Importación masiva a: ' + (labels[col] || col);
+    document.getElementById('bulk-import-example').textContent = IMPORT_EXAMPLES[col] || '';
+    document.getElementById('bulk-import-data').value = '';
+    const r = document.getElementById('bulk-import-result');
+    r.classList.add('hidden');
+    const m = document.getElementById('bulk-import-modal');
+    m.classList.remove('hidden'); m.classList.add('flex');
+}
+function closeBulkImport() {
+    const m = document.getElementById('bulk-import-modal');
+    m.classList.add('hidden'); m.classList.remove('flex');
+}
+function parseDelimited(text) {
+    const sep = text.indexOf('\t') !== -1 && text.indexOf(',') === -1 ? '\t' : ',';
+    const rows = []; let row = [], cur = '', inQ = false;
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (inQ) {
+            if (ch === '"') { if (text[i+1] === '"') { cur += '"'; i++; } else inQ = false; }
+            else cur += ch;
+        } else if (ch === '"') inQ = true;
+        else if (ch === sep) { row.push(cur); cur = ''; }
+        else if (ch === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; }
+        else if (ch !== '\r') cur += ch;
+    }
+    if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+    return rows.filter(r => r.some(c => c.trim() !== ''));
+}
+function runBulkImport() {
+    const text = document.getElementById('bulk-import-data').value.trim();
+    const res = document.getElementById('bulk-import-result');
+    res.classList.remove('hidden');
+    if (!text) {
+        res.className = 'px-4 py-3 rounded-lg text-[11px] bg-red-500/10 border border-red-500/30 text-red-400';
+        res.textContent = 'Pega los datos primero.';
+        return;
+    }
+    const rows = parseDelimited(text);
+    if (rows.length < 2) {
+        res.className = 'px-4 py-3 rounded-lg text-[11px] bg-red-500/10 border border-red-500/30 text-red-400';
+        res.textContent = 'Se necesita al menos una línea de campos y una de datos.';
+        return;
+    }
+    const headers = rows[0].map(h => h.trim());
+    const items = rows.slice(1).map(r => {
+        const o = {};
+        headers.forEach((h, i) => { if (h) o[h] = (r[i] || '').trim(); });
+        return o;
+    });
+    res.className = 'px-4 py-3 rounded-lg text-[11px] bg-blue-500/10 border border-blue-500/30 text-blue-400';
+    res.textContent = 'Importando ' + items.length + ' registros...';
+    fetch('/api-proxy.php?path=/api/compliance/' + encodeURIComponent(bulkCollection) + '/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: items })
+    }).then(r => r.json()).then(d => {
+        if (d.success) {
+            res.className = 'px-4 py-3 rounded-lg text-[11px] bg-emerald-500/10 border border-emerald-500/30 text-emerald-400';
+            res.textContent = (d.created || items.length) + ' registros importados correctamente.';
+            setTimeout(() => location.reload(), 1200);
+        } else {
+            res.className = 'px-4 py-3 rounded-lg text-[11px] bg-red-500/10 border border-red-500/30 text-red-400';
+            res.textContent = 'Error: ' + (d.error || 'no se pudo importar');
+        }
+    }).catch(() => {
+        res.className = 'px-4 py-3 rounded-lg text-[11px] bg-red-500/10 border border-red-500/30 text-red-400';
+        res.textContent = 'Error de conexión al importar.';
+    });
+}
+document.addEventListener('click', function (e) {
+    if (e.target.id === 'bulk-import-modal') closeBulkImport();
+});
+function copyInviteUrl(id, btn) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.select();
+    el.setSelectionRange(0, 99999);
+    try { document.execCommand('copy'); } catch (e) {}
+    if (navigator.clipboard) navigator.clipboard.writeText(el.value).catch(() => {});
+    const s = btn.querySelector('span');
+    if (s) { const old = s.textContent; s.textContent = 'Copiado'; setTimeout(() => { s.textContent = old; }, 1500); }
+}
+</script>
+
+<script>
+// ═══ Asignación firma ↔ capacitación ═══
+const TRAININGS_ALL = <?= json_encode($trainings, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+const SIGNED_INVITES_ALL = <?= json_encode($signedInvites, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+
+let assignCtx = { type: 'firma', inviteId: '', trainingId: '' };
+let assignBase = [];
+
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+function openAssignFirma(inviteId) {
+    assignCtx = { type: 'firma', inviteId };
+    document.getElementById('assign-title').textContent = 'Asignar firma';
+    document.getElementById('assign-subtitle').textContent = 'Selecciona la capacitación para asignar esta firma';
+    document.getElementById('assign-search').value = '';
+    assignBase = (TRAININGS_ALL || []).slice().sort(function (a, b) { return String(a.title || '').localeCompare(String(b.title || ''), 'es'); });
+    openAssignModal();
+}
+function openAssignCapacitacion(trainingId) {
+    assignCtx = { type: 'capacitacion', trainingId };
+    document.getElementById('assign-title').textContent = 'Asignar capacitación';
+    document.getElementById('assign-subtitle').textContent = 'Selecciona la firma firmada para asignar a esta capacitación';
+    document.getElementById('assign-search').value = '';
+    assignBase = (SIGNED_INVITES_ALL || []).slice().sort(function (a, b) { return String(a.title || '').localeCompare(String(b.title || ''), 'es'); });
+    openAssignModal();
+}
+function openAssignModal() {
+    renderAssignList();
+    renderAssignAlphabet();
+    const m = document.getElementById('assign-modal');
+    m.classList.remove('hidden');
+}
+function closeAssignModal() {
+    document.getElementById('assign-modal').classList.add('hidden');
+}
+function filterAssignList() {
+    const q = document.getElementById('assign-search').value.trim().toLowerCase();
+    if (!q) { renderAssignList(); renderAssignAlphabet(); return; }
+    const list = assignBase.filter(function (it) {
+        return (it.title || '').toLowerCase().indexOf(q) !== -1 ||
+               (it.attendee || '').toLowerCase().indexOf(q) !== -1 ||
+               (it.signerName || '').toLowerCase().indexOf(q) !== -1;
+    });
+    renderAssignList(list);
+    renderAssignAlphabet(list);
+}
+function firstLetter(s) {
+    const c = String(s || '#').trim().charAt(0).toUpperCase();
+    return /^[A-ZÑ]$/.test(c) ? c : '#';
+}
+function renderAssignList(customItems) {
+    const items = customItems || assignBase;
+    const list = document.getElementById('assign-list');
+    if (!items.length) { list.innerHTML = '<p class="text-[11px] text-text-subtle text-center py-8">Sin resultados</p>'; return; }
+    const groups = {};
+    items.forEach(function (it) {
+        const L = firstLetter(it.title);
+        (groups[L] = groups[L] || []).push(it);
+    });
+    const letters = Object.keys(groups).sort(function (a, b) { return a.localeCompare(b, 'es'); });
+    list.innerHTML = letters.map(function (L) {
+        return '<div id="assign-letter-' + L + '" class="assign-letter-group">' +
+            '<div class="sticky top-0 z-10 bg-bg-panel/95 backdrop-blur px-3 py-1 text-[10px] font-bold text-indigo-400 uppercase tracking-widest">' + L + '</div>' +
+            groups[L].map(assignItemRow).join('') +
+            '</div>';
+    }).join('');
+}
+function assignItemRow(it) {
+    const title = it.title || 'Sin título';
+    const sub = assignCtx.type === 'firma' ? (it.attendee || '') : ('Firmado por ' + (it.signerName || '-'));
+    return '<button type="button" onclick="doAssign(\'' + it._id + '\')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-bg-elevated transition-all flex items-center gap-2.5">' +
+        '<span class="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold bg-indigo-500/15 text-indigo-400 flex-shrink-0">' + esc(firstLetter(title)) + '</span>' +
+        '<span class="min-w-0">' +
+            '<span class="block text-[12px] font-medium text-text-heading truncate">' + esc(title) + '</span>' +
+            '<span class="block text-[10px] text-text-muted truncate">' + esc(sub) + '</span>' +
+        '</span>' +
+    '</button>';
+}
+function renderAssignAlphabet(customItems) {
+    const items = customItems || assignBase;
+    const idx = document.getElementById('assign-alphabet');
+    const present = {};
+    items.forEach(function (it) { present[firstLetter(it.title)] = true; });
+    idx.innerHTML = 'ABCDEFGHIJKLMNÑOPQRSTUVWXYZ'.split('').map(function (L) {
+        const active = present[L];
+        return '<button type="button" onclick="jumpToLetter(\'' + L + '\')" class="block w-5 h-4 text-[9px] font-semibold text-center transition-colors ' + (active ? 'text-indigo-400 hover:text-indigo-300' : 'text-text-subtle/40 hover:text-text-subtle') + '">' + L + '</button>';
+    }).join('');
+}
+function jumpToLetter(L) {
+    const groups = document.querySelectorAll('#assign-list .assign-letter-group');
+    const wanted = 'assign-letter-' + L;
+    for (const g of groups) {
+        if (g.id === wanted) { g.scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }
+    }
+    const letters = Array.from(groups).map(g => g.id.replace('assign-letter-', '')).filter(x => x > L).sort();
+    if (letters.length) document.getElementById('assign-letter-' + letters[0]).scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+function doAssign(targetId) {
+    const inviteId = assignCtx.type === 'firma' ? assignCtx.inviteId : targetId;
+    const trainingId = assignCtx.type === 'capacitacion' ? assignCtx.trainingId : targetId;
+    if (!inviteId || !trainingId) return;
+    fetch('/api-proxy.php?path=/api/compliance/invites/' + encodeURIComponent(inviteId) + '/assign-training', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trainingId: trainingId })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+        if (d.success) {
+            closeAssignModal();
+            location.reload();
+        } else {
+            alert('Error: ' + (d.error || 'no se pudo asignar'));
+        }
+    }).catch(function () { alert('Error de conexión al asignar'); });
+}
+document.getElementById('assign-modal').addEventListener('click', function (e) {
+    if (e.target.id === 'assign-modal') closeAssignModal();
+});
+</script>
 
 require_once __DIR__ . '/../includes/footer.php';
 ?>

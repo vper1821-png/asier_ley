@@ -1,6 +1,19 @@
 <?php
 // Agent routes
 
+function isSuperAdminUser($u) {
+    return ($u['role'] ?? '') === 'superadmin';
+}
+
+function findAgentFor($user, $agentId) {
+    $db = Database::getInstance();
+    $agent = $db->findOne('agents', ['agentId' => $agentId]);
+    if (!$agent || (($agent['userId'] ?? '') !== $user['_id'] && !isSuperAdminUser($user))) {
+        return null;
+    }
+    return $agent;
+}
+
 function register() {
     $body = get_body();
     $token = $body['token'] ?? '';
@@ -20,8 +33,7 @@ function register() {
     $db = Database::getInstance();
 
     $existing = $db->findOne('agents', ['agentId' => $agentId]);
-    if ($existing) {
-        $db->updateOne('agents', ['agentId' => $agentId], [
+    if ($existing) {        $db->updateOne('agents', ['agentId' => $agentId], [
             'userId' => $decoded['userId'],
             'hostname' => $hostname,
             'platform' => $platform,
@@ -46,6 +58,7 @@ function register() {
             'status' => 'online',
             'lastSeen' => date('c'),
         ]);
+        audit_log('agent_registered', ['agentId' => $agentId, 'hostname' => $hostname, 'platform' => $platform, 'ip' => $ip], $decoded['userId'], $agentId);
     }
 
     json_response([
@@ -113,19 +126,13 @@ function heartbeat() {
         ]);
     }
 
-    $pendingCommands = [];
-    foreach ($db->find('agent_commands', ['agentId' => $agentId, 'executed' => ['$in' => [false, null]]]) as $cmd) {
-        $pendingCommands[] = ['command' => $cmd['command'], 'commandId' => $cmd['_id']];
-        $db->updateOne('agent_commands', ['_id' => $cmd['_id']], ['executed' => true, 'executedAt' => date('c')]);
-    }
-
     json_response([
         'error' => '',
         'pendingRules' => [],
         'pendingBlocks' => [],
         'pendingUnblocks' => [],
         'syncBlocked' => [],
-        'pendingCommands' => $pendingCommands,
+        'pendingCommands' => [],
         'heartbeatInterval' => 5,
     ]);
 }
@@ -133,6 +140,26 @@ function heartbeat() {
 function listAll() {
     $user = Auth::requireAuth();
     $db = Database::getInstance();
+    if (isSuperAdminUser($user)) {
+        $agents = $db->find('agents', []);
+        $ownerMap = [];
+        foreach ($db->find('users', []) as $u) {
+            $ownerMap[$u['_id']] = [
+                'email' => $u['email'] ?? '',
+                'companyName' => $u['companyName'] ?? '',
+                'isActive' => $u['isActive'] ?? true,
+                'role' => $u['role'] ?? 'user',
+            ];
+        }
+        foreach ($agents as &$a) {
+            $o = $ownerMap[$a['userId'] ?? ''] ?? null;
+            $a['companyEmail'] = $o['email'] ?? '';
+            $a['companyName'] = $o['companyName'] ?? '';
+            $a['companyActive'] = $o['isActive'] ?? true;
+        }
+        unset($a);
+        json_response($agents);
+    }
     $agents = $db->find('agents', ['userId' => $user['_id']]);
     json_response($agents);
 }
@@ -142,12 +169,13 @@ function deleteAgent() {
     $agentId = $_GET['id'] ?? '';
     if (!$agentId) json_error('agentId requerido');
 
-    $db = Database::getInstance();
-    $agent = $db->findOne('agents', ['agentId' => $agentId, 'userId' => $user['_id']]);
+    $agent = findAgentFor($user, $agentId);
     if (!$agent) json_error('agente no encontrado', 404);
 
+    $db = Database::getInstance();
     $db->deleteOne('agents', ['_id' => $agent['_id']]);
     $db->deleteOne('host_monitor', ['agentId' => $agentId]);
+    audit_log('agent_deleted', ['agentId' => $agentId, 'hostname' => $agent['hostname'] ?? ''], $agent['userId'] ?? null, $agentId);
     json_response(['success' => true]);
 }
 
@@ -156,21 +184,31 @@ function sendCommand() {
     $agentId = $_GET['id'] ?? '';
     $body = get_body();
     $command = $body['command'] ?? '';
+    $params = $body['params'] ?? [];
 
     if (!$agentId || !$command) json_error('agentId y command requeridos');
     if (is_string($command)) $command = json_decode($command, true) ?? $command;
+    if (is_array($command)) {
+        $params = $command['params'] ?? $command;
+        unset($params['command']);
+        $command = $command['command'] ?? '';
+    }
+    if (!$command) json_error('command requerido');
+    if (is_string($params)) $params = json_decode($params, true) ?? [];
 
     $db = Database::getInstance();
-    $agent = $db->findOne('agents', ['agentId' => $agentId, 'userId' => $user['_id']]);
+    $agent = findAgentFor($user, $agentId);
     if (!$agent) json_error('agente no encontrado', 404);
 
     $cmd = $db->insertOne('agent_commands', [
-        'userId' => $user['_id'],
+        'userId' => $agent['userId'] ?? $user['_id'],
         'agentId' => $agentId,
         'command' => $command,
+        'params' => is_array($params) ? $params : [],
         'createdAt' => date('c'),
         'executed' => false,
     ]);
+    audit_log('agent_command', ['agentId' => $agentId, 'hostname' => $agent['hostname'] ?? '', 'command' => $command, 'params' => $params], $agent['userId'] ?? null, $agentId);
 
     json_response(['success' => true, 'commandId' => $cmd['_id']]);
 }
@@ -179,6 +217,98 @@ function downloadToken() {
     $user = Auth::requireAuth();
     $dlToken = Auth::createToken($user['_id'], ['email' => $user['email'] ?? '', 'purpose' => 'agent_download']);
     json_response(['token' => $dlToken]);
+}
+
+function requestData() {
+    $user = Auth::requireAuth();
+    $body = get_body();
+    $agentId = $body['agentId'] ?? '';
+    $type = $body['type'] ?? '';
+    if (!$agentId || !in_array($type, ['processes', 'health', 'defender', 'screenshot'])) json_error('agentId y type requeridos');
+    $db = Database::getInstance();
+    $agent = findAgentFor($user, $agentId);
+    if (!$agent) json_error('agente no encontrado', 404);
+    $db->insertOne('agent_commands', [
+        'userId' => $agent['userId'] ?? $user['_id'],
+        'agentId' => $agentId,
+        'command' => 'request_data',
+        'params' => ['type' => $type],
+        'createdAt' => date('c'),
+        'executed' => false,
+    ]);
+    json_response(['success' => true]);
+}
+
+function getAgentData() {
+    $user = Auth::requireAuth();
+    $body = get_body();
+    $agentId = $_GET['id'] ?? $body['agentId'] ?? '';
+    $type = $_GET['type'] ?? $body['type'] ?? '';
+    if (!$agentId || !$type) json_error('agentId y type requeridos');
+    $db = Database::getInstance();
+    $agent = findAgentFor($user, $agentId);
+    if (!$agent) json_error('agente no encontrado', 404);
+    $recs = $db->find('agent_data', ['agentId' => $agentId, 'type' => $type]);
+    if (empty($recs)) json_response(['success' => true, 'data' => null, 'ts' => 0]);
+    usort($recs, fn($a, $b) => strcmp($b['createdAt'] ?? '', $a['createdAt'] ?? ''));
+    $latest = $recs[0];
+    json_response(['success' => true, 'data' => $latest['data'] ?? null, 'ts' => $latest['ts'] ?? 0]);
+}
+
+function listCommands() {
+    $user = Auth::requireAuth();
+    $agentId = $_GET['id'] ?? ($_POST['agentId'] ?? '');
+    if (!$agentId) json_error('agentId requerido');
+    $db = Database::getInstance();
+    $agent = findAgentFor($user, $agentId);
+    if (!$agent) json_error('agente no encontrado', 404);
+    $cmds = $db->find('agent_commands', ['agentId' => $agentId]);
+    usort($cmds, fn($a, $b) => strcmp($b['createdAt'] ?? '', $a['createdAt'] ?? ''));
+    json_response(array_slice($cmds, 0, 50));
+}
+
+function setLockdown() {
+    $user = Auth::requireAuth();
+    $body = get_body();
+    $agentId = $body['agentId'] ?? '';
+    $action = $body['action'] ?? '';
+    if (!$agentId || !in_array($action, ['lock', 'unlock'])) json_error('agentId y action (lock|unlock) requeridos');
+
+    $db = Database::getInstance();
+    $agent = findAgentFor($user, $agentId);
+    if (!$agent) json_error('agente no encontrado', 404);
+
+    $lockdown = $action === 'lock'
+        ? [
+            'enabled' => true,
+            'message' => trim($body['message'] ?? ($body['reason'] ?? '')),
+            'reason' => trim($body['reason'] ?? ''),
+            'setBy' => $user['email'] ?? $user['_id'],
+            'setAt' => date('c'),
+        ]
+        : [
+            'enabled' => false,
+            'message' => '',
+            'reason' => '',
+            'setBy' => $user['email'] ?? $user['_id'],
+            'setAt' => date('c'),
+        ];
+
+    $db->updateOne('agents', ['agentId' => $agentId], ['lockdown' => $lockdown]);
+    $db->updateOne('host_monitor', ['agentId' => $agentId], ['lockdown' => $lockdown]);
+
+    // Comando inmediato para el agente (se entrega vía WS sync)
+    $db->insertOne('agent_commands', [
+        'userId' => $agent['userId'] ?? $user['_id'],
+        'agentId' => $agentId,
+        'command' => $action === 'lock' ? 'lockdown' : 'unlock',
+        'params' => ['message' => $lockdown['message']],
+        'createdAt' => date('c'),
+        'executed' => false,
+    ]);
+    audit_log('lockdown_' . ($action === 'lock' ? 'on' : 'off'), ['agentId' => $agentId, 'hostname' => $agent['hostname'] ?? '', 'message' => $lockdown['message']], $agent['userId'] ?? null, $agentId);
+
+    json_response(['success' => true, 'lockdown' => $lockdown]);
 }
 
 function download() {
@@ -217,9 +347,12 @@ function download() {
         ? 'C:\\Program Files\\SecureLab Agent'
         : '/opt/securelab-agent';
 
+    $baseUrl = API_BASE_URL !== '' ? API_BASE_URL : 'http://localhost:3838';
+    $wsBase  = preg_replace('#^https?://#', 'ws://', rtrim($baseUrl, '/'));
+
     $config = [
-        'api_base'           => API_BASE_URL . '/api/agents',
-        'ws_url'             => 'wss://leysecurelab.sytes.net/ws/',
+        'api_base'           => rtrim($baseUrl, '/') . '/api/agents',
+        'ws_url'             => $wsBase . '/ws/',
         'token'              => $token,
         'heartbeat_interval' => 5,
         'agent_version'      => '2.0.0',

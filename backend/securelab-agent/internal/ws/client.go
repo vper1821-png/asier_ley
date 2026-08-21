@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"securelab-agent/internal/models"
 	"securelab-agent/internal/queue"
 	"securelab-agent/internal/security"
+	"securelab-agent/internal/sysinfo"
 
 	"github.com/gorilla/websocket"
 )
@@ -62,12 +65,12 @@ func (c *Client) Connect() {
 
 		// Validar que tenemos token y agentID
 		if c.token == "" {
-			c.log.Error("WS: token vacío, no se puede conectar")
+			c.log.Error("WS: token vacÃ­o, no se puede conectar")
 			time.Sleep(5 * time.Second)
 			continue
 		}
 		if c.agentID == "" {
-			c.log.Error("WS: agentID vacío, no se puede conectar")
+			c.log.Error("WS: agentID vacÃ­o, no se puede conectar")
 			time.Sleep(5 * time.Second)
 			continue
 		}
@@ -75,7 +78,7 @@ func (c *Client) Connect() {
 		c.log.Info("WS: conectando a %s", c.url)
 		conn, _, err := websocket.DefaultDialer.Dial(c.url, nil)
 		if err != nil {
-			c.log.Error("WS: error de conexión: %v. Reintentando en 5s...", err)
+			c.log.Error("WS: error de conexiÃ³n: %v. Reintentando en 5s...", err)
 			time.Sleep(5 * time.Second)
 			continue
 		}
@@ -84,7 +87,7 @@ func (c *Client) Connect() {
 		c.conn = conn
 		c.mu.Unlock()
 
-		c.log.Info("WS: conexión establecida, enviando registro...")
+		c.log.Info("WS: conexiÃ³n establecida, enviando registro...")
 
 		// Registrar agente
 		if err := c.sendRegister(); err != nil {
@@ -100,11 +103,11 @@ func (c *Client) Connect() {
 		go c.readLoop()
 		go c.writeLoop()
 
-		// Esperar hasta que se cierre la conexión
+		// Esperar hasta que se cierre la conexiÃ³n
 		<-c.done
 		c.wg.Wait()
 
-		c.log.Warn("WS: conexión perdida. Reintentando en 5s...")
+		c.log.Warn("WS: conexiÃ³n perdida. Reintentando en 5s...")
 		time.Sleep(5 * time.Second)
 	}
 }
@@ -208,6 +211,8 @@ func (c *Client) writeLoop() {
 				}
 				c.queue.MarkAsSent(ev.ID)
 			}
+		case <-c.done:
+			return
 		case <-c.ctx.Done():
 			return
 		}
@@ -235,7 +240,7 @@ func (c *Client) Close() {
 	c.log.Info("WS: cerrado")
 }
 
-// ─── Envío de eventos ──────────────────────────────────────────────
+// â”€â”€â”€ EnvÃ­o de eventos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 func (c *Client) send(typ string, payload interface{}) {
 	msg := map[string]interface{}{
@@ -340,6 +345,12 @@ func (c *Client) SendTelemetry(data models.TelemetryData) {
 		"diskTotal":   data.DiskTotal,
 		"processes":   data.Processes,
 		"connections": data.Connections,
+		"hostname":    data.Hostname,
+		"platform":    data.Platform,
+		"arch":        data.Arch,
+		"os":          data.OS,
+		"user":        data.User,
+		"uptime":      data.Uptime,
 	}
 	c.send("telemetry", payload)
 }
@@ -356,30 +367,102 @@ func (c *Client) SendEvent(title, description, source, severity string) {
 	c.send("event", payload)
 }
 
-// ─── Manejo de mensajes entrantes ──────────────────────────────────
+// â”€â”€â”€ Manejo de mensajes entrantes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 func (c *Client) handleMessage(data []byte) {
 	var msg map[string]interface{}
 	if err := json.Unmarshal(data, &msg); err != nil {
-		c.log.Error("WS: mensaje inválido: %v", err)
+		c.log.Error("WS: mensaje invÃ¡lido: %v", err)
 		return
 	}
 	typ, _ := msg["type"].(string)
 	switch typ {
 	case "command":
 		c.handleCommand(msg)
+	case "sync_response":
+		c.handleSyncResponse(msg)
 	case "ping":
 		c.send("pong", map[string]interface{}{"ts": time.Now().Unix()})
 	case "welcome":
-		c.log.Info("WS: servidor envió bienvenida: %v", msg["payload"])
+		c.log.Info("WS: servidor enviÃ³ bienvenida: %v", msg["payload"])
 	case "registered":
 		c.log.Info("WS: agente registrado correctamente: %v", msg["payload"])
 	case "file_response":
 		c.log.Info("WS: respuesta de archivo: %v", msg["payload"])
 	case "error":
-		c.log.Error("WS: servidor reportó error: %v", msg["payload"])
+		c.log.Error("WS: servidor reportÃ³ error: %v", msg["payload"])
 	default:
 		c.log.Debug("WS: mensaje desconocido: %s", typ)
+	}
+}
+
+// SendSync pide al servidor comandos pendientes y el estado de bloqueo.
+func (c *Client) SendSync() {
+	c.send("sync", map[string]interface{}{})
+}
+
+// StartSyncLoop envÃ­a sync periÃ³dicamente mientras la conexiÃ³n estÃ© activa.
+func (c *Client) StartSyncLoop(interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				c.SendSync()
+			case <-c.ctx.Done():
+				return
+			}
+		}
+	}()
+}
+
+func (c *Client) handleSyncResponse(msg map[string]interface{}) {
+	payload, _ := msg["payload"].(map[string]interface{})
+
+	// Sincronizar estado de bloqueo
+	if ld, ok := payload["lockdown"].(map[string]interface{}); ok {
+		enabled, _ := ld["enabled"].(bool)
+		message, _ := ld["message"].(string)
+		if enabled && !security.IsLockdownActive() {
+			c.log.Warn("WS: servidor solicita BLOQUEO TOTAL del equipo")
+			security.Lockdown(message)
+			c.log.Warn("WS: equipo bloqueado por el servidor")
+		}
+		if !enabled && security.IsLockdownActive() {
+			if security.TimedLockPending() {
+				c.log.Info("WS: bloqueo temporizado vigente, se ignora desbloqueo del servidor")
+			} else {
+				c.log.Info("WS: servidor solicita DESBLOQUEO del equipo")
+				security.Unlock()
+				c.log.Info("WS: equipo desbloqueado por el servidor")
+			}
+		}
+	}
+
+	// Ejecutar comandos pendientes
+	if cmds, ok := payload["pendingCommands"].([]interface{}); ok {
+		for _, raw := range cmds {
+			cm, _ := raw.(map[string]interface{})
+			command, _ := cm["command"].(string)
+			commandId, _ := cm["commandId"].(string)
+			params, _ := cm["params"].(map[string]interface{})
+		if command == "" {
+			continue
+		}
+		result, err := c.ExecuteCommand(command, params, commandId)
+		c.send("command_response", map[string]interface{}{
+			"commandId": commandId,
+			"status":    "success",
+			"result":    result,
+			"error":     err != nil,
+		})
+		if err != nil {
+			c.log.Error("WS: error ejecutando comando pendiente %s: %v", command, err)
+		} else {
+			c.log.Info("WS: comando pendiente ejecutado: %s", command)
+		}
+		}
 	}
 }
 
@@ -393,10 +476,100 @@ func (c *Client) handleCommand(msg map[string]interface{}) {
 	params, _ := payload["params"].(map[string]interface{})
 	commandId, _ := payload["commandId"].(string)
 
+	result, err := c.ExecuteCommand(command, params, commandId)
+
+	c.send("command_response", map[string]interface{}{
+		"commandId": commandId,
+		"status":    "success",
+		"result":    result,
+		"error":     err != nil,
+	})
+	if err != nil {
+		c.log.Error("WS: error ejecutando comando %s: %v", command, err)
+	}
+}
+
+// ExecuteCommand ejecuta un comando de gestiÃ³n remota y devuelve el resultado.
+func (c *Client) ExecuteCommand(command string, params map[string]interface{}, commandId string) (string, error) {
 	var result string
 	var err error
 
 	switch command {
+	case "request_data":
+		dtype, _ := params["type"].(string)
+		var data interface{}
+		switch dtype {
+		case "processes":
+			data = sysinfo.GetProcesses()
+			result = "Procesos enviados"
+		case "health":
+			data = sysinfo.GetHealth()
+			result = "Snapshot de salud enviado"
+		case "defender":
+			data = sysinfo.GetDefender()
+			result = "Estado de seguridad enviado"
+		case "screenshot":
+			shot, serr := sysinfo.CaptureScreenshot()
+			if serr != nil {
+				err = serr
+			} else {
+				data = map[string]interface{}{"image": shot}
+				result = "Captura enviada"
+			}
+		default:
+			err = fmt.Errorf("tipo de datos no soportado: %s", dtype)
+		}
+		if err == nil {
+			c.send("data_response", map[string]interface{}{
+				"agentId": c.agentID,
+				"type":    dtype,
+				"data":    data,
+				"ts":      time.Now().Unix(),
+			})
+		}
+	case "kill_process":
+		pidStr, _ := params["pid"].(string)
+		if pidStr == "" {
+			err = fmt.Errorf("pid requerido")
+		} else {
+			cmd := exec.Command("taskkill", "/F", "/PID", pidStr)
+			if o, cerr := cmd.CombinedOutput(); cerr != nil {
+				err = fmt.Errorf("no se pudo terminar el proceso: %s", string(o))
+			} else {
+				result = "Proceso terminado (PID " + pidStr + ")"
+			}
+		}
+	case "power_off":
+		exec.Command("shutdown", "/s", "/t", "15", "/c", "SecureLab: el DPO solicitÃ³ apagar este equipo").Run()
+		result = "Apagando el equipo en 15 segundos..."
+	case "power_restart":
+		exec.Command("shutdown", "/r", "/t", "15", "/c", "SecureLab: el DPO solicitÃ³ reiniciar este equipo").Run()
+		result = "Reiniciando el equipo en 15 segundos..."
+	case "power_suspend":
+		exec.Command("rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0").Run()
+		result = "Suspender el equipo"
+	case "lock_timed":
+		msg, _ := params["message"].(string)
+		minutes, _ := params["minutes"].(float64)
+		security.LockdownTimed(msg, int(minutes))
+		result = "Equipo bloqueado temporalmente"
+	case "lockdown":
+		msg, _ := params["message"].(string)
+		security.Lockdown(msg)
+		result = "Equipo BLOQUEADO por seguridad (persistente)"
+	case "unlock":
+		security.Unlock()
+		result = "Equipo desbloqueado"
+	case "alarm":
+		security.PlayAlarm()
+		result = "Alarma de intruso activada a mÃ¡ximo volumen"
+	case "alarm_stop":
+		security.StopAlarm()
+		result = "Alarma detenida"
+	case "speak":
+		text, _ := params["text"].(string)
+		security.Speak(text)
+		result = "Mensaje reproducido"
 	case "block_user":
 		username, _ := params["username"].(string)
 		err = security.BlockUser(username)
@@ -430,38 +603,49 @@ func (c *Client) handleCommand(msg map[string]interface{}) {
 		if err == nil {
 			result = "Regla de firewall aplicada"
 		}
-	case "lockdown":
-		security.Lockdown()
-		result = "Modo lockdown activado"
 	case "restart":
 		result = "Reiniciando..."
 		go func() {
 			time.Sleep(1 * time.Second)
 			c.log.Info("WS: reinicio solicitado")
 		}()
+	case "shell_exec":
+		shellCmd, _ := params["command"].(string)
+		if shellCmd == "" {
+			err = fmt.Errorf("command requerido")
+		} else {
+			c.log.Info("WS: ejecutando shell: %s", shellCmd)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			var cmd *exec.Cmd
+			if runtime.GOOS == "windows" {
+				cmd = exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", shellCmd)
+			} else {
+				cmd = exec.CommandContext(ctx, "/bin/sh", "-c", shellCmd)
+			}
+			out, cmdErr := cmd.CombinedOutput()
+			output := string(out)
+			if len(output) > 4000 {
+				output = output[:4000] + "\n... (truncado)"
+			}
+			if cmdErr != nil {
+				result = output + "\n[ERROR] " + cmdErr.Error()
+				err = cmdErr
+			} else {
+				result = output
+			}
+		}
 	case "uninstall":
 		result = "Desinstalando..."
-		c.log.Info("WS: desinstalación solicitada")
+		c.log.Info("WS: desinstalaciÃ³n solicitada")
 	default:
 		err = fmt.Errorf("comando desconocido: %s", command)
 	}
 
-	resp := map[string]interface{}{
-		"type": "command_response",
-		"payload": map[string]interface{}{
-			"commandId": commandId,
-			"status":    "success",
-			"result":    result,
-			"error":     err != nil,
-		},
-	}
-	c.send("command_response", resp)
-	if err != nil {
-		c.log.Error("WS: error ejecutando comando %s: %v", command, err)
-	}
+	return result, err
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────
+// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 func getFileType(path string) string {
 	ext := filepath.Ext(path)

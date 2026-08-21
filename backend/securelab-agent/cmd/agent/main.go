@@ -52,6 +52,12 @@ func main() {
 	// ── 3. CONECTAR WS ──
 	go wsClient.Connect()
 
+	// Re-aplicar bloqueo persistente si estaba activo (sobrevive a reinicios)
+	security.ApplyLockdownIfFlagged()
+
+	// ── 3.1 Sync loop: comandos pendientes + estado de bloqueo desde el servidor ──
+	wsClient.StartSyncLoop(5 * time.Second)
+
 	// ── Resto de servicios ──
 	assistant := assistant.NewAssistant(cfg.KnowledgeDBPath, log)
 	_ = assistant

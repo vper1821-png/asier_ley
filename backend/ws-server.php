@@ -116,6 +116,12 @@ class AgentWebSocket implements MessageComponentInterface {
                     ]));
                     echo "🏓 Ping recibido, enviando pong\n";
                     break;
+                case 'sync':
+                    $this->handleSync($from);
+                    break;
+                case 'data_response':
+                    $this->handleDataResponse($from, $payload);
+                    break;
                 default:
                     echo "⚠️ Tipo de mensaje desconocido: {$type}\n";
                     $from->send(json_encode([
@@ -370,13 +376,26 @@ class AgentWebSocket implements MessageComponentInterface {
             echo "⚠️ telemetry ignorado\n";
             return;
         }
+        $diskFree = (float)($data['diskFree'] ?? 0);
+        $diskTotal = (float)($data['diskTotal'] ?? 0);
+        $diskPct = $diskTotal > 0 ? round((($diskTotal - $diskFree) / $diskTotal) * 100, 1) : 0;
         $doc = [
             'userId' => $from->userId ?? '',
             'agentId' => $agentId,
+            'hostname' => $data['hostname'] ?? $this->db->findOne('agents', ['agentId' => $agentId])['hostname'] ?? $agentId,
             'cpu' => (float)($data['cpu'] ?? 0),
             'ram' => (float)($data['memory'] ?? 0),
-            'disk' => (float)($data['diskFree'] ?? 0),
-            'uptime' => (int)($data['timestamp'] ?? 0),
+            'disk' => max(0, min(100, $diskPct)),
+            'diskFree' => $diskFree,
+            'diskTotal' => $diskTotal,
+            'diskUsed' => max(0, $diskTotal - $diskFree),
+            'processes' => (int)($data['processes'] ?? 0),
+            'connections' => (int)($data['connections'] ?? 0),
+            'platform' => $data['platform'] ?? '',
+            'arch' => $data['arch'] ?? '',
+            'os' => $data['os'] ?? '',
+            'user' => $data['user'] ?? '',
+            'uptime' => (int)($data['uptime'] ?? 0),
             'status' => 'online',
             'lastSeen' => date('c'),
         ];
@@ -386,6 +405,11 @@ class AgentWebSocket implements MessageComponentInterface {
         } else {
             $doc['createdAt'] = date('c');
             $this->db->insertOne('host_monitor', $doc);
+        }
+        // Mantener sync de estado de bloqueo en el agente
+        $agent = $this->db->findOne('agents', ['agentId' => $agentId]);
+        if ($agent && isset($agent['lockdown'])) {
+            $this->db->updateOne('host_monitor', ['agentId' => $agentId], ['lockdown' => $agent['lockdown']]);
         }
         echo "📊 Telemetría recibida de {$agentId}\n";
     }
@@ -406,6 +430,55 @@ class AgentWebSocket implements MessageComponentInterface {
             'createdAt' => date('c'),
         ]);
         echo "📢 Evento genérico: {$data['title']}\n";
+    }
+
+    // ─── SYNC (comandos pendientes + estado de bloqueo) ──────────────
+
+    private function handleDataResponse(ConnectionInterface $conn, $data) {
+        $agentId = $conn->agentId ?? $data['agentId'] ?? '';
+        $type = $data['type'] ?? '';
+        if (!$agentId || !$type || !$this->db) return;
+        $this->db->insertOne('agent_data', [
+            'agentId' => $agentId,
+            'type' => $type,
+            'data' => $data['data'] ?? null,
+            'ts' => (int)($data['ts'] ?? time()),
+            'createdAt' => date('c'),
+        ]);
+        // Mantener solo los últimos 20 por agente
+        $all = $this->db->find('agent_data', ['agentId' => $agentId, 'type' => $type]);
+        while (count($all) > 20) {
+            $oldest = array_pop($all);
+            if (isset($oldest['_id'])) $this->db->deleteOne('agent_data', ['_id' => $oldest['_id']]);
+        }
+        echo "📡 Data response: {$agentId} / {$type}\n";
+    }
+
+    private function handleSync(ConnectionInterface $conn) {
+        $agentId = $conn->agentId ?? '';
+        if (!$agentId || !$this->db) return;
+        $agent = $this->db->findOne('agents', ['agentId' => $agentId]);
+        $lockdown = $agent['lockdown'] ?? ['enabled' => false];
+        $commands = $this->db->find('agent_commands', [
+            'agentId' => $agentId,
+            'executed' => ['$in' => [false, null]],
+        ]);
+        $pending = [];
+        foreach ($commands as $cmd) {
+            $pending[] = [
+                'command' => $cmd['command'],
+                'params' => $cmd['params'] ?? [],
+                'commandId' => $cmd['_id'],
+            ];
+        }
+        $conn->send(json_encode([
+            'type' => 'sync_response',
+            'payload' => [
+                'lockdown' => $lockdown,
+                'pendingCommands' => $pending,
+            ]
+        ]));
+        echo "🔄 Sync enviado a {$agentId} (lockdown: " . json_encode($lockdown['enabled'] ?? false) . ", comandos: " . count($pending) . ")\n";
     }
 
     private function handleCommandResponse(ConnectionInterface $from, $data) {

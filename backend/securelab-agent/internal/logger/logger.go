@@ -17,20 +17,23 @@ type Logger struct {
 
 func New(logPath, level string) *Logger {
 	l := &Logger{level: level}
-	var w io.Writer = os.Stdout
 
 	if logPath != "" {
-		// Crear el directorio padre si no existe
 		dir := filepath.Dir(logPath)
 		if err := os.MkdirAll(dir, 0755); err == nil {
 			f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 			if err == nil {
 				l.file = f
-				w = io.MultiWriter(os.Stdout, f)
+				if os.Stdout != nil {
+					l.logger = log.New(io.MultiWriter(os.Stdout, f), "", log.LstdFlags)
+				} else {
+					l.logger = log.New(f, "", log.LstdFlags)
+				}
+				return l
 			}
 		}
 	}
-	l.logger = log.New(w, "", log.LstdFlags)
+	l.logger = log.New(os.Stdout, "", log.LstdFlags)
 	return l
 }
 

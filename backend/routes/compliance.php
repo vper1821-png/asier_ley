@@ -76,6 +76,7 @@ function sign() {
     $db->updateOne('compliance_invites', ['token' => $inviteToken], [
         'signed' => true,
         'signature' => $signature,
+        'signatureType' => str_starts_with($signature, 'data:image/') ? 'image' : 'text',
         'signerName' => $name,
         'signedAt' => date('c'),
     ]);
@@ -164,22 +165,80 @@ function crud() {
 
     $collection = 'compliance_' . $resource;
 
-    // Bulk invites
-    if ($resource === 'invites' && $id === 'bulk' && $method === 'POST') {
-        $invites = $body['invites'] ?? $body ?? [];
-        if (!is_array($invites) || empty($invites)) json_error('invites requerido');
+    // Bulk import (cualquier colección)
+    if ($id === 'bulk' && $method === 'POST') {
+        $items = $body['items'] ?? $body['invites'] ?? $body ?? [];
+        if (!is_array($items) || empty($items)) json_error('items requerido');
         $created = [];
-        foreach ($invites as $inv) {
-            $created[] = $db->insertOne($collection, [
-                'userId' => $user['_id'],
-                'token' => bin2hex(random_bytes(16)),
-                'title' => $inv['title'] ?? '',
-                'description' => $inv['description'] ?? '',
-                'companyName' => $inv['companyName'] ?? ($user['companyName'] ?? ''),
-                'createdAt' => date('c'),
-            ]);
+        foreach ($items as $item) {
+            if (!is_array($item)) continue;
+            $doc = $item;
+            unset($doc['token']);
+            $doc['userId'] = $user['_id'];
+            $doc['createdAt'] = date('c');
+            if ($resource === 'invites') {
+                $doc['token'] = bin2hex(random_bytes(16));
+                $doc['signed'] = false;
+                $doc['companyName'] = $doc['companyName'] ?? ($user['companyName'] ?? '');
+            }
+            $created[] = $db->insertOne($collection, $doc);
         }
-        json_response(['success' => true, 'invites' => $created]);
+        json_response(['success' => true, 'created' => count($created), 'items' => $created]);
+    }
+
+    // Asignar la firma de una invitación firmada a una capacitación existente
+    if ($resource === 'invites' && $id && $action === 'assign-training' && $method === 'POST') {
+        $invite = $db->findOne($collection, ['_id' => $id, 'userId' => $user['_id']]);
+        if (!$invite) json_error('invitación no encontrada', 404);
+        if (empty($invite['signed'])) json_error('la invitación aún no está firmada');
+        $trainingId = $body['trainingId'] ?? '';
+        if (!$trainingId) json_error('trainingId requerido');
+        $training = $db->findOne('compliance_trainings', ['_id' => $trainingId, 'userId' => $user['_id']]);
+        if (!$training) json_error('capacitación no encontrada', 404);
+
+        $db->updateOne('compliance_trainings', ['_id' => $trainingId], [
+            'signature' => $invite['signature'] ?? '',
+            'signatureType' => $invite['signatureType'] ?? 'image',
+            'signerName' => $invite['signerName'] ?? '',
+            'signedAt' => $invite['signedAt'] ?? date('c'),
+            'inviteId' => $id,
+            'signatureAssignedAt' => date('c'),
+            'completed' => true,
+            'completedAt' => date('c'),
+        ]);
+        $db->updateOne($collection, ['_id' => $id], [
+            'assignedTrainingId' => $trainingId,
+            'assignedTrainingName' => $training['title'] ?? '',
+            'assignedAt' => date('c'),
+        ]);
+        json_response(['success' => true]);
+    }
+
+    // Desasignar la firma de una invitación (quita la firma de la capacitación)
+    if ($resource === 'invites' && $id && $action === 'unassign' && $method === 'POST') {
+        $invite = $db->findOne($collection, ['_id' => $id, 'userId' => $user['_id']]);
+        if (!$invite) json_error('invitación no encontrada', 404);
+        $clearTraining = [
+            'signature' => null,
+            'signatureType' => null,
+            'signerName' => null,
+            'signedAt' => null,
+            'inviteId' => null,
+            'signatureAssignedAt' => null,
+            'completed' => false,
+            'completedAt' => null,
+        ];
+        $linked = $invite['assignedTrainingId'] ?? '';
+        if ($linked) {
+            $db->updateOne('compliance_trainings', ['_id' => $linked], $clearTraining);
+        }
+        $db->updateOne('compliance_trainings', ['inviteId' => $id], $clearTraining);
+        $db->updateOne($collection, ['_id' => $id], [
+            'assignedTrainingId' => null,
+            'assignedTrainingName' => null,
+            'assignedAt' => null,
+        ]);
+        json_response(['success' => true]);
     }
 
     // Search list
@@ -208,6 +267,7 @@ function crud() {
 
     if ($method === 'POST' && !$id) {
         $item = $body;
+        unset($item['token']);
         $item['userId'] = $user['_id'];
         $item['createdAt'] = date('c');
         if ($resource === 'invites') {
@@ -258,6 +318,16 @@ function crud() {
             default: json_error('acción no soportada', 400);
         }
         $db->updateOne($collection, ['_id' => $id], $actionUpdates);
+        if ($resource === 'invites' && $action === 'unsign') {
+            $db->updateOne('compliance_trainings', ['inviteId' => $id], [
+                'signature' => null, 'signatureType' => null, 'signerName' => null,
+                'signedAt' => null, 'inviteId' => null, 'signatureAssignedAt' => null,
+                'completed' => false, 'completedAt' => null,
+            ]);
+            $db->updateOne($collection, ['_id' => $id], [
+                'assignedTrainingId' => null, 'assignedTrainingName' => null, 'assignedAt' => null,
+            ]);
+        }
         json_response(['success' => true]);
     }
 
@@ -298,6 +368,7 @@ function publicInviteSubmit($token, $body, $db) {
     $db->updateOne('compliance_invites', ['token' => $token], [
         'signed' => true,
         'signature' => $body['signature'] ?? '',
+        'signatureType' => str_starts_with($body['signature'] ?? '', 'data:image/') ? 'image' : 'text',
         'signerName' => $body['name'] ?? ($body['signerName'] ?? ''),
         'signerEmail' => $body['email'] ?? '',
         'signedAt' => date('c'),
@@ -331,6 +402,7 @@ function arcoCrud($user, $db, $method, $id, $action, $body) {
             'resolvedAt' => date('c'),
             'resolvedBy' => $user['_id'],
         ]);
+        audit_log('arco_' . $action, ['arcoId' => $id, 'solicitante' => $req['solicitante'] ?? '', 'tipo' => $req['tipo'] ?? '', 'status' => $status], $user['_id']);
         json_response(['success' => true]);
     }
     if ($method === 'POST' && $action === 'generate-response') {
@@ -338,6 +410,7 @@ function arcoCrud($user, $db, $method, $id, $action, $body) {
         if (!$req) json_error('solicitud no encontrada', 404);
         $response = 'Respuesta generada automáticamente conforme a la Ley 21.719.';
         $db->updateOne($collection, ['_id' => $id], ['response' => $response, 'status' => 'in_review']);
+        audit_log('arco_generate_response', ['arcoId' => $id, 'solicitante' => $req['solicitante'] ?? '', 'tipo' => $req['tipo'] ?? ''], $user['_id']);
         json_response(['success' => true, 'response' => $response]);
     }
     json_error('método no soportado', 405);

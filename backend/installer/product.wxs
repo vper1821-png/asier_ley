@@ -25,7 +25,7 @@
                             Interactive="no"
                             WorkingDirectory="INSTALLDIR" />
                         <!-- NO Start="install" para evitar error 1920 durante la instalación -->
-                        <ServiceControl Id="StartService" Name="SecureLabAgent" Wait="yes" Stop="both" Remove="uninstall" />
+                        <ServiceControl Id="StartService" Name="SecureLabAgent" Wait="yes" Stop="both" Start="install" Remove="uninstall" />
                     </Component>
                 </Directory>
             </Directory>

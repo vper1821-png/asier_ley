@@ -69,7 +69,10 @@ function update() {
     if (isset($body['suspensionReason'])) $updates['suspensionReason'] = $body['suspensionReason'];
     if (isset($body['aiRetention'])) $updates['aiRetention'] = $body['aiRetention'];
 
-    if (!empty($updates)) $db->updateOne('users', ['_id' => $targetUserId], $updates);
+    if (!empty($updates)) {
+        $db->updateOne('users', ['_id' => $targetUserId], $updates);
+        audit_log('admin_user_updated', ['targetUserId' => $targetUserId, 'targetEmail' => $target['email'] ?? '', 'changes' => array_keys($updates), 'details' => $updates], null);
+    }
     json_response(['success' => true]);
 }
 
@@ -133,6 +136,7 @@ function createUser() {
         'onboardingComplete' => false,
     ]);
     unset($user['password']);
+    audit_log('admin_user_created', ['targetEmail' => $email, 'role' => $role], null);
     json_response(['success' => true, 'user' => $user]);
 }
 
@@ -149,6 +153,7 @@ function resetPassword() {
     if (!$target) json_error('usuario no encontrado', 404);
 
     $db->updateOne('users', ['_id' => $userId], ['password' => Auth::hashPassword($newPassword)]);
+    audit_log('admin_password_reset', ['targetEmail' => $target['email'] ?? ''], null);
     json_response(['success' => true]);
 }
 
@@ -168,7 +173,10 @@ function updateUser() {
         if (isset($body[$field])) $updates[$field] = $body[$field];
     }
     if (isset($updates['role'])) $updates['isAdmin'] = ($updates['role'] === 'admin' || $updates['role'] === 'superadmin');
-    if (!empty($updates)) $db->updateOne('users', ['_id' => $userId], $updates);
+    if (!empty($updates)) {
+        $db->updateOne('users', ['_id' => $userId], $updates);
+        audit_log('admin_user_updated', ['targetEmail' => $target['email'] ?? '', 'changes' => array_keys($updates), 'details' => $updates], null);
+    }
     json_response(['success' => true]);
 }
 
@@ -185,6 +193,7 @@ function deleteUserFull() {
 
     $db->deleteOne('users', ['_id' => $userId]);
     $db->deleteOne('onboarding', ['userId' => $userId]);
+    audit_log('admin_user_deleted', ['targetEmail' => $target['email'] ?? ''], null);
     json_response(['success' => true]);
 }
 
@@ -226,6 +235,7 @@ function reset2FA() {
     if (!$target) json_error('usuario no encontrado', 404);
 
     $db->updateOne('users', ['_id' => $userId], ['twoFactorSecret' => null, 'twoFactorEnabled' => false]);
+    audit_log('admin_2fa_reset', ['targetEmail' => $target['email'] ?? ''], null);
     json_response(['success' => true]);
 }
 
@@ -244,10 +254,36 @@ function dashboardStatus() {
 function auditLogs() {
     Auth::requireAdmin();
     $body = get_body();
-    $limit = (int)($body['limit'] ?? 200);
+    $limit = min(2000, max(10, (int)($body['limit'] ?? 300)));
     $db = Database::getInstance();
-    $logs = $db->find('audit_logs', [], ['limit' => $limit]);
-    json_response($logs);
+
+    $filter = [];
+    if (!empty($body['userId'])) $filter['userId'] = $body['userId'];
+    if (!empty($body['agentId'])) $filter['agentId'] = $body['agentId'];
+    if (!empty($body['action'])) $filter['action'] = $body['action'];
+
+    $from = trim($body['from'] ?? '');
+    $to = trim($body['to'] ?? '');
+    if ($from !== '' || $to !== '') {
+        $range = [];
+        if ($from !== '') $range['$gte'] = (strlen($from) === 10) ? $from . 'T00:00:00' : $from;
+        if ($to !== '') $range['$lte'] = (strlen($to) === 10) ? $to . 'T23:59:59' : $to;
+        $filter['createdAt'] = $range;
+    }
+
+    $q = trim($body['q'] ?? '');
+    if ($q !== '') {
+        $rx = ['$regex' => preg_quote($q, '/'), '$options' => 'i'];
+        $filter['$or'] = [
+            ['action' => $rx],
+            ['userEmail' => $rx],
+            ['companyName' => $rx],
+            ['agentId' => $rx],
+        ];
+    }
+
+    $logs = $db->find('audit_logs', $filter, ['sort' => ['createdAt' => -1], 'limit' => $limit]);
+    json_response(['logs' => $logs, 'total' => count($logs)]);
 }
 
 function adminReports() {
@@ -290,6 +326,7 @@ function toggleMaintenance() {
     } else {
         $db->insertOne('maintenance', ['scope' => 'global', 'enabled' => $enabled, 'message' => $message]);
     }
+    audit_log('maintenance_toggled', ['enabled' => $enabled, 'message' => $message], null);
     json_response(['success' => true, 'maintenanceMode' => $enabled]);
 }
 

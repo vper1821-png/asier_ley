@@ -19,7 +19,6 @@ $routes = [
     '/databases'           => 'pages/databases.php',
     '/db-logs'             => 'pages/db-logs.php',
     '/hardening'           => 'pages/hardening.php',
-    '/payments'            => 'pages/payments.php',
     '/tickets'             => 'pages/tickets.php',
     '/arco'                => 'pages/arco.php',
     '/compliance'          => 'pages/compliance.php',

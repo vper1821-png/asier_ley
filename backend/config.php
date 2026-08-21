@@ -64,3 +64,48 @@ function get_token() {
     }
     return $token;
 }
+
+// ── Auditoría global del sistema ─────────────────────────────────────────────
+// Registra un evento en audit_logs con contexto completo (usuario, empresa,
+// equipo, IP, user-agent). Nunca interrumpe el flujo principal.
+function audit_log($action, $details = [], $userId = null, $agentId = null) {
+    try {
+        $db = Database::getInstance();
+        $userEmail = '';
+        $companyName = '';
+        if ($userId) {
+            $u = $db->findOne('users', ['_id' => $userId]);
+            if ($u) {
+                $userEmail = $u['email'] ?? '';
+                $companyName = $u['companyName'] ?? '';
+            }
+        } else {
+            // Intentar deducir del token de sesión
+            $token = get_token();
+            if ($token) {
+                $decoded = Auth::verifyToken($token);
+                if (!empty($decoded['userId'])) {
+                    $userId = $decoded['userId'];
+                    $u = $db->findOne('users', ['_id' => $userId]);
+                    if ($u) {
+                        $userEmail = $u['email'] ?? '';
+                        $companyName = $u['companyName'] ?? '';
+                    }
+                }
+            }
+        }
+        $db->insertOne('audit_logs', [
+            'action' => $action,
+            'details' => is_array($details) ? $details : ['info' => $details],
+            'userId' => $userId,
+            'userEmail' => $userEmail,
+            'companyName' => $companyName,
+            'agentId' => $agentId,
+            'ip' => $_SERVER['REMOTE_ADDR'] ?? '',
+            'userAgent' => substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 250),
+            'createdAt' => date('c'),
+        ]);
+    } catch (\Throwable $e) {
+        error_log('[audit_log] ' . $e->getMessage());
+    }
+}

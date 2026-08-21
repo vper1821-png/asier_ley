@@ -45,6 +45,8 @@ $routes = [
     'POST /api/agents'              => 'routes/agents.php@listAll',
     'POST /api/agents/list'         => 'routes/agents.php@listAll',
     'POST /api/agents/register'     => 'routes/agents.php@register',
+    'POST /api/agents/lockdown'     => 'routes/agents.php@setLockdown',
+    'POST /api/agents/request-data' => 'routes/agents.php@requestData',
     'POST /api/register'            => 'routes/auth.php@register',
     'GET /api/agents/download/'     => 'routes/agents.php@download',
     'POST /api/agents/download/'    => 'routes/agents.php@download',
@@ -259,6 +261,20 @@ if (preg_match('#^/api/agents/download/(.+)$#', $uri, $m)) {
     $_GET['platform'] = $m[1];
     require_once __DIR__ . '/routes/agents.php';
     download();
+    exit;
+}
+
+if (preg_match('#^/api/agents/([a-zA-Z0-9_-]+)/data$#', $uri, $m)) {
+    $_GET['id'] = $m[1];
+    require_once __DIR__ . '/routes/agents.php';
+    getAgentData();
+    exit;
+}
+
+if (preg_match('#^/api/agents/([a-zA-Z0-9_-]+)/commands$#', $uri, $m) && $method === 'POST') {
+    $_GET['id'] = $m[1];
+    require_once __DIR__ . '/routes/agents.php';
+    listCommands();
     exit;
 }
 

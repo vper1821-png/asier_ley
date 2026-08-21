@@ -29,7 +29,6 @@ const ARTICLES = [
     { title: 'Contratos con encargados', query: '¿Qué cláusulas deben tener los contratos?', category: 'Cumplimiento normativo', content: 'Deben definir el objeto, duración, naturaleza de datos, obligaciones del encargado, subcontratación, devolución/eliminación, confidencialidad y responsabilidades ante incumplimiento.' },
     { title: 'Conectar mi base de datos', query: '¿Cómo conectar mi base de datos?', category: 'Uso de la plataforma', content: 'Ve a la sección Bases de Datos, haz clic en "Agregar BD", completa los datos de conexión (host, puerto, usuario, contraseña) y ejecuta el escaneo de seguridad.' },
     { title: 'Servicios de la plataforma', query: '¿Qué servicios ofrece esta plataforma?', category: 'Uso de la plataforma', content: 'La plataforma ofrece escaneo de seguridad, gestión de bases de datos, cumplimiento normativo, gestión de consentimientos, reporte de brechas, derechos ARCO y reportes.' },
-    { title: 'Escaneo de dominio', query: '¿Cómo escanear un dominio?', category: 'Uso de la plataforma', content: 'Ingresa el dominio en la sección Escaneo, selecciona el tipo de análisis y la plataforma detectará vulnerabilidades, puertos abiertos, subdominios, certificados SSL y configuraciones DNS.' },
     { title: 'SecureLab Agent', query: '¿Qué es el SecureLab Agent?', category: 'Uso de la plataforma', content: 'Es un agente endpoint que se instala en tus servidores para monitoreo continuo, escaneo local de bases de datos y comunicación cifrada con la plataforma vía WebSocket.' },
     { title: 'Instalar el agente', query: '¿Cómo instalar el agente SecureLab?', category: 'Uso de la plataforma', content: 'Descarga el agente para tu sistema operativo, ejecuta `securelab-agent install` y configura el token de conexión que aparece en la plataforma. El agente se ejecutará como servicio.' },
     { title: 'Gestionar consentimientos', query: '¿Cómo gestionar consentimientos?', category: 'Uso de la plataforma', content: 'Ve a la sección Consentimientos, crea un nuevo consentimiento definiendo finalidad, datos involucrados y versión. Puedes registrar aceptaciones y revocaciones de los titulares.' },
@@ -253,7 +252,65 @@ function render() {
     if (inp && !S.loading) inp.focus();
 }
 
-// ── API ──
+// ── API (client-side rule-based, no Ollama) ──
+function matchArticle(query) {
+    const q = query.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    let best = null, bestScore = 0;
+    for (const a of ARTICLES) {
+        const title = a.title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const qwords = a.query.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/\s+/);
+        let score = 0;
+        for (const w of qwords) { if (q.includes(w)) score += w.length; }
+        const twords = q.split(/\s+/);
+        for (const tw of twords) { if (tw.length > 2 && title.includes(tw)) score += tw.length; }
+        if (q.includes('arco')) score += 5;
+        if (q.includes('brecha') || q.includes('incidente')) score += 3;
+        if (q.includes('consentimiento')) score += 3;
+        if (q.includes('dpo') || q.includes('delegado')) score += 3;
+        if (q.includes('apdp') || q.includes('agencia')) score += 3;
+        if (q.includes('sancion') || q.includes('multa')) score += 3;
+        if (q.includes('datos') && q.includes('sensible')) score += 4;
+        if (q.includes('portabilidad')) score += 4;
+        if (q.includes('revoc')) score += 3;
+        if (q.includes('encargado')) score += 3;
+        if (q.includes('transferencia') || q.includes('internacional')) score += 3;
+        if (q.includes('evaluacion') || q.includes('impacto')) score += 3;
+        if (q.includes('registro') && q.includes('actividad')) score += 3;
+        if (q.includes('inventario')) score += 3;
+        if (q.includes('contrat')) score += 2;
+        if (q.includes('agente') || q.includes('install')) score += 2;
+        if (q.includes('base') && q.includes('datos') && !q.includes('personales')) score += 2;
+        if (q.includes('escaneo') || q.includes('scan')) score += 2;
+        if (q.includes('consent')) score += 2;
+        if (q.includes('reporte') || q.includes('report')) score += 2;
+        if (q.includes('plan') && q.includes('cumpl')) score += 3;
+        if (q.includes('plazo') || q.includes('notific')) score += 2;
+        if (q.includes('contencion') || q.includes('contener')) score += 2;
+        if (q.includes('notificar') && q.includes('titular')) score += 2;
+        if (q.includes('document')) score += 1;
+        if (q.includes('auditor')) score += 2;
+        if (q.includes('diferencia') || q.includes('ley') && q.includes('19628')) score += 4;
+        if (q.includes('vacancia') || q.includes('vigencia')) score += 3;
+        if (q.includes('registro') && q.includes('apdp')) score += 3;
+        if (q.includes('principio')) score += 3;
+        if (q.includes('obligacion')) score += 2;
+        if (q.includes('como') && q.includes('cumplir')) score += 3;
+        if (score > bestScore) { bestScore = score; best = a; }
+    }
+    return bestScore >= 3 ? best : null;
+}
+
+function getGreeting() {
+    const greetings = ['¡Hola!', 'Hola, ¿en qué puedo ayudarte?', '¡Bienvenido!'];
+    return greetings[Math.floor(Math.random() * greetings.length)];
+}
+
+function getFollowUp(article) {
+    const related = ARTICLES.filter(a => a.category === article.category && a !== article).slice(0, 3);
+    if (!related.length) return DEFAULT_BUTTONS;
+    return related.map(a => ({ label: a.title.length > 25 ? a.title.slice(0, 25) + '…' : a.title, query: a.query }));
+}
+
 async function send(text) {
     text = (text || '').trim();
     if (!text || S.loading) return;
@@ -263,24 +320,21 @@ async function send(text) {
     S.activeCategory = null;
     S.selectedArticle = null;
     render();
-    try {
-        const res = await fetch('/api-proxy.php?path=/api/assistant/ask', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({ question: text, pageContext: JSON.stringify({ page: location.pathname }) }),
-        });
-        const data = await res.json();
-        if (data && (data.answer || data.reply)) {
-            const m = { role: 'bot', text: data.answer || data.reply, quick_actions: data.quick_actions || DEFAULT_BUTTONS };
-            if (data.source === 'out_of_scope') { m.text = OUT_OF_SCOPE_MSG; m.quick_actions = DEFAULT_BUTTONS; }
-            S.messages.push(m);
-        } else if (data && data.error) {
-            S.messages.push({ role: 'bot', text: '⚠️ ' + data.error, quick_actions: DEFAULT_BUTTONS });
+    const article = matchArticle(text);
+    if (article) {
+        const quick = getFollowUp(article);
+        S.messages.push({ role: 'bot', text: article.content, quick_actions: quick });
+    } else {
+        const qLower = text.toLowerCase();
+        let fallbackText = '';
+        if (qLower.includes('hola') || qLower.includes('buenos') || qLower.includes('buenas')) {
+            fallbackText = getGreeting() + ' Soy el asistente de Invisia/SecureLab. Puedo ayudarte con la **Ley 21.719 de Protección de Datos** y el uso de la plataforma.';
+        } else if (qLower.includes('gracias') || qLower.includes('thank')) {
+            fallbackText = '¡De nada! Si tienes otra pregunta sobre la Ley 21.719 o la plataforma, no dudes en preguntar.';
         } else {
-            S.messages.push({ role: 'bot', text: 'Lo siento, no pude procesar tu consulta.', quick_actions: DEFAULT_BUTTONS });
+            fallbackText = OUT_OF_SCOPE_MSG;
         }
-    } catch (e) {
-        S.messages.push({ role: 'bot', text: '⚠️ Error de conexión.', quick_actions: DEFAULT_BUTTONS });
+        S.messages.push({ role: 'bot', text: fallbackText, quick_actions: DEFAULT_BUTTONS });
     }
     S.loading = false;
     render();

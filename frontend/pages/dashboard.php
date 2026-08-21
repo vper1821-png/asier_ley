@@ -72,7 +72,7 @@ function kpi_card($label, $value, $sub, $color, $icon, $big = true) {
                         'dashboard' => 'Dashboard', 'agents' => 'Agentes', 'host-monitor' => 'Host Monitor',
                         'alerts' => 'Alertas', 'reports' => 'Reportes', 'databases' => 'Bases de Datos',
                         'db-logs' => 'Logs DB', 'compliance' => 'Compliance', 'hardening' => 'Hardening',
-                        'payments' => 'Pagos', 'tickets' => 'Tickets', 'arco' => 'ARCO', 'dpo' => 'DPO', 'settings' => 'Ajustes',
+                        'tickets' => 'Tickets', 'arco' => 'ARCO', 'dpo' => 'DPO', 'settings' => 'Ajustes',
                     ];
                     echo h($tabLabels[$tab] ?? 'Dashboard');
                     ?>

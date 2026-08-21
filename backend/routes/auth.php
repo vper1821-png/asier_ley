@@ -12,12 +12,14 @@ function login() {
     $user = $db->findOne('users', ['email' => $email]);
 
     if (!$user || !Auth::verifyPassword($password, $user['password'])) {
+        audit_log('login_failed', ['email' => $email], $user['_id'] ?? null);
         json_error('credenciales inválidas');
     }
 
     unset($user['password']);
 
     if (!empty($user['twoFactorEnabled'])) {
+        audit_log('login_2fa_required', ['email' => $email], $user['_id']);
         $tempToken = Auth::createToken($user['_id'], [
             'purpose' => '2fa',
             'exp' => time() + 600,
@@ -28,6 +30,7 @@ function login() {
         ]);
     }
 
+    audit_log('login_success', ['email' => $email], $user['_id']);
     $token = Auth::createToken($user['_id']);
     json_response([
         'token' => $token,
@@ -62,6 +65,7 @@ function register() {
 
     $token = Auth::createToken($user['_id']);
     unset($user['password']);
+    audit_log('user_registered', ['email' => $email, 'companyName' => $user['companyName'] ?? ''], $user['_id']);
 
     json_response([
         'token' => $token,
