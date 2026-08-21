@@ -47,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// ── Fetch data ──
+// ── Fetch data----------- ──
 $statsRes = api_post_form('/api/dashboard/stats', ['token' => $token]);
 $stats = $statsRes['stats'] ?? [];
 $dbCompliance = $statsRes['dbCompliance'] ?? [];
