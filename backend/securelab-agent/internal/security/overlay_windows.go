@@ -20,21 +20,26 @@ var logoPNG []byte
 const overlayScript = `param(
   [string]$MsgFile,
   [string]$Logo,
-  [string]$Alarm
+  [string]$Alarm,
+  [switch]$Silent
 )
 $ErrorActionPreference = 'SilentlyContinue'
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Speech
 Add-Type -AssemblyName System.Media
-Add-Type -TypeDefinition @"
-using System.Runtime.InteropServices;
-public class SecVol {
-  [DllImport(""winmm.dll"")]
-  public static extern int waveOutSetVolume(IntPtr hwo, uint dwVolume);
-}
+
+# Only set max volume and use TTS if not silent
+if (-not $Silent) {
+  Add-Type -TypeDefinition @"
+  using System.Runtime.InteropServices;
+  public class SecVol {
+    [DllImport(""winmm.dll"")]
+    public static extern int waveOutSetVolume(IntPtr hwo, uint dwVolume);
+  }
 "@
-[SecVol]::waveOutSetVolume([IntPtr]::Zero, 0xFFFFFFFF) | Out-Null
+  [SecVol]::waveOutSetVolume([IntPtr]::Zero, 0xFFFFFFFF) | Out-Null
+}
 
 $message = 'ESTE EQUIPO ESTA BLOQUEADO POR SEGURIDAD'
 if (Test-Path $MsgFile) {
@@ -90,12 +95,14 @@ $form.Add_FormClosing({ param($s, $e) $e.Cancel = $true })
 
 
 
-try {
-  $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer
-  $synth.Volume = 100
-  $synth.Rate = 0
-  $synth.Speak($message)
-} catch {}
+if (-not $Silent) {
+  try {
+    $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer
+    $synth.Volume = 100
+    $synth.Rate = 0
+    $synth.Speak($message)
+  } catch {}
+}
 
 $form.Add_Shown({ $form.Activate() })
 [System.Windows.Forms.Application]::Run($form)
@@ -131,12 +138,18 @@ func ensureAssets() {
 	}
 }
 
-func applyLockdown(message string) {
+func applyLockdown(message string, silent bool) {
 	ensureAssets()
 	os.WriteFile(msgPath(), []byte(message), 0644)
 	stopOverlayProcess()
-	cmd := exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass",
-		"-File", overlayPath(), "-MsgFile", msgPath(), "-Logo", logoPath(), "-Alarm", alarmPath())
+	args := []string{
+		"-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass",
+		"-File", overlayPath(), "-MsgFile", msgPath(), "-Logo", logoPath(), "-Alarm", alarmPath(),
+	}
+	if silent {
+		args = append(args, "-Silent")
+	}
+	cmd := exec.Command("powershell", args...)
 	cmd.SysProcAttr = hiddenProc()
 	if err := cmd.Start(); err == nil {
 		os.WriteFile(overlayPidFile(), []byte(strconv.Itoa(cmd.Process.Pid)), 0600)

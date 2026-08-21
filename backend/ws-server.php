@@ -31,6 +31,42 @@ class AgentWebSocket implements MessageComponentInterface {
         echo "🔌 WebSocket Server iniciado en puerto 3839\n";
     }
 
+    public function getDb() { return $this->db; }
+    public function getAgentSessions() { return $this->agentSessions; }
+
+    private function mongoFind($collection, $filter = []) {
+        try {
+            static $mongo = null;
+            if ($mongo === null) $mongo = new MongoDB\Client(MONGODB_URI);
+            $cursor = $mongo->selectDatabase('invisia')->selectCollection($collection)->find($filter);
+            $results = [];
+            foreach ($cursor as $doc) {
+                $doc = (array)$doc;
+                if (isset($doc['_id'])) $doc['_id'] = (string)$doc['_id'];
+                $results[] = $doc;
+            }
+            return $results;
+        } catch (\Exception $e) {
+            echo "❌ MongoDB error: " . $e->getMessage() . "\n";
+            return [];
+        }
+    }
+
+    private function mongoFindOne($collection, $filter = []) {
+        try {
+            static $mongo = null;
+            if ($mongo === null) $mongo = new MongoDB\Client(MONGODB_URI);
+            $doc = $mongo->selectDatabase('invisia')->selectCollection($collection)->findOne($filter);
+            if (!$doc) return null;
+            $doc = (array)$doc;
+            if (isset($doc['_id'])) $doc['_id'] = (string)$doc['_id'];
+            return $doc;
+        } catch (\Exception $e) {
+            echo "❌ MongoDB error: " . $e->getMessage() . "\n";
+            return null;
+        }
+    }
+
     public function onOpen(ConnectionInterface $conn) {
         try {
             $this->clients->attach($conn);
@@ -456,10 +492,10 @@ class AgentWebSocket implements MessageComponentInterface {
 
     private function handleSync(ConnectionInterface $conn) {
         $agentId = $conn->agentId ?? '';
-        if (!$agentId || !$this->db) return;
-        $agent = $this->db->findOne('agents', ['agentId' => $agentId]);
+        if (!$agentId) return;
+        $agent = $this->mongoFindOne('agents', ['agentId' => $agentId]);
         $lockdown = $agent['lockdown'] ?? ['enabled' => false];
-        $commands = $this->db->find('agent_commands', [
+        $commands = $this->mongoFind('agent_commands', [
             'agentId' => $agentId,
             'executed' => ['$in' => [false, null]],
         ]);
@@ -478,29 +514,38 @@ class AgentWebSocket implements MessageComponentInterface {
                 'pendingCommands' => $pending,
             ]
         ]));
-        echo "🔄 Sync enviado a {$agentId} (lockdown: " . json_encode($lockdown['enabled'] ?? false) . ", comandos: " . count($pending) . ")\n";
+        if (count($pending) > 0) {
+            echo "🔄 Sync a {$agentId}: " . count($pending) . " comandos\n";
+        }
     }
 
     private function handleCommandResponse(ConnectionInterface $from, $data) {
         $commandId = $data['commandId'] ?? '';
         $status = $data['status'] ?? 'error';
         $result = $data['result'] ?? '';
-        if ($commandId && $this->db) {
-            $this->db->updateOne('agent_commands', ['_id' => $commandId], [
-                'executed' => true,
-                'executedAt' => date('c'),
-                'result' => $result,
-                'status' => $status,
-            ]);
-            echo "📨 Command response: {$commandId} - {$status}\n";
+        if ($commandId) {
+            try {
+                $mongo = new MongoDB\Client(MONGODB_URI);
+                $mongo->selectDatabase('invisia')->selectCollection('agent_commands')->updateOne(
+                    ['_id' => new MongoDB\BSON\ObjectId($commandId)],
+                    ['$set' => [
+                        'executed' => true,
+                        'executedAt' => date('c'),
+                        'result' => $result,
+                        'status' => $status,
+                    ]]
+                );
+                echo "📨 Command response: {$commandId} - {$status}\n";
+            } catch (\Exception $e) {
+                echo "❌ Error guardando respuesta: " . $e->getMessage() . "\n";
+            }
         }
     }
 
     // ─── COMANDOS PENDIENTES ──────────────────────────────────────
 
     private function sendPendingCommands($agentId) {
-        if (!$this->db) return;
-        $commands = $this->db->find('agent_commands', [
+        $commands = $this->mongoFind('agent_commands', [
             'agentId' => $agentId,
             'executed' => ['$in' => [false, null]],
         ]);
@@ -655,10 +700,43 @@ echo "Presiona Ctrl+C para detener.\n";
 $server = IoServer::factory(
     new HttpServer(
         new WsServer(
-            new AgentWebSocket()
+            $agentWs = new AgentWebSocket()
         )
     ),
     3839
 );
+
+// ─── PUSH DIRECTO: Polling MongoDB cada 1s para comandos pendientes de agentes conectados ───
+// Elimina la dependencia de archivos trigger (inestables) y consulta BD directamente
+$agentWsRef = $agentWs;
+$server->loop->addPeriodicTimer(1.0, function () use ($agentWsRef) {
+    $sessions = $agentWsRef->getAgentSessions();
+    if (empty($sessions)) return;
+
+    foreach ($sessions as $agentId => $conn) {
+        $cmds = $agentWsRef->mongoFind('agent_commands', [
+            'agentId' => $agentId,
+            'executed' => ['$in' => [false, null]],
+        ]);
+        if (empty($cmds)) continue;
+
+        $count = 0;
+        foreach ($cmds as $cmd) {
+            $count++;
+            $conn->send(json_encode([
+                'type' => 'command',
+                'payload' => [
+                    'command' => $cmd['command'],
+                    'params' => $cmd['params'] ?? [],
+                    'commandId' => $cmd['_id'],
+                ]
+            ]));
+            echo "⚡ PUSH DIRECTO -> {$agentId}: " . $cmd['command'] . " (ID: {$cmd['_id']})\n";
+        }
+        if ($count > 0) {
+            echo "📤 Enviados {$count} comandos pendientes a {$agentId}\n";
+        }
+    }
+});
 
 $server->run();

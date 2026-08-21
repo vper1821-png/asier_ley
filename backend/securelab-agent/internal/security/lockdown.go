@@ -13,6 +13,7 @@ type lockdownState struct {
 	Message  string `json:"message"`
 	Since    string `json:"since"`
 	UnlockAt int64  `json:"unlockAt,omitempty"`
+	Silent   bool   `json:"silent,omitempty"`
 }
 
 func stateFilePath() string {
@@ -45,12 +46,16 @@ func lockdownMessage() string {
 	return st.Message
 }
 
-func setLockdownState(message string, unlockAt int64) {
+func setLockdownState(message string, unlockAt int64, silent ...bool) {
 	if message == "" {
 		os.Remove(stateFilePath())
 		return
 	}
-	st := lockdownState{Message: message, Since: time.Now().UTC().Format(time.RFC3339), UnlockAt: unlockAt}
+	isSilent := false
+	if len(silent) > 0 {
+		isSilent = silent[0]
+	}
+	st := lockdownState{Message: message, Since: time.Now().UTC().Format(time.RFC3339), UnlockAt: unlockAt, Silent: isSilent}
 	data, _ := json.Marshal(st)
 	os.WriteFile(stateFilePath(), data, 0600)
 }
@@ -62,8 +67,17 @@ func Lockdown(message string) {
 	if message == "" {
 		message = "ESTE EQUIPO ESTÁ BLOQUEADO POR SEGURIDAD"
 	}
-	applyLockdown(message)
-	setLockdownState(message, 0)
+	applyLockdown(message, false)
+	setLockdownState(message, 0, false)
+}
+
+// LockdownSilent bloquea visualmente el equipo sin reproducir sonido ni TTS.
+func LockdownSilent(message string) {
+	if message == "" {
+		message = "ESTE EQUIPO ESTÁ BLOQUEADO POR SEGURIDAD"
+	}
+	applyLockdown(message, true)
+	setLockdownState(message, 0, true)
 }
 
 // LockdownTimed bloquea el equipo durante N minutos y se desbloquea solo.
@@ -74,9 +88,26 @@ func LockdownTimed(message string, minutes int) {
 	if message == "" {
 		message = "EQUIPO BLOQUEADO TEMPORALMENTE POR SEGURIDAD"
 	}
-	applyLockdown(message)
+	applyLockdown(message, false)
 	unlockAt := time.Now().Add(time.Duration(minutes) * time.Minute).Unix()
-	setLockdownState(message, unlockAt)
+	setLockdownState(message, unlockAt, false)
+	go func() {
+		time.Sleep(time.Duration(minutes) * time.Minute)
+		Unlock()
+	}()
+}
+
+// LockdownTimedSilent bloquea temporalmente el equipo sin sonido.
+func LockdownTimedSilent(message string, minutes int) {
+	if minutes < 1 {
+		minutes = 1
+	}
+	if message == "" {
+		message = "EQUIPO BLOQUEADO TEMPORALMENTE POR SEGURIDAD"
+	}
+	applyLockdown(message, true)
+	unlockAt := time.Now().Add(time.Duration(minutes) * time.Minute).Unix()
+	setLockdownState(message, unlockAt, true)
 	go func() {
 		time.Sleep(time.Duration(minutes) * time.Minute)
 		Unlock()
@@ -109,5 +140,5 @@ func ApplyLockdownIfFlagged() {
 		Unlock()
 		return
 	}
-	applyLockdown(st.Message)
+	applyLockdown(st.Message, st.Silent)
 }

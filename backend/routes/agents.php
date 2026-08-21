@@ -210,6 +210,9 @@ function sendCommand() {
     ]);
     audit_log('agent_command', ['agentId' => $agentId, 'hostname' => $agent['hostname'] ?? '', 'command' => $command, 'params' => $params], $agent['userId'] ?? null, $agentId);
 
+    // El WS server ahora pollea MongoDB directamente cada 1s para agentes conectados
+    // No se necesita archivo trigger
+
     json_response(['success' => true, 'commandId' => $cmd['_id']]);
 }
 

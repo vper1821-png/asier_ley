@@ -22,31 +22,33 @@ import (
 )
 
 type Client struct {
-	mu       sync.Mutex
-	conn     *websocket.Conn
-	url      string
-	token    string
-	agentID  string
-	log      *logger.Logger
-	sendChan chan interface{}
-	done     chan struct{}
-	queue    *queue.Queue
-	ctx      context.Context
-	cancel   context.CancelFunc
-	wg       sync.WaitGroup
+	mu           sync.Mutex
+	conn         *websocket.Conn
+	url          string
+	token        string
+	agentID      string
+	log          *logger.Logger
+	sendChan     chan interface{}      // Normal priority (telemetry, events)
+	priorityChan chan interface{}      // High priority (commands, responses)
+	done         chan struct{}
+	queue        *queue.Queue
+	ctx          context.Context
+	cancel       context.CancelFunc
+	wg           sync.WaitGroup
 }
 
 func NewClient(url, token string, log *logger.Logger, q *queue.Queue) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Client{
-		url:      url,
-		token:    token,
-		log:      log,
-		sendChan: make(chan interface{}, 1000),
-		done:     make(chan struct{}),
-		queue:    q,
-		ctx:      ctx,
-		cancel:   cancel,
+		url:          url,
+		token:        token,
+		log:          log,
+		sendChan:     make(chan interface{}, 5000),     // Increased buffer
+		priorityChan: make(chan interface{}, 1000),     // High priority buffer
+		done:         make(chan struct{}),
+		queue:        q,
+		ctx:          ctx,
+		cancel:       cancel,
 	}
 }
 
@@ -65,21 +67,21 @@ func (c *Client) Connect() {
 
 		// Validar que tenemos token y agentID
 		if c.token == "" {
-			c.log.Error("WS: token vacÃ­o, no se puede conectar")
-			time.Sleep(5 * time.Second)
+			c.log.Error("WS: token vacio, no se puede conectar")
+			time.Sleep(1 * time.Second) // Reduced from 5s
 			continue
 		}
 		if c.agentID == "" {
-			c.log.Error("WS: agentID vacÃ­o, no se puede conectar")
-			time.Sleep(5 * time.Second)
+			c.log.Error("WS: agentID vacio, no se puede conectar")
+			time.Sleep(1 * time.Second) // Reduced from 5s
 			continue
 		}
 
 		c.log.Info("WS: conectando a %s", c.url)
 		conn, _, err := websocket.DefaultDialer.Dial(c.url, nil)
 		if err != nil {
-			c.log.Error("WS: error de conexiÃ³n: %v. Reintentando en 5s...", err)
-			time.Sleep(5 * time.Second)
+			c.log.Error("WS: error de conexion: %v. Reintentando en 1s...", err)
+			time.Sleep(1 * time.Second) // Reduced from 5s
 			continue
 		}
 
@@ -87,13 +89,13 @@ func (c *Client) Connect() {
 		c.conn = conn
 		c.mu.Unlock()
 
-		c.log.Info("WS: conexiÃ³n establecida, enviando registro...")
+		c.log.Info("WS: conexion establecida, enviando registro...")
 
 		// Registrar agente
 		if err := c.sendRegister(); err != nil {
 			c.log.Error("WS: error en registro: %v", err)
 			c.closeConn()
-			time.Sleep(5 * time.Second)
+			time.Sleep(1 * time.Second) // Reduced from 5s
 			continue
 		}
 
@@ -103,12 +105,12 @@ func (c *Client) Connect() {
 		go c.readLoop()
 		go c.writeLoop()
 
-		// Esperar hasta que se cierre la conexiÃ³n
+		// Esperar hasta que se cierre la conexion
 		<-c.done
 		c.wg.Wait()
 
-		c.log.Warn("WS: conexiÃ³n perdida. Reintentando en 5s...")
-		time.Sleep(5 * time.Second)
+		c.log.Warn("WS: conexion perdida. Reintentando en 1s...")
+		time.Sleep(1 * time.Second) // Reduced from 5s
 	}
 }
 
@@ -155,11 +157,34 @@ func (c *Client) readLoop() {
 
 func (c *Client) writeLoop() {
 	defer c.wg.Done()
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
+	// Flush queued events immediately on connect, then every 200ms for responsiveness
+	flushTicker := time.NewTicker(200 * time.Millisecond)
+	defer flushTicker.Stop()
 
 	for {
 		select {
+		// High priority: command responses, interactive commands - SEND IMMEDIATELY
+		case msg := <-c.priorityChan:
+			c.mu.Lock()
+			if c.conn == nil {
+				c.mu.Unlock()
+				if data, err := json.Marshal(msg); err == nil {
+					c.queue.Enqueue("priority", string(data))
+				}
+				continue
+			}
+			err := c.conn.WriteJSON(msg)
+			c.mu.Unlock()
+			if err != nil {
+				c.log.Error("WS: error al escribir (priority): %v", err)
+				c.closeConn()
+				if data, err := json.Marshal(msg); err == nil {
+					c.queue.Enqueue("priority", string(data))
+				}
+				return
+			}
+
+		// Normal priority: telemetry, file events, etc.
 		case msg := <-c.sendChan:
 			c.mu.Lock()
 			if c.conn == nil {
@@ -179,11 +204,14 @@ func (c *Client) writeLoop() {
 				}
 				return
 			}
-		case <-ticker.C:
+
+		// Periodic flush of queued events
+		case <-flushTicker.C:
 			if c.queue == nil {
 				continue
 			}
-			pending, err := c.queue.Dequeue(50)
+			// Flush all queued events (priority first via queue ordering)
+			pending, err := c.queue.Dequeue(200)
 			if err != nil {
 				c.log.Error("WS: error al obtener eventos pendientes: %v", err)
 				continue
@@ -211,6 +239,7 @@ func (c *Client) writeLoop() {
 				}
 				c.queue.MarkAsSent(ev.ID)
 			}
+
 		case <-c.done:
 			return
 		case <-c.ctx.Done():
@@ -240,7 +269,24 @@ func (c *Client) Close() {
 	c.log.Info("WS: cerrado")
 }
 
-// â”€â”€â”€ EnvÃ­o de eventos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Envío de eventos ────────────────────────────────────────────
+
+// sendPriority usa el canal de alta prioridad para respuestas de comandos y acciones interactivas
+func (c *Client) sendPriority(typ string, payload interface{}) {
+	msg := map[string]interface{}{
+		"type":    typ,
+		"payload": payload,
+	}
+	select {
+	case c.priorityChan <- msg:
+	default:
+		if c.queue != nil {
+			if err := c.queue.Enqueue("priority_"+typ, payload); err != nil {
+				c.log.Error("WS: error guardando evento prioritario en cola: %v", err)
+			}
+		}
+	}
+}
 
 func (c *Client) send(typ string, payload interface{}) {
 	msg := map[string]interface{}{
@@ -367,12 +413,12 @@ func (c *Client) SendEvent(title, description, source, severity string) {
 	c.send("event", payload)
 }
 
-// â”€â”€â”€ Manejo de mensajes entrantes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Manejo de mensajes entrantes ──────────────────────────────
 
 func (c *Client) handleMessage(data []byte) {
 	var msg map[string]interface{}
 	if err := json.Unmarshal(data, &msg); err != nil {
-		c.log.Error("WS: mensaje invÃ¡lido: %v", err)
+		c.log.Error("WS: mensaje invalido: %v", err)
 		return
 	}
 	typ, _ := msg["type"].(string)
@@ -382,15 +428,15 @@ func (c *Client) handleMessage(data []byte) {
 	case "sync_response":
 		c.handleSyncResponse(msg)
 	case "ping":
-		c.send("pong", map[string]interface{}{"ts": time.Now().Unix()})
+		c.sendPriority("pong", map[string]interface{}{"ts": time.Now().Unix()}) // High priority for pong
 	case "welcome":
-		c.log.Info("WS: servidor enviÃ³ bienvenida: %v", msg["payload"])
+		c.log.Info("WS: servidor envio bienvenida: %v", msg["payload"])
 	case "registered":
 		c.log.Info("WS: agente registrado correctamente: %v", msg["payload"])
 	case "file_response":
 		c.log.Info("WS: respuesta de archivo: %v", msg["payload"])
 	case "error":
-		c.log.Error("WS: servidor reportÃ³ error: %v", msg["payload"])
+		c.log.Error("WS: servidor reporto error: %v", msg["payload"])
 	default:
 		c.log.Debug("WS: mensaje desconocido: %s", typ)
 	}
@@ -398,10 +444,10 @@ func (c *Client) handleMessage(data []byte) {
 
 // SendSync pide al servidor comandos pendientes y el estado de bloqueo.
 func (c *Client) SendSync() {
-	c.send("sync", map[string]interface{}{})
+	c.sendPriority("sync", map[string]interface{}{}) // High priority for sync
 }
 
-// StartSyncLoop envÃ­a sync periÃ³dicamente mientras la conexiÃ³n estÃ© activa.
+// StartSyncLoop envia sync periodicamente mientras la conexion este activa.
 func (c *Client) StartSyncLoop(interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	go func() {
@@ -440,28 +486,18 @@ func (c *Client) handleSyncResponse(msg map[string]interface{}) {
 		}
 	}
 
-	// Ejecutar comandos pendientes
+	// Ejecutar comandos pendientes ASYNCHRONOUSLY to not block readLoop
 	if cmds, ok := payload["pendingCommands"].([]interface{}); ok {
 		for _, raw := range cmds {
 			cm, _ := raw.(map[string]interface{})
 			command, _ := cm["command"].(string)
 			commandId, _ := cm["commandId"].(string)
 			params, _ := cm["params"].(map[string]interface{})
-		if command == "" {
-			continue
-		}
-		result, err := c.ExecuteCommand(command, params, commandId)
-		c.send("command_response", map[string]interface{}{
-			"commandId": commandId,
-			"status":    "success",
-			"result":    result,
-			"error":     err != nil,
-		})
-		if err != nil {
-			c.log.Error("WS: error ejecutando comando pendiente %s: %v", command, err)
-		} else {
-			c.log.Info("WS: comando pendiente ejecutado: %s", command)
-		}
+			if command == "" {
+				continue
+			}
+			// Execute in goroutine to not block
+			go c.executeCommandAsync(command, params, commandId)
 		}
 	}
 }
@@ -476,9 +512,15 @@ func (c *Client) handleCommand(msg map[string]interface{}) {
 	params, _ := payload["params"].(map[string]interface{})
 	commandId, _ := payload["commandId"].(string)
 
+	// Execute in goroutine to not block readLoop
+	go c.executeCommandAsync(command, params, commandId)
+}
+
+// executeCommandAsync ejecuta el comando en goroutine y envia respuesta por canal prioritario
+func (c *Client) executeCommandAsync(command string, params map[string]interface{}, commandId string) {
 	result, err := c.ExecuteCommand(command, params, commandId)
 
-	c.send("command_response", map[string]interface{}{
+	c.sendPriority("command_response", map[string]interface{}{
 		"commandId": commandId,
 		"status":    "success",
 		"result":    result,
@@ -486,10 +528,12 @@ func (c *Client) handleCommand(msg map[string]interface{}) {
 	})
 	if err != nil {
 		c.log.Error("WS: error ejecutando comando %s: %v", command, err)
+	} else {
+		c.log.Info("WS: comando ejecutado: %s", command)
 	}
 }
 
-// ExecuteCommand ejecuta un comando de gestiÃ³n remota y devuelve el resultado.
+// ExecuteCommand ejecuta un comando de gestion remota y devuelve el resultado.
 func (c *Client) ExecuteCommand(command string, params map[string]interface{}, commandId string) (string, error) {
 	var result string
 	var err error
@@ -520,7 +564,7 @@ func (c *Client) ExecuteCommand(command string, params map[string]interface{}, c
 			err = fmt.Errorf("tipo de datos no soportado: %s", dtype)
 		}
 		if err == nil {
-			c.send("data_response", map[string]interface{}{
+			c.sendPriority("data_response", map[string]interface{}{ // High priority for data response
 				"agentId": c.agentID,
 				"type":    dtype,
 				"data":    data,
@@ -540,11 +584,11 @@ func (c *Client) ExecuteCommand(command string, params map[string]interface{}, c
 			}
 		}
 	case "power_off":
-		exec.Command("shutdown", "/s", "/t", "15", "/c", "SecureLab: el DPO solicitÃ³ apagar este equipo").Run()
-		result = "Apagando el equipo en 15 segundos..."
+		exec.Command("shutdown", "/s", "/t", "5", "/c", "SecureLab: el DPO solicito apagar este equipo").Run() // Reduced from 15s
+		result = "Apagando el equipo en 5 segundos..."
 	case "power_restart":
-		exec.Command("shutdown", "/r", "/t", "15", "/c", "SecureLab: el DPO solicitÃ³ reiniciar este equipo").Run()
-		result = "Reiniciando el equipo en 15 segundos..."
+		exec.Command("shutdown", "/r", "/t", "5", "/c", "SecureLab: el DPO solicito reiniciar este equipo").Run() // Reduced from 15s
+		result = "Reiniciando el equipo en 5 segundos..."
 	case "power_suspend":
 		exec.Command("rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0").Run()
 		result = "Suspender el equipo"
@@ -553,16 +597,25 @@ func (c *Client) ExecuteCommand(command string, params map[string]interface{}, c
 		minutes, _ := params["minutes"].(float64)
 		security.LockdownTimed(msg, int(minutes))
 		result = "Equipo bloqueado temporalmente"
+	case "lock_timed_silent":
+		msg, _ := params["message"].(string)
+		minutes, _ := params["minutes"].(float64)
+		security.LockdownTimedSilent(msg, int(minutes))
+		result = "Equipo bloqueado temporalmente (sin sonido)"
 	case "lockdown":
 		msg, _ := params["message"].(string)
 		security.Lockdown(msg)
 		result = "Equipo BLOQUEADO por seguridad (persistente)"
+	case "lockdown_silent":
+		msg, _ := params["message"].(string)
+		security.LockdownSilent(msg)
+		result = "Equipo BLOQUEADO sin sonido (persistente)"
 	case "unlock":
 		security.Unlock()
 		result = "Equipo desbloqueado"
 	case "alarm":
 		security.PlayAlarm()
-		result = "Alarma de intruso activada a mÃ¡ximo volumen"
+		result = "Alarma de intruso activada a maximo volumen"
 	case "alarm_stop":
 		security.StopAlarm()
 		result = "Alarma detenida"
@@ -606,7 +659,7 @@ func (c *Client) ExecuteCommand(command string, params map[string]interface{}, c
 	case "restart":
 		result = "Reiniciando..."
 		go func() {
-			time.Sleep(1 * time.Second)
+			time.Sleep(500 * time.Millisecond) // Faster restart
 			c.log.Info("WS: reinicio solicitado")
 		}()
 	case "shell_exec":
@@ -615,7 +668,8 @@ func (c *Client) ExecuteCommand(command string, params map[string]interface{}, c
 			err = fmt.Errorf("command requerido")
 		} else {
 			c.log.Info("WS: ejecutando shell: %s", shellCmd)
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			// Reduced timeout from 30s to 15s for faster failure detection
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 			var cmd *exec.Cmd
 			if runtime.GOOS == "windows" {
@@ -625,8 +679,8 @@ func (c *Client) ExecuteCommand(command string, params map[string]interface{}, c
 			}
 			out, cmdErr := cmd.CombinedOutput()
 			output := string(out)
-			if len(output) > 4000 {
-				output = output[:4000] + "\n... (truncado)"
+			if len(output) > 8000 { // Increased from 4000
+				output = output[:8000] + "\n... (truncado)"
 			}
 			if cmdErr != nil {
 				result = output + "\n[ERROR] " + cmdErr.Error()
@@ -637,7 +691,7 @@ func (c *Client) ExecuteCommand(command string, params map[string]interface{}, c
 		}
 	case "uninstall":
 		result = "Desinstalando..."
-		c.log.Info("WS: desinstalaciÃ³n solicitada")
+		c.log.Info("WS: desinstalacion solicitada")
 	default:
 		err = fmt.Errorf("comando desconocido: %s", command)
 	}
@@ -645,7 +699,7 @@ func (c *Client) ExecuteCommand(command string, params map[string]interface{}, c
 	return result, err
 }
 
-// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Helpers ──────────────────────────────────────────────────
 
 func getFileType(path string) string {
 	ext := filepath.Ext(path)

@@ -271,7 +271,7 @@ if (preg_match('#^/api/agents/([a-zA-Z0-9_-]+)/data$#', $uri, $m)) {
     exit;
 }
 
-if (preg_match('#^/api/agents/([a-zA-Z0-9_-]+)/commands$#', $uri, $m) && $method === 'POST') {
+if (preg_match('#^/api/agents/([a-zA-Z0-9_-]+)/commands$#', $uri, $m) && in_array($method, ['GET', 'POST'])) {
     $_GET['id'] = $m[1];
     require_once __DIR__ . '/routes/agents.php';
     listCommands();

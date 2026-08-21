@@ -46,8 +46,7 @@ $ticketsRes = api_post_form('/api/tickets/all', ['token' => $token]);
 $allTickets = is_array($ticketsRes) && empty($ticketsRes['error']) ? ($ticketsRes['tickets'] ?? $ticketsRes) : [];
 if (!is_array($allTickets)) $allTickets = [];
 
-$alertsRes = api_post_form('/api/admin/alerts', ['token' => $token]);
-$adminAlerts = is_array($alertsRes) && empty($alertsRes['error']) ? $alertsRes : [];
+
 
 $agents = [];
 $agentsRes = api_post_form('/api/agents/list', ['token' => $token]);
@@ -85,7 +84,6 @@ $tabTitles = [
     'companies' => 'Empresas & Equipos',
     'users' => 'Gestión de Usuarios',
     'tickets' => 'Tickets de Soporte',
-    'alerts' => 'Alertas del Sistema',
     'logs' => 'Logs de Auditoría',
     'settings' => 'Configuración',
 ];
@@ -115,7 +113,6 @@ require_once __DIR__ . '/../includes/header.php';
                 ['id' => 'companies', 'label' => 'Empresas & Equipos', 'count' => $totalAgents],
                 ['id' => 'users', 'label' => 'Usuarios', 'count' => count($users)],
                 ['id' => 'tickets', 'label' => 'Tickets', 'count' => $openTickets],
-                ['id' => 'alerts', 'label' => 'Alertas', 'count' => count($adminAlerts)],
                 ['id' => 'logs', 'label' => 'Logs de Auditoría'],
                 ['id' => 'settings', 'label' => 'Configuración'],
             ];
@@ -327,7 +324,7 @@ require_once __DIR__ . '/../includes/header.php';
                             <div class="mt-3 pt-3 border-t border-white/[0.04]">
                                 <p class="text-[9px] text-text-subtle uppercase tracking-wider mb-2 font-semibold">Control Remoto</p>
                                 <div class="flex flex-wrap gap-1.5">
-                                    <button onclick="openTools('<?= h($a['agentId'] ?? '') ?>','<?= h($a['hostname'] ?? '') ?>','processes')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:bg-blue-500/20 transition-all flex items-center gap-1.5">
+                                    <button onclick="openTools('<?= h($a['agentId'] ?? '') ?>','<?= h($a['hostname'] ?? '') ?>','processes')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:bg-blue-500/20 hover:scale-105 transition-all flex items-center gap-1.5">
                                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
                                         Procesos
                                     </button>
@@ -343,6 +340,10 @@ require_once __DIR__ . '/../includes/header.php';
                                     <button onclick="doLock('<?= h($a['agentId'] ?? '') ?>','lock')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500/20 transition-all flex items-center gap-1.5">
                                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
                                         Bloquear
+                                    </button>
+                                    <button onclick="doSilentLock('<?= h($a['agentId'] ?? '') ?>')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-rose-500/10 border border-rose-500/20 text-rose-300 hover:bg-rose-500/20 transition-all flex items-center gap-1.5" title="Bloquear sin sonido">
+                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" clip-rule="evenodd"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/></svg>
+                                        Sin Sonido
                                     </button>
                                     <button onclick="doLock('<?= h($a['agentId'] ?? '') ?>','unlock')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 transition-all flex items-center gap-1.5">
                                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/></svg>
@@ -497,27 +498,6 @@ require_once __DIR__ . '/../includes/header.php';
                 <?php endif; ?>
             </div>
 
-            <?php elseif ($tab === 'alerts'): ?>
-            <!-- ═══ ALERTAS ═══ -->
-            <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-5">
-                <h3 class="text-[13px] font-semibold text-white mb-4">Alertas del Sistema (<?= count($adminAlerts) ?>)</h3>
-                <?php if (empty($adminAlerts)): ?>
-                <p class="text-text-muted text-sm text-center py-8">No hay alertas configuradas.</p>
-                <?php else: ?>
-                <div class="space-y-2">
-                    <?php foreach ($adminAlerts as $a): ?>
-                    <div class="p-3 rounded-lg border border-border-theme/25 bg-bg-base/40 flex items-center justify-between">
-                        <div>
-                            <span class="text-[12px] text-text-body"><?= h($a['title'] ?? $a['message'] ?? 'Alerta') ?></span>
-                            <?php if (!empty($a['description'])): ?><p class="text-[10px] text-text-subtle mt-0.5"><?= h($a['description']) ?></p><?php endif; ?>
-                        </div>
-                        <span class="text-[9px] text-text-subtle flex-shrink-0"><?= h(substr($a['createdAt'] ?? '', 0, 16)) ?></span>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-                <?php endif; ?>
-            </div>
-
             <?php elseif ($tab === 'logs'): ?>
             <!-- ═══ LOGS DE AUDITORÍA ═══ -->
             <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-5 space-y-4">
@@ -649,11 +629,13 @@ require_once __DIR__ . '/../includes/header.php';
                 </button>
             </div>
         </div>
-        <div class="px-5 py-2 border-b border-border-theme/50 flex gap-1">
+        <div class="px-5 py-2 border-b border-border-theme/50 flex gap-1 flex-wrap">
             <button onclick="toolTab('processes')" id="tab-proc" class="tool-tab px-3 py-1.5 rounded-lg text-[11px] font-medium bg-primary-500/15 text-primary-400 border border-primary-500/20 transition-all">Procesos</button>
             <button onclick="toolTab('health')" id="tab-health" class="tool-tab px-3 py-1.5 rounded-lg text-[11px] font-medium text-text-muted hover:bg-white/[0.03] border border-transparent transition-all">Salud</button>
             <button onclick="toolTab('screenshot')" id="tab-screenshot" class="tool-tab px-3 py-1.5 rounded-lg text-[11px] font-medium text-text-muted hover:bg-white/[0.03] border border-transparent transition-all">Captura</button>
             <button onclick="toolTab('shell')" id="tab-shell" class="tool-tab px-3 py-1.5 rounded-lg text-[11px] font-medium text-text-muted hover:bg-white/[0.03] border border-transparent transition-all">Shell</button>
+            <button onclick="toolTab('control')" id="tab-control" class="tool-tab px-3 py-1.5 rounded-lg text-[11px] font-medium text-text-muted hover:bg-white/[0.03] border border-transparent transition-all">Control</button>
+            <button onclick="toolTab('forensics')" id="tab-forensics" class="tool-tab px-3 py-1.5 rounded-lg text-[11px] font-medium text-text-muted hover:bg-white/[0.03] border border-transparent transition-all">Forense</button>
         </div>
         <div id="toolsContent" class="flex-1 overflow-y-auto p-5 min-h-[300px] scrollbar-custom">
             <p class="text-text-subtle text-center py-10 text-[11px]">Selecciona una pestaña para solicitar datos al agente.</p>
@@ -703,9 +685,10 @@ function closeTools() {
 
 function toolTab(t) {
     _currentTab = t;
+    const tabMap = { screenshot: 'screenshot', health: 'health', shell: 'shell', control: 'control', forensics: 'forensics', proc: 'proc' };
     document.querySelectorAll('.tool-tab').forEach(b => {
         b.className = 'tool-tab px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all border ';
-        if (b.id === 'tab-' + (t === 'screenshot' ? 'screenshot' : t === 'health' ? 'health' : t === 'shell' ? 'shell' : 'proc')) {
+        if (b.id === 'tab-' + (tabMap[t] || 'proc')) {
             b.className += 'bg-primary-500/15 text-primary-400 border-primary-500/20';
         } else {
             b.className += 'text-text-muted hover:bg-white/[0.03] border-transparent';
@@ -713,6 +696,14 @@ function toolTab(t) {
     });
     if (t === 'shell') {
         initShell();
+        return;
+    }
+    if (t === 'control') {
+        initControlPanel();
+        return;
+    }
+    if (t === 'forensics') {
+        initForensicsPanel();
         return;
     }
     setToolStatus('Solicitando ' + t + '...');
@@ -811,6 +802,20 @@ function doLock(agentId, action) {
         .catch(() => alert('Error de red'));
 }
 
+function doSilentLock(agentId) {
+    const msg = prompt('Motivo del bloqueo silencioso (sin sonido):');
+    if (msg === null) return;
+    agentCmd(agentId, 'lockdown_silent', { message: msg || 'ESTE EQUIPO ESTÁ BLOQUEADO POR SEGURIDAD' });
+}
+
+function doSilentTimedLock(agentId) {
+    const mins = prompt('Minutos de bloqueo temporal silencioso:');
+    if (!mins) return;
+    const msg = prompt('Mensaje (opcional):', 'EQUIPO BLOQUEADO TEMPORALMENTE POR SEGURIDAD');
+    if (msg === null) return;
+    agentCmd(agentId, 'lock_timed_silent', { minutes: parseInt(mins) || 5, message: msg || '' });
+}
+
 function doTimedLock(agentId) {
     const mins = prompt('Minutos de bloqueo temporal:');
     if (!mins) return;
@@ -840,20 +845,483 @@ function deleteAgent(agentId, name) {
         .catch(() => alert('Error de red'));
 }
 
-// ── Shell ──
+// ── Enhanced Shell & Remote Control Panel ──
 let _shellHistory = [], _shellIdx = -1, _shellPollTimer = null, _shellCmdId = null;
+let _currentShell = 'powershell'; // powershell, cmd, bash
+let _shellCwd = '~';
+
+const SHELL_PRESETS = {
+    powershell: { label: 'PowerShell', prompt: 'PS>', color: 'text-blue-400', hint: 'PowerShell 7+ / 5.1' },
+    cmd: { label: 'CMD', prompt: 'C:>', color: 'text-amber-400', hint: 'Command Prompt clásico' },
+    bash: { label: 'Bash/WSL', prompt: '$', color: 'text-green-400', hint: 'Linux/WSL/Git Bash' },
+};
+
+const QUICK_COMMANDS = {
+    system: [
+        { label: '📋 Procesos', cmd: 'Get-Process | Sort-Object CPU -Descending | Select-Object -First 20 Name,Id,CPU,WS', shell: 'powershell' },
+        { label: '💾 Disco', cmd: 'Get-Volume | Format-Table DriveLetter,FileSystemLabel,Size,SizeRemaining', shell: 'powershell' },
+        { label: '🧠 RAM', cmd: 'Get-CimInstance Win32_OperatingSystem | Select-Object TotalVisibleMemorySize,FreePhysicalMemory', shell: 'powershell' },
+        { label: '🔌 Red', cmd: 'Get-NetAdapter | Format-Table Name,InterfaceDescription,Status,LinkSpeed', shell: 'powershell' },
+        { label: '🛡️ Defender', cmd: 'Get-MpComputerStatus', shell: 'powershell' },
+        { label: '📦 Servicios', cmd: 'Get-Service | Where-Object {$_.Status -eq "Running"} | Format-Table Name,DisplayName,Status', shell: 'powershell' },
+        { label: '🔥 Firewall', cmd: 'Get-NetFirewallProfile | Format-Table Name,Enabled,DefaultInboundAction', shell: 'powershell' },
+        { label: '👥 Usuarios', cmd: 'Get-LocalUser | Format-Table Name,Enabled,LastLogon', shell: 'powershell' },
+    ],
+    security: [
+        { label: '🔐 Bloquear equipo', cmd: 'lockdown', shell: 'cmd', isAgentCmd: true },
+        { label: '🔇 Bloquear SIN SONIDO', cmd: 'lockdown_silent', shell: 'cmd', isAgentCmd: true },
+        { label: '⏱️ Bloqueo temporal (5 min)', cmd: 'lock_timed', shell: 'cmd', isAgentCmd: true, params: { minutes: 5, message: 'Bloqueo temporal desde admin panel' } },
+        { label: '🔕 Temporal SIN SONIDO (5 min)', cmd: 'lock_timed_silent', shell: 'cmd', isAgentCmd: true, params: { minutes: 5, message: 'Bloqueo temporal silencioso desde admin panel' } },
+        { label: '🔓 Desbloquear', cmd: 'unlock', shell: 'cmd', isAgentCmd: true },
+        { label: '🚨 Alarma ON', cmd: 'alarm', shell: 'cmd', isAgentCmd: true },
+        { label: '🔇 Alarma OFF', cmd: 'alarm_stop', shell: 'cmd', isAgentCmd: true },
+        { label: '🗣️ Hablar mensaje', cmd: 'speak', shell: 'cmd', isAgentCmd: true, prompt: 'Mensaje a reproducir:' },
+    ],
+    maintenance: [
+        { label: '🔄 Reiniciar equipo', cmd: 'power_restart', shell: 'cmd', isAgentCmd: true },
+        { label: '⏻ Apagar equipo', cmd: 'power_off', shell: 'cmd', isAgentCmd: true },
+        { label: '😴 Suspender', cmd: 'power_suspend', shell: 'cmd', isAgentCmd: true },
+        { label: '🧹 Limpiar temp', cmd: 'Remove-Item -Path $env:TEMP\\* -Force -ErrorAction SilentlyContinue', shell: 'powershell' },
+        { label: '📋 Event Viewer (últimos 50)', cmd: 'Get-WinEvent -LogName System -MaxEvents 50 | Format-Table TimeCreated,Id,LevelDisplayName,Message -AutoSize', shell: 'powershell' },
+        { label: '🔧 Actualizaciones pendientes', cmd: 'Get-WindowsUpdate -MicrosoftUpdate -AcceptAll -Install -IgnoreReboot', shell: 'powershell' },
+    ],
+    forensics: [
+        { label: '📁 Archivos recientes', cmd: 'Get-ChildItem -Path C:\\Users -Recurse -ErrorAction SilentlyContinue | Where-Object {$_.LastWriteTime -gt (Get-Date).AddDays(-1)} | Select-Object FullName,LastWriteTime,Length | Sort-Object LastWriteTime -Desc | Select-Object -First 30', shell: 'powershell' },
+        { label: '🔍 Puertos abiertos', cmd: 'Get-NetTCPConnection -State Listen | Format-Table LocalAddress,LocalPort,OwningProcess', shell: 'powershell' },
+        { label: '📡 Conexiones activas', cmd: 'Get-NetTCPConnection -State Established | Format-Table LocalAddress,LocalPort,RemoteAddress,RemotePort,OwningProcess', shell: 'powershell' },
+        { label: '📂 Archivos abiertos', cmd: 'Get-Process | ForEach-Object { $_.Modules } | Select-Object FileName,ModuleName | Sort-Object FileName -Unique', shell: 'powershell' },
+        { label: '🕵️ Scheduled Tasks', cmd: 'Get-ScheduledTask | Where-Object {$_.State -ne "Disabled"} | Format-Table TaskName,State,LastRunTime', shell: 'powershell' },
+        { label: '🔑 Registro Run keys', cmd: 'Get-ItemProperty HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run, HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run', shell: 'powershell' },
+    ],
+    network: [
+        { label: '🌐 IP pública', cmd: 'Invoke-RestMethod -Uri "https://api.ipify.org" -UseBasicParsing', shell: 'powershell' },
+        { label: '📍 Traceroute a 8.8.8.8', cmd: 'tracert 8.8.8.8', shell: 'cmd' },
+        { label: '🔍 DNS Flush', cmd: 'Clear-DnsClientCache; ipconfig /flushdns', shell: 'powershell' },
+        { label: '📊 Netstat', cmd: 'netstat -ano | findstr :80', shell: 'cmd' },
+        { label: '🛡️ Puertos escuchando', cmd: 'Get-NetTCPConnection -State Listen | Select-Object LocalPort,OwningProcess | Sort-Object LocalPort', shell: 'powershell' },
+    ],
+};
+
+// ── Control Panel (Device Control) ──
+function initControlPanel() {
+    const el = document.getElementById('toolsContent');
+    el.innerHTML = `
+        <div class="space-y-6">
+            <!-- Security Actions -->
+            <div class="rounded-xl border border-border-theme/40 bg-[#0d131a] p-5">
+                <h4 class="text-sm font-semibold text-red-400 mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                    Seguridad y Bloqueo
+                </h4>
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+                    <button onclick="controlAction('lockdown')" class="control-btn p-4 bg-red-500/10 border border-red-500/20 rounded-lg hover:bg-red-500/20 hover:border-red-500/40 transition-all text-left">
+                        <div class="text-lg mb-1">🔒</div>
+                        <div class="font-medium text-red-400">Bloqueo Total</div>
+                        <div class="text-[10px] text-text-subtle">Con sonido + TTS</div>
+                    </button>
+                    <button onclick="controlAction('lockdown_silent')" class="control-btn p-4 bg-rose-500/10 border border-rose-500/20 rounded-lg hover:bg-rose-500/20 hover:border-rose-500/40 transition-all text-left relative">
+                        <div class="text-lg mb-1">🔇</div>
+                        <div class="font-medium text-rose-300">Bloqueo Silencioso</div>
+                        <div class="text-[10px] text-text-subtle">Overlay sin sonido</div>
+                        <span class="absolute top-2 right-2 w-2 h-2 bg-rose-400 rounded-full animate-pulse"></span>
+                    </button>
+                    <button onclick="controlAction('lock_timed')" class="control-btn p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg hover:bg-amber-500/20 hover:border-amber-500/40 transition-all text-left">
+                        <div class="text-lg mb-1">⏱️</div>
+                        <div class="font-medium text-amber-400">Bloqueo Temporal</div>
+                        <div class="text-[10px] text-text-subtle">Con sonido</div>
+                    </button>
+                    <button onclick="controlAction('lock_timed_silent')" class="control-btn p-4 bg-orange-500/10 border border-orange-500/20 rounded-lg hover:bg-orange-500/20 hover:border-orange-500/40 transition-all text-left">
+                        <div class="text-lg mb-1">🔕</div>
+                        <div class="font-medium text-orange-300">Temporal Silencioso</div>
+                        <div class="text-[10px] text-text-subtle">Minutos sin sonido</div>
+                    </button>
+                    <button onclick="controlAction('unlock')" class="control-btn p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg hover:bg-emerald-500/20 hover:border-emerald-500/40 transition-all text-left">
+                        <div class="text-lg mb-1">🔓</div>
+                        <div class="font-medium text-emerald-400">Desbloquear</div>
+                        <div class="text-[10px] text-text-subtle">Quita bloqueo actual</div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Alarm Actions -->
+            <div class="rounded-xl border border-border-theme/40 bg-[#0d131a] p-5">
+                <h4 class="text-sm font-semibold text-orange-400 mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+                    Alarmas y Alertas
+                </h4>
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <button onclick="controlAction('alarm')" class="control-btn p-4 bg-red-500/10 border border-red-500/20 rounded-lg hover:bg-red-500/20 hover:border-red-500/40 transition-all text-left">
+                        <div class="text-lg mb-1">🚨</div>
+                        <div class="font-medium text-red-400">Alarma INTRUSO</div>
+                        <div class="text-[10px] text-text-subtle">Volumen máximo</div>
+                    </button>
+                    <button onclick="controlAction('alarm_stop')" class="control-btn p-4 bg-gray-500/10 border border-gray-500/20 rounded-lg hover:bg-gray-500/20 hover:border-gray-500/40 transition-all text-left">
+                        <div class="text-lg mb-1">🔇</div>
+                        <div class="font-medium text-gray-400">Detener Alarma</div>
+                        <div class="text-[10px] text-text-subtle">Silenciar</div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Power Actions -->
+            <div class="rounded-xl border border-border-theme/40 bg-[#0d131a] p-5">
+                <h4 class="text-sm font-semibold text-purple-400 mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    Control de Energía
+                </h4>
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <button onclick="controlAction('power_restart')" class="control-btn p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg hover:bg-blue-500/20 hover:border-blue-500/40 transition-all text-left">
+                        <div class="text-lg mb-1">🔄</div>
+                        <div class="font-medium text-blue-400">Reiniciar</div>
+                        <div class="text-[10px] text-text-subtle">En 15 segundos</div>
+                    </button>
+                    <button onclick="controlAction('power_off')" class="control-btn p-4 bg-red-500/10 border border-red-500/20 rounded-lg hover:bg-red-500/20 hover:border-red-500/40 transition-all text-left">
+                        <div class="text-lg mb-1">⏻</div>
+                        <div class="font-medium text-red-400">Apagar</div>
+                        <div class="text-[10px] text-text-subtle">En 15 segundos</div>
+                    </button>
+                    <button onclick="controlAction('power_suspend')" class="control-btn p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg hover:bg-amber-500/20 hover:border-amber-500/40 transition-all text-left">
+                        <div class="text-lg mb-1">😴</div>
+                        <div class="font-medium text-amber-400">Suspender</div>
+                        <div class="text-[10px] text-text-subtle">Sleep/Hibernate</div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Network/Firewall Actions -->
+            <div class="rounded-xl border border-border-theme/40 bg-[#0d131a] p-5">
+                <h4 class="text-sm font-semibold text-cyan-400 mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                    Red y Firewall
+                </h4>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <button onclick="controlAction('block_ip')" class="control-btn p-4 bg-red-500/10 border border-red-500/20 rounded-lg hover:bg-red-500/20 hover:border-red-500/40 transition-all text-left">
+                        <div class="text-lg mb-1">🚫</div>
+                        <div class="font-medium text-red-400">Bloquear IP</div>
+                        <div class="text-[10px] text-text-subtle">Firewall rule</div>
+                    </button>
+                    <button onclick="controlAction('unblock_ip')" class="control-btn p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg hover:bg-emerald-500/20 hover:border-emerald-500/40 transition-all text-left">
+                        <div class="text-lg mb-1">✅</div>
+                        <div class="font-medium text-emerald-400">Desbloquear IP</div>
+                        <div class="text-[10px] text-text-subtle">Quitar regla</div>
+                    </button>
+                    <button onclick="controlAction('apply_firewall_rule')" class="control-btn p-4 bg-cyan-500/10 border border-cyan-500/20 rounded-lg hover:bg-cyan-500/20 hover:border-cyan-500/40 transition-all text-left">
+                        <div class="text-lg mb-1">🛡️</div>
+                        <div class="font-medium text-cyan-400">Regla Firewall</div>
+                        <div class="text-[10px] text-text-subtle">Personalizada</div>
+                    </button>
+                    <button onclick="controlAction('block_user')" class="control-btn p-4 bg-violet-500/10 border border-violet-500/20 rounded-lg hover:bg-violet-500/20 hover:border-violet-500/40 transition-all text-left">
+                        <div class="text-lg mb-1">👤</div>
+                        <div class="font-medium text-violet-400">Bloquear Usuario</div>
+                        <div class="text-[10px] text-text-subtle">Login local</div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Quick Info Actions -->
+            <div class="rounded-xl border border-border-theme/40 bg-[#0d131a] p-5">
+                <h4 class="text-sm font-semibold text-sky-400 mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    Información Rápida
+                </h4>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <button onclick="requestDataAndShow('processes')" class="control-btn p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg hover:bg-blue-500/20 hover:border-blue-500/40 transition-all text-left">
+                        <div class="text-lg mb-1">📋</div>
+                        <div class="font-medium text-blue-400">Procesos</div>
+                        <div class="text-[10px] text-text-subtle">Lista completa</div>
+                    </button>
+                    <button onclick="requestDataAndShow('health')" class="control-btn p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg hover:bg-emerald-500/20 hover:border-emerald-500/40 transition-all text-left">
+                        <div class="text-lg mb-1">💚</div>
+                        <div class="font-medium text-emerald-400">Salud Sistema</div>
+                        <div class="text-[10px] text-text-subtle">CPU/RAM/Disco</div>
+                    </button>
+                    <button onclick="requestDataAndShow('screenshot')" class="control-btn p-4 bg-purple-500/10 border border-purple-500/20 rounded-lg hover:bg-purple-500/20 hover:border-purple-500/40 transition-all text-left">
+                        <div class="text-lg mb-1">📸</div>
+                        <div class="font-medium text-purple-400">Captura Pantalla</div>
+                        <div class="text-[10px] text-text-subtle">Screenshot actual</div>
+                    </button>
+                    <button onclick="requestDataAndShow('defender')" class="control-btn p-4 bg-orange-500/10 border border-orange-500/20 rounded-lg hover:bg-orange-500/20 hover:border-orange-500/40 transition-all text-left">
+                        <div class="text-lg mb-1">🛡️</div>
+                        <div class="font-medium text-orange-400">Defender Status</div>
+                        <div class="text-[10px] text-text-subtle">Antivirus state</div>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    setToolStatus('Panel de control listo');
+}
+
+async function controlAction(action) {
+    let params = {};
+    let confirmMsg = '';
+
+    switch (action) {
+        case 'lockdown':
+            const reason = prompt('Motivo del bloqueo (opcional):');
+            if (reason === null) return;
+            params = { message: reason || 'Bloqueo desde panel de administración' };
+            confirmMsg = '¿BLOQUEAR totalmente el equipo? (Overlay + sonido/TTS, teclado/mouse deshabilitados)';
+            break;
+        case 'lockdown_silent':
+            const reasonSilent = prompt('Motivo del bloqueo silencioso (opcional):');
+            if (reasonSilent === null) return;
+            params = { message: reasonSilent || 'Bloqueo silencioso desde panel de administración' };
+            confirmMsg = '¿BLOQUEAR el equipo SIN SONIDO? (Overlay visual, teclado/mouse deshabilitados)';
+            break;
+        case 'lock_timed':
+            const mins = prompt('Minutos de bloqueo:', '5');
+            if (!mins) return;
+            const msg = prompt('Mensaje (opcional):', 'Bloqueo temporal desde admin panel');
+            params = { minutes: parseInt(mins) || 5, message: msg || '' };
+            confirmMsg = `Bloquear por ${mins} minutos?`;
+            break;
+        case 'lock_timed_silent':
+            const minsSilent = prompt('Minutos de bloqueo temporal silencioso:', '5');
+            if (!minsSilent) return;
+            const msgSilent = prompt('Mensaje (opcional):', 'Bloqueo temporal silencioso desde admin panel');
+            params = { minutes: parseInt(minsSilent) || 5, message: msgSilent || '' };
+            confirmMsg = `Bloquear silenciosamente por ${minsSilent} minutos?`;
+            break;
+        case 'unlock':
+            confirmMsg = '¿Desbloquear el equipo?';
+            break;
+        case 'alarm':
+            confirmMsg = '¿ACTIVAR alarma de intruso a VOLUMEN MÁXIMO?';
+            break;
+        case 'alarm_stop':
+            confirmMsg = '¿Detener alarma?';
+            break;
+        case 'power_restart':
+            confirmMsg = '¿REINICIAR el equipo en 15 segundos?';
+            break;
+        case 'power_off':
+            confirmMsg = '¿APAGAR el equipo en 15 segundos?';
+            break;
+        case 'power_suspend':
+            confirmMsg = '¿Suspender el equipo?';
+            break;
+        case 'speak':
+            const text = prompt('Mensaje a reproducir por TTS:');
+            if (!text) return;
+            params = { text, message: text };
+            break;
+        case 'block_ip':
+            const ip = prompt('IP a bloquear (ej: 192.168.1.100):');
+            if (!ip) return;
+            params = { ip };
+            confirmMsg = `Bloquear IP ${ip} en firewall?`;
+            break;
+        case 'unblock_ip':
+            const ip2 = prompt('IP a desbloquear:');
+            if (!ip2) return;
+            params = { ip: ip2 };
+            confirmMsg = `Desbloquear IP ${ip2}?`;
+            break;
+        case 'apply_firewall_rule':
+            const ruleAction = prompt('Acción (allow/block):', 'block');
+            const protocol = prompt('Protocolo (TCP/UDP):', 'TCP');
+            const port = prompt('Puerto (ej: 80, 443, 3389):');
+            const direction = prompt('Dirección (inbound/outbound):', 'inbound');
+            if (!port) return;
+            params = { action: ruleAction || 'block', protocol: protocol || 'TCP', port, direction: direction || 'inbound' };
+            confirmMsg = `Aplicar regla firewall: ${ruleAction} ${protocol} puerto ${port} ${direction}?`;
+            break;
+        case 'block_user':
+            const user = prompt('Nombre de usuario a bloquear:');
+            if (!user) return;
+            params = { username: user };
+            confirmMsg = `Bloquear login local del usuario ${user}?`;
+            break;
+        default:
+            return;
+    }
+
+    if (confirmMsg && !confirm(confirmMsg)) return;
+
+    setToolStatus(`Ejecutando ${action}...`);
+    const res = await agentCmd(_agentId, action, params);
+    if (res.success) {
+        setToolStatus('✓ ' + (res.result || 'Comando ejecutado'));
+        // Show result in a toast-like message
+        showToast(res.result || 'Comando ejecutado correctamente', 'success');
+    } else {
+        setToolStatus('✗ ' + (res.error || 'Error'));
+        showToast(res.error || 'Error ejecutando comando', 'error');
+    }
+}
+
+function requestDataAndShow(type) {
+    setToolStatus('Solicitando ' + type + '...');
+    reqData(type);
+}
+
+// ── Forensics Panel ──
+function initForensicsPanel() {
+    const el = document.getElementById('toolsContent');
+    el.innerHTML = `
+        <div class="space-y-6">
+            <div class="rounded-xl border border-border-theme/40 bg-[#0d131a] p-5">
+                <h4 class="text-sm font-semibold text-amber-400 mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                    Acciones Forenses Rápidas
+                </h4>
+                <p class="text-[11px] text-text-subtle mb-4">Estos comandos se ejecutan via Shell (PowerShell) en el equipo remoto.</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2" id="forensics-grid"></div>
+            </div>
+
+            <div class="rounded-xl border border-border-theme/40 bg-[#0d131a] p-5">
+                <h4 class="text-sm font-semibold text-pink-400 mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.312.37-2.37.94-.632 1.543-.826 2.37-2.37.94-.632 1.543-.826 2.37-2.37zM15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    Análisis de Compromiso (IOC)
+                </h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-2" id="ioc-grid"></div>
+            </div>
+
+            <div class="rounded-xl border border-border-theme/40 bg-[#0d131a] p-5">
+                <h4 class="text-sm font-semibold text-sky-400 mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    Persistencia y Autostart
+                </h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-2" id="persist-grid"></div>
+            </div>
+        </div>
+    `;
+
+    // Forensics quick commands
+    const forensicsCmds = [
+        { label: '📁 Archivos modificados (24h)', cmd: 'Get-ChildItem -Path C:\\Users -Recurse -ErrorAction SilentlyContinue | Where-Object {$_.LastWriteTime -gt (Get-Date).AddDays(-1)} | Select-Object FullName,LastWriteTime,Length | Sort-Object LastWriteTime -Desc | Select-Object -First 30', desc: 'Busca archivos recientes en perfiles de usuario' },
+        { label: '🔍 Puertos escuchando', cmd: 'Get-NetTCPConnection -State Listen | Select-Object LocalAddress,LocalPort,OwningProcess | Sort-Object LocalPort', desc: 'Lista puertos abiertos y proceso propietario' },
+        { label: '📡 Conexiones establecidas', cmd: 'Get-NetTCPConnection -State Established | Select-Object LocalAddress,LocalPort,RemoteAddress,RemotePort,OwningProcess | Sort-Object RemoteAddress', desc: 'Conexiones activas de red' },
+        { label: '📂 Archivos abiertos por procesos', cmd: 'Get-Process | ForEach-Object { $_.Modules } | Select-Object FileName,ModuleName | Sort-Object FileName -Unique', desc: 'DLLs y ejecutables cargados en memoria' },
+        { label: '🕵️ Tareas programadas', cmd: 'Get-ScheduledTask | Where-Object {$_.State -ne "Disabled"} | Select-Object TaskName,State,LastRunTime,NextRunTime,Actions | Format-List', desc: 'Tareas de Windows activas' },
+        { label: '🔑 Run Keys (Registro)', cmd: 'Get-ItemProperty HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run, HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run, HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce, HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce', desc: 'Auto-start del registro' },
+        { label: '👥 Usuarios locales', cmd: 'Get-LocalUser | Select-Object Name,Enabled,LastLogon,PasswordExpires,PasswordRequired,UserMayChangePassword | Format-Table', desc: 'Cuentas locales del sistema' },
+        { label: '🔐 Sesiones activas', cmd: 'query user', shell: 'cmd', desc: 'Usuarios logueados actualmente' },
+        { label: '📋 Eventos seguridad (últimos 50)', cmd: 'Get-WinEvent -LogName Security -MaxEvents 50 | Select-Object TimeCreated,Id,LevelDisplayName,Message | Format-Table -AutoSize', desc: 'Auditoría de seguridad reciente' },
+    ];
+
+    const iocCmds = [
+        { label: '🔍 Buscar Mimikatz', cmd: 'Get-ChildItem -Path C:\\ -Recurse -ErrorAction SilentlyContinue -Filter "*mimikatz*" | Select-Object FullName,LastWriteTime,Length', desc: 'Busca herramientas de credential dumping' },
+        { label: '🔍 Buscar herramientas hacking', cmd: 'Get-ChildItem -Path C:\\ -Recurse -ErrorAction SilentlyContinue -Filter "*procdump*", "*psexec*", "*wmiexec*", "*smbexec*", "*crackmapexec*", "*bloodhound*", "*sharphound*", "*certify*", "*rubeus*" | Select-Object FullName,LastWriteTime', desc: 'Herramientas comunes de post-exploitation' },
+        { label: '🔍 Scripts sospechosos', cmd: 'Get-ChildItem -Path C:\\Users -Recurse -ErrorAction SilentlyContinue -Include "*.ps1","*.bat","*.cmd","*.vbs","*.js" | Where-Object {$_.Length -gt 1KB -and $_.LastWriteTime -gt (Get-Date).AddDays(-7)} | Select-Object FullName,LastWriteTime,Length', desc: 'Scripts recientes en perfiles' },
+        { label: '🔍 Procesos sin firma', cmd: 'Get-Process | Where-Object {$_.Path -and (Get-AuthenticodeSignature $_.Path).Status -ne "Valid"} | Select-Object Name,Id,Path,CPU | Sort-Object CPU -Desc', desc: 'Ejecutables sin firma digital válida' },
+        { label: '🔍 Conexiones externas raras', cmd: 'Get-NetTCPConnection -State Established | Where-Object {$_.RemoteAddress -notmatch "^(127\\.|10\\.|192\\.168\\.|172\\.(1[6-9]|2[0-9]|3[0-1])\\.)"} | Select-Object LocalPort,RemoteAddress,RemotePort,OwningProcess | Sort-Object RemoteAddress', desc: 'Conexiones a IPs públicas no RFC1918' },
+    ];
+
+    const persistCmds = [
+        { label: '📋 Servicios sospechosos', cmd: 'Get-Service | Where-Object {$_.StartType -eq "Automatic" -and $_.Status -eq "Running"} | Select-Object Name,DisplayName,StartType,Status,ServiceName | Format-Table', desc: 'Servicios de inicio automático' },
+        { label: '📋 Drivers cargados', cmd: 'Get-WmiObject Win32_SystemDriver | Where-Object {$_.StartMode -eq "Auto"} | Select-Object Name,DisplayName,PathName,StartMode,State | Format-Table', desc: 'Drivers de kernel en auto-start' },
+        { label: '📋 WMI Event Subscriptions', cmd: 'Get-WmiObject -Namespace "root\\subscription" -Class __EventFilter | Select-Object Name,Query,EventNamespace', desc: 'Suscripciones WMI persistentes' },
+        { label: '📋 Browser Helper Objects', cmd: 'Get-ItemProperty HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Browser Helper Objects\\* | Select-Object *', desc: 'BHOs de Internet Explorer/Edge' },
+        { label: '📋 Shell Extensions', cmd: 'Get-ItemProperty HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved\\* | Select-Object *', desc: 'Extensiones de shell registradas' },
+    ];
+
+    const grid = document.getElementById('forensics-grid');
+    grid.innerHTML = forensicsCmds.map(c => `
+        <button onclick="runForensicsCmd('${escH(c.cmd)}', '${c.shell || 'powershell'}')" class="p-3 bg-[#1a1f2e] border border-border-theme/30 rounded-lg hover:bg-primary/10 hover:border-primary/30 transition-all text-left">
+            <div class="font-medium text-amber-400">${c.label}</div>
+            <div class="text-[10px] text-text-subtle mt-1">${c.desc}</div>
+        </button>
+    `).join('');
+
+    const iocGrid = document.getElementById('ioc-grid');
+    iocGrid.innerHTML = iocCmds.map(c => `
+        <button onclick="runForensicsCmd('${escH(c.cmd)}', '${c.shell || 'powershell'}')" class="p-3 bg-[#1a1f2e] border border-border-theme/30 rounded-lg hover:bg-red-500/10 hover:border-red-500/30 transition-all text-left">
+            <div class="font-medium text-red-400">${c.label}</div>
+            <div class="text-[10px] text-text-subtle mt-1">${c.desc}</div>
+        </button>
+    `).join('');
+
+    const persistGrid = document.getElementById('persist-grid');
+    persistGrid.innerHTML = persistCmds.map(c => `
+        <button onclick="runForensicsCmd('${escH(c.cmd)}', '${c.shell || 'powershell'}')" class="p-3 bg-[#1a1f2e] border border-border-theme/30 rounded-lg hover:bg-pink-500/10 hover:border-pink-500/30 transition-all text-left">
+            <div class="font-medium text-pink-400">${c.label}</div>
+            <div class="text-[10px] text-text-subtle mt-1">${c.desc}</div>
+        </button>
+    `).join('');
+
+    setToolStatus('Panel forense listo');
+}
+
+async function runForensicsCmd(cmd, shell) {
+    if (shell !== _currentShell) {
+        _currentShell = shell;
+        initShell();
+        await new Promise(r => setTimeout(r, 100));
+    }
+    document.getElementById('shell-input').value = cmd;
+    shellExec();
+}
+
+function showToast(msg, type) {
+    const toast = document.createElement('div');
+    toast.className = `fixed bottom-6 right-6 z-50 px-4 py-3 rounded-lg text-sm font-medium shadow-lg animate-slide-up ${
+        type === 'success' ? 'bg-emerald-500/90 text-white border border-emerald-500/30' :
+        'bg-red-500/90 text-white border border-red-500/30'
+    }`;
+    toast.textContent = msg;
+    document.body.appendChild(toast);
+    setTimeout(() => { toast.classList.add('animate-fade-out'); setTimeout(() => toast.remove(), 300); }, 4000);
+}
 
 function initShell() {
     const el = document.getElementById('toolsContent');
-    el.innerHTML = '<div id="shell-box" class="rounded-xl border border-border-theme/40 bg-[#0a0e14] p-0 min-h-[300px] flex flex-col">' +
-        '<div id="shell-output" class="flex-1 overflow-y-auto p-4 font-mono text-[11px] text-emerald-400 space-y-1 min-h-[240px] max-h-[400px] scrollbar-custom">' +
-        '<p class="text-text-subtle">SecureLab Shell — ejecuta comandos remotos en el equipo</p>' +
-        '<p class="text-text-subtle">Escribe un comando y presiona Enter.</p></div>' +
-        '<div class="border-t border-border-theme/40 flex items-center gap-2 px-4 py-2">' +
-        '<span class="text-emerald-400 font-mono text-[11px] select-none">$&gt;</span>' +
-        '<input id="shell-input" type="text" placeholder="Escribe un comando..." class="flex-1 bg-transparent border-0 text-[12px] text-white font-mono focus:outline-none placeholder-text-subtle" autocomplete="off">' +
-        '</div></div>';
+    renderShellPanel(el);
     setToolStatus('');
+    bindShellEvents();
+}
+
+function renderShellPanel(el) {
+    const preset = SHELL_PRESETS[_currentShell];
+    el.innerHTML = `
+        <div id="shell-box" class="rounded-xl border border-border-theme/40 bg-[#0a0e14] p-0 min-h-[450px] flex flex-col">
+            <!-- Toolbar -->
+            <div class="border-b border-border-theme/40 p-3 bg-[#0d131a] flex flex-wrap items-center gap-2">
+                <div class="flex items-center gap-2">
+                    <span class="text-[10px] text-text-subtle uppercase tracking-wide">Shell:</span>
+                    <select id="shell-selector" class="bg-[#1a1f2e] border border-border-theme/30 rounded px-2 py-1 text-[11px] text-white focus:outline-none focus:border-primary">
+                        ${Object.entries(SHELL_PRESETS).map(([k,v]) => `<option value="${k}" ${k===_currentShell?'selected':''}>${v.label}</option>`).join('')}
+                    </select>
+                    <span class="text-[10px] text-text-subtle">${preset.hint}</span>
+                </div>
+                <div class="w-px h-6 bg-border-theme/30 mx-1"></div>
+                <div class="flex items-center gap-1" id="quick-tabs">
+                    ${Object.keys(QUICK_COMMANDS).map((k,i) => `<button data-tab="${k}" class="quick-tab px-2 py-1 text-[10px] rounded ${i===0?'bg-primary/20 text-primary':'text-text-subtle hover:text-white'}">${k.charAt(0).toUpperCase()+k.slice(1)}</button>`).join('')}
+                </div>
+                <div class="flex-1"></div>
+                <div class="flex items-center gap-2">
+                    <button id="shell-clear" class="px-3 py-1 text-[10px] bg-red-500/20 border border-red-500/30 text-red-400 rounded hover:bg-red-500/30 transition-colors">Limpiar</button>
+                    <button id="shell-export" class="px-3 py-1 text-[10px] bg-sky-500/20 border border-sky-500/30 text-sky-400 rounded hover:bg-sky-500/30 transition-colors">Exportar</button>
+                </div>
+            </div>
+
+            <!-- Quick Commands Panel -->
+            <div id="quick-panel" class="border-b border-border-theme/40 p-3 bg-[#0d131a] max-h-48 overflow-y-auto hidden">
+                <div id="quick-commands-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2"></div>
+            </div>
+
+            <!-- Output -->
+            <div id="shell-output" class="flex-1 overflow-y-auto p-4 font-mono text-[11px] text-emerald-400 space-y-1 min-h-[280px] max-h-[400px] scrollbar-custom">
+                <p class="text-text-subtle">SecureLab Shell — <span class="text-primary">${preset.label}</span> conectado</p>
+                <p class="text-text-subtle">Escribe un comando y presiona Enter. Usa ↑/↓ para historial.</p>
+            </div>
+
+            <!-- Input -->
+            <div class="border-t border-border-theme/40 bg-[#0d131a] p-3">
+                <div class="flex items-center gap-2">
+                    <span id="shell-prompt" class="font-mono text-[11px] select-none ${preset.color}">${preset.prompt}</span>
+                    <input id="shell-input" type="text" placeholder="Escribe un comando..." class="flex-1 bg-transparent border-0 text-[12px] text-white font-mono focus:outline-none placeholder-text-subtle" autocomplete="off" spellcheck="false">
+                    <span class="text-[10px] text-text-subtle font-mono">~</span>
+                </div>
+            </div>
+        </div>
+    `;
+    // Render initial quick commands for first tab
+    renderQuickCommands(Object.keys(QUICK_COMMANDS)[0]);
+}
+
+function bindShellEvents() {
     const inp = document.getElementById('shell-input');
     if (inp) {
         inp.focus();
@@ -861,7 +1329,78 @@ function initShell() {
             if (e.key === 'Enter') { e.preventDefault(); shellExec(); }
             else if (e.key === 'ArrowUp') { e.preventDefault(); shellNav(-1); }
             else if (e.key === 'ArrowDown') { e.preventDefault(); shellNav(1); }
+            else if (e.key === 'Tab') { e.preventDefault(); tabComplete(); }
         });
+    }
+
+    // Shell selector
+    const sel = document.getElementById('shell-selector');
+    if (sel) sel.addEventListener('change', (e) => { _currentShell = e.target.value; initShell(); });
+
+    // Quick tabs
+    document.querySelectorAll('.quick-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.quick-tab').forEach(b => b.className = 'quick-tab px-2 py-1 text-[10px] rounded text-text-subtle hover:text-white');
+            btn.className = 'quick-tab px-2 py-1 text-[10px] rounded bg-primary/20 text-primary';
+            renderQuickCommands(btn.dataset.tab);
+            document.getElementById('quick-panel').classList.remove('hidden');
+        });
+    });
+
+    // Clear / Export
+    const clearBtn = document.getElementById('shell-clear');
+    if (clearBtn) clearBtn.addEventListener('click', () => { document.getElementById('shell-output').innerHTML = ''; const p = SHELL_PRESETS[_currentShell]; document.getElementById('shell-output').innerHTML = `<p class="text-text-subtle">SecureLab Shell — <span class="text-primary">${p.label}</span> conectado</p><p class="text-text-subtle">Escribe un comando y presiona Enter.</p>`; });
+
+    const exportBtn = document.getElementById('shell-export');
+    if (exportBtn) exportBtn.addEventListener('click', exportShellHistory);
+}
+
+function renderQuickCommands(category) {
+    const grid = document.getElementById('quick-commands-grid');
+    const cmds = QUICK_COMMANDS[category] || [];
+    grid.innerHTML = cmds.map(c => `
+        <button class="quick-cmd p-2 text-[10px] bg-[#1a1f2e] border border-border-theme/30 rounded text-left hover:bg-primary/10 hover:border-primary/30 transition-all"
+                data-cmd="${escH(c.cmd)}"
+                data-shell="${c.shell}"
+                data-agent="${c.isAgentCmd ? '1' : '0'}"
+                data-prompt="${c.prompt ? escH(c.prompt) : ''}"
+                data-params="${c.params ? escH(JSON.stringify(c.params)) : ''}"
+                title="${c.shell === 'powershell' ? 'PS' : c.shell === 'cmd' ? 'CMD' : 'Bash'}">
+            <span class="block text-primary font-medium">${c.label}</span>
+            <span class="text-[9px] text-text-subtle truncate">${c.cmd.substring(0, 40)}${c.cmd.length>40?'...':''}</span>
+        </button>
+    `).join('');
+
+    grid.querySelectorAll('.quick-cmd').forEach(btn => {
+        btn.addEventListener('click', () => executeQuickCommand(btn));
+    });
+}
+
+async function executeQuickCommand(btn) {
+    const cmd = btn.dataset.cmd;
+    const shell = btn.dataset.shell;
+    const isAgent = btn.dataset.agent === '1';
+    const prompt = btn.dataset.prompt;
+    const params = btn.dataset.params ? JSON.parse(btn.dataset.params) : {};
+
+    if (prompt) {
+        const val = prompt(prompt);
+        if (!val) return;
+        params.message = val;
+    }
+
+    if (isAgent) {
+        await runAgentCommand(cmd, params);
+    } else {
+        // Switch shell if needed
+        if (shell !== _currentShell) {
+            _currentShell = shell;
+            initShell();
+            // Small delay to let UI update
+            await new Promise(r => setTimeout(r, 100));
+        }
+        document.getElementById('shell-input').value = cmd;
+        shellExec();
     }
 }
 
@@ -871,6 +1410,30 @@ function shellNav(dir) {
     if (_shellIdx >= _shellHistory.length) _shellIdx = _shellHistory.length - 1;
     const inp = document.getElementById('shell-input');
     if (inp && _shellHistory[_shellIdx]) inp.value = _shellHistory[_shellIdx];
+}
+
+function tabComplete() {
+    const inp = document.getElementById('shell-input');
+    const val = inp.value.trim();
+    // Basic tab completion for common commands
+    const completions = {
+        powershell: ['Get-Process','Get-Service','Get-ChildItem','Get-Item','Set-Item','Remove-Item','New-Item','Copy-Item','Move-Item','Invoke-Expression','Start-Process','Stop-Process','Get-EventLog','Get-WinEvent','Get-NetAdapter','Get-NetFirewallRule','Get-LocalUser','Get-LocalGroup'],
+        cmd: ['dir','cd','copy','move','del','type','find','tasklist','taskkill','netstat','ipconfig','ping','tracert','nslookup','systeminfo','whoami'],
+        bash: ['ls','cd','cp','mv','rm','cat','grep','find','ps','top','netstat','ss','ip','ping','traceroute','whoami','systemctl','journalctl'],
+    };
+    const list = completions[_currentShell] || [];
+    const matches = list.filter(c => c.toLowerCase().startsWith(val.toLowerCase()));
+    if (matches.length === 1) {
+        inp.value = matches[0] + ' ';
+    } else if (matches.length > 1) {
+        // Show suggestions in output
+        const out = document.getElementById('shell-output');
+        const p = document.createElement('p');
+        p.className = 'text-sky-400';
+        p.textContent = 'Sugerencias: ' + matches.join(', ');
+        out.appendChild(p);
+        out.scrollTop = out.scrollHeight;
+    }
 }
 
 function shellExec() {
@@ -883,8 +1446,9 @@ function shellExec() {
     _shellIdx = _shellHistory.length;
     inp.value = '';
 
+    const preset = SHELL_PRESETS[_currentShell];
     const line = document.createElement('p');
-    line.innerHTML = '<span class="text-blue-400">$&gt;</span> ' + escH(cmd);
+    line.innerHTML = `<span class="${preset.color}">${preset.prompt}</span> ${escH(cmd)}`;
     out.appendChild(line);
 
     const loading = document.createElement('p');
@@ -898,6 +1462,33 @@ function shellExec() {
         if (res && res.commandId) { _shellCmdId = res.commandId; startShellPoll(); }
         else { loading.textContent = res.error || 'Error al enviar comando'; loading.className = 'text-red-400'; }
     });
+}
+
+async function runAgentCommand(command, params) {
+    const out = document.getElementById('shell-output');
+    const loading = document.createElement('p');
+    loading.className = 'text-text-subtle animate-pulse';
+    loading.textContent = `Ejecutando comando de agente: ${command}...`;
+    out.appendChild(loading);
+    out.scrollTop = out.scrollHeight;
+
+    setToolStatus(`Ejecutando ${command}...`);
+    const res = await agentCmd(_agentId, command, params);
+
+    loading.remove();
+    if (res.success) {
+        const p = document.createElement('p');
+        p.className = 'text-emerald-400';
+        p.textContent = `✓ ${res.result || 'Comando ejecutado correctamente'}`;
+        out.appendChild(p);
+    } else {
+        const p = document.createElement('p');
+        p.className = 'text-red-400';
+        p.textContent = `✗ ${res.error || 'Error ejecutando comando'}`;
+        out.appendChild(p);
+    }
+    out.scrollTop = out.scrollHeight;
+    setToolStatus('');
 }
 
 function startShellPoll() {
@@ -933,6 +1524,16 @@ function startShellPoll() {
                 }
             }).catch(() => {});
     }, 2000);
+}
+
+function exportShellHistory() {
+    const out = document.getElementById('shell-output');
+    const lines = Array.from(out.querySelectorAll('p, pre')).map(el => el.textContent).join('\n');
+    const blob = new Blob(['\uFEFF' + lines], { type: 'text/plain;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `shell-session-${_agentId}-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.txt`;
+    a.click();
 }
 
 function escH(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }

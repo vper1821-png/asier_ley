@@ -425,11 +425,78 @@
 
         .animate-float { animation: float 3s ease-in-out infinite; }
         .animate-chat-open { animation: chat-open 0.2s ease-out; }
+        .animate-slide-up { animation: slide-up 0.3s ease-out; }
+        .animate-fade-out { animation: fade-out 0.3s ease-out forwards; }
+
+        .control-btn-dashboard {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+        .control-btn-dashboard::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.1), transparent);
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .control-btn-dashboard:hover {
+            transform: translateY(-2px) scale(1.02);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+        }
+        .control-btn-dashboard:hover::before {
+            opacity: 1;
+        }
+        .control-btn-dashboard:active {
+            transform: translateY(0) scale(0.98);
+        }
+
+        /* Premium device card styling */
+        .device-card-premium {
+            background: rgba(15, 20, 28, 0.7);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 1rem;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+        .device-card-premium::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 120px;
+            height: 120px;
+            background: radial-gradient(circle at top right, rgba(59,130,246,0.05), transparent 70%);
+            pointer-events: none;
+        }
+        .device-card-premium:hover {
+            border-color: rgba(255,255,255,0.12);
+            box-shadow: 0 16px 40px rgba(0,0,0,0.25);
+            transform: translateY(-2px);
+        }
+        .device-card-premium.online {
+            background: linear-gradient(135deg, rgba(16,185,129,0.05) 0%, rgba(15,20,28,0.8) 100%);
+            border-color: rgba(16,185,129,0.15);
+        }
+        .device-card-premium.online:hover {
+            border-color: rgba(16,185,129,0.3);
+            box-shadow: 0 16px 40px rgba(16,185,129,0.1);
+        }
+
+        /* Admin panel premium panel headers */
+        .admin-panel-header {
+            background: linear-gradient(90deg, rgba(59,130,246,0.08), transparent);
+            border-left: 3px solid var(--primary-500);
+        }
 
         @keyframes data-flow { 0% { stroke-dashoffset: 100; } 100% { stroke-dashoffset: 0; } }
         @keyframes shimmer { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
         @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
         @keyframes chat-open { from { opacity: 0; transform: scale(0.95) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        @keyframes slide-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
 
         input:-webkit-autofill,
         input:-webkit-autofill:hover,

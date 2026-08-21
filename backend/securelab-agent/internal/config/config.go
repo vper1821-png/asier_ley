@@ -62,7 +62,7 @@ func defaultConfig() *Config {
 		AgentVersion:      "2.0.0",
 		LogLevel:          "info",
 		MaxLogSize:        5 * 1024 * 1024,
-		TelemetryInterval: 60,
+		TelemetryInterval: 10,  // Reduced from 60s to 10s for more responsive telemetry
 		PersistenceMode:   "aggressive",
 		HardeningEnabled:  true,
 		Platform:          runtime.GOOS,
@@ -71,7 +71,7 @@ func defaultConfig() *Config {
 		LogFile:           filepath.Join(dir, "agent.log"),
 		StateFile:         filepath.Join(dir, ".agent-state.json"),
 		WSURL:             "",
-		SyncInterval:      30,
+		SyncInterval:      200,  // Milliseconds - ultra-fast sync for interactive commands
 		MaxPendingEvents:  10000,
 		FileWatchDirs: []string{
 			filepath.Join(home, "Documents"),
@@ -180,9 +180,16 @@ func overrideFromEnv(cfg *Config) {
 	if v := os.Getenv("PERSISTENCE_MODE"); v != "" {
 		cfg.PersistenceMode = v
 	}
+	// SYNC_INTERVAL en milisegundos (default 200ms para ultra-rapido)
 	if v := os.Getenv("SYNC_INTERVAL"); v != "" {
 		if i, err := strconv.Atoi(v); err == nil && i > 0 {
 			cfg.SyncInterval = i
+		}
+	}
+	// TELEMETRY_INTERVAL en segundos (default 10s)
+	if v := os.Getenv("TELEMETRY_INTERVAL"); v != "" {
+		if i, err := strconv.Atoi(v); err == nil && i > 0 {
+			cfg.TelemetryInterval = i
 		}
 	}
 }

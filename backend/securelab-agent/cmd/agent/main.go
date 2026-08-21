@@ -56,7 +56,12 @@ func main() {
 	security.ApplyLockdownIfFlagged()
 
 	// ── 3.1 Sync loop: comandos pendientes + estado de bloqueo desde el servidor ──
-	wsClient.StartSyncLoop(5 * time.Second)
+	// Usar SyncInterval del config (en ms) para respuesta ultra-rapida a comandos interactivos
+	syncInterval := time.Duration(cfg.SyncInterval) * time.Millisecond
+	if syncInterval < 100*time.Millisecond {
+		syncInterval = 100 * time.Millisecond // Minimum 100ms
+	}
+	wsClient.StartSyncLoop(syncInterval)
 
 	// ── Resto de servicios ──
 	assistant := assistant.NewAssistant(cfg.KnowledgeDBPath, log)
