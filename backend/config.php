@@ -2,7 +2,7 @@
 // SecureLab2v - PHP Backend Configuration
 
 define('PORT', getenv('PORT') ?: '3838');
-define('MONGODB_URI', getenv('MONGODB_URI') ?: 'mongodb://invisia-mongodb:27017/invisia');
+define('MONGODB_URI', getenv('MONGODB_URI') ?: 'mongodb://mongodb:27017/invisia');
 define('JWT_SECRET', getenv('JWT_SECRET') ?: 'cambia-este-secreto-por-uno-fuerte-y-largo');
 define('ADMIN_EMAIL', getenv('ADMIN_EMAIL') ?: 'admin@invisia.local');
 define('ADMIN_PASSWORD', getenv('ADMIN_PASSWORD') ?: 'Racilo14@@');

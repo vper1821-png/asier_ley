@@ -1,7 +1,7 @@
 [
     {
-        "email": "admin@invisia.local",
-        "password": "$2y$10$6BwZ3BvzoPlgsgoykcbjseYjlNzBK5XnYXobrhllfXns7cC.0pfgq",
+        "email": "alonso@securelab.cl",
+        "password": "$2y$10$R3.gMy9puwx9/Xhn5KD5yuQ34kTWHeo2GQ1PuYQ5Tn3psLSjHzV0K",
         "companyName": "SecureLab Admin",
         "domain": "",
         "isActive": true,
