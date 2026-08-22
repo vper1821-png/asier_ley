@@ -19,7 +19,7 @@ func removeLockdown() {
 	execCommand("iptables", "-P", "OUTPUT", "ACCEPT")
 }
 
-func PlayAlarm() {}
+func PlayAlarm() error { return nil }
 func StopAlarm() {}
 func Speak(text string) {}
 

@@ -6,16 +6,15 @@
 FROM golang:1.25-alpine AS agent-builder
 WORKDIR /src
 
-# Copiar el código del agente (se espera que esté en ./securelab-agent/)
-COPY securelab-agent/ .
+# Copiar el código del agente (está en backend/securelab-agent/)
+COPY backend/securelab-agent/ .
 
 # Sincronizar dependencias y generar vendor (para builds reproducibles)
 RUN go mod tidy && go mod vendor
 
-# Compilar binarios para Windows, Linux (amd64) y macOS (amd64/arm64)
+# Compilar binarios Linux (amd64) y macOS (amd64/arm64) — CGO_ENABLED=0, sin tags windows
 # Usamos CGO_ENABLED=0 para que los binarios sean completamente estáticos y portables.
 RUN mkdir -p /out && \
-    CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -v -ldflags "-s -w" -o /out/securelab-agent-win-x64.exe ./cmd/agent && \
     CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -v -ldflags "-s -w" -o /out/securelab-agent-linux-x64 ./cmd/agent && \
     CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -v -ldflags "-s -w" -o /out/securelab-agent-mac-x64 ./cmd/agent && \
     CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -v -ldflags "-s -w" -o /out/securelab-agent-mac-arm64 ./cmd/agent
@@ -58,8 +57,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Instalar Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# Configurar nginx (se espera que exista backend/nginx.conf en el contexto)
-COPY nginx.conf /etc/nginx/sites-available/default
+# Configurar nginx (está en backend/nginx.conf)
+COPY backend/nginx.conf /etc/nginx/sites-available/default
 RUN rm -f /etc/nginx/sites-enabled/default && \
     ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
 
@@ -68,11 +67,11 @@ RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 
 # Instalar dependencias PHP (composer)
 WORKDIR /var/www/html
-COPY composer.json ./composer.json
-RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --no-security-blocking --ignore-platform-req=ext-gd
+COPY backend/composer.json ./composer.json
+RUN composer install --no-dev --no-interaction --prefer-source --optimize-autoloader --no-security-blocking --ignore-platform-req=ext-gd
 
 # Copiar el resto de la aplicación PHP (backend)
-COPY . .
+COPY backend/ .
 
 # Copiar solo los binarios del agente (no el código fuente completo)
 COPY --from=agent-builder /out/ /var/www/html/agent-bin/
@@ -85,7 +84,7 @@ RUN mkdir -p /var/www/html/data /var/www/html/uploads /var/www/html/reports /var
     && chown -R www-data:www-data /var/www/html
 
 # Script de inicio (arranca PHP-FPM, WebSocket y nginx)
-COPY start.sh /start.sh
+COPY backend/start.sh /start.sh
 RUN chmod +x /start.sh
 
 EXPOSE 3838

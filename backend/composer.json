@@ -1,6 +1,7 @@
 {
     "require": {
-        "cboden/ratchet": "^0.4.4"
+        "cboden/ratchet": "^0.4.4",
+        "mongodb/mongodb": "^1.17"
     },
     "config": {
         "optimize-autoloader": true

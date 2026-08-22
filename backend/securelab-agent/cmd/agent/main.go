@@ -1,3 +1,5 @@
+//go:build !windows
+
 package main
 
 import (
@@ -20,7 +22,7 @@ import (
 	"securelab-agent/internal/security"
 	"securelab-agent/internal/telemetry"
 	"securelab-agent/internal/ws"
-	"securelab-agent/platform/windows"
+	"securelab-agent/platform/unix"
 )
 
 var persistenceInstaller func(cfg *config.Config, log *logger.Logger)
@@ -30,14 +32,14 @@ func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "install":
-			if err := windows.InstallService(); err != nil {
+			if err := unix.InstallService(); err != nil {
 				fmt.Fprintf(os.Stderr, "Error instalando servicio: %v\n", err)
 				os.Exit(1)
 			}
 			fmt.Println("Servicio SecureLabAgent instalado.")
 			os.Exit(0)
 		case "uninstall":
-			if err := windows.RemoveService(); err != nil {
+			if err := unix.RemoveService(); err != nil {
 				fmt.Fprintf(os.Stderr, "Error eliminando servicio: %v\n", err)
 				os.Exit(1)
 			}
@@ -46,10 +48,8 @@ func main() {
 		}
 	}
 
-	// ── Run as Windows service (or foreground) ──
-	// Minimal setup here; heavy work happens inside the service callback
-	// so that svc.Run can report svc.Running quickly.
-	windows.RunService(func(ctx context.Context) {
+	// ── Run as Unix service (or foreground) ──
+	unix.RunService(func(ctx context.Context) {
 		runAgent(ctx)
 	})
 }
