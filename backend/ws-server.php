@@ -447,6 +447,11 @@ class AgentWebSocket implements MessageComponentInterface {
             'status' => 'online',
             'lastSeen' => date('c'),
         ];
+        $agent = $this->db->findOne('agents', ['agentId' => $agentId]);
+        if (!$agent) {
+            echo "📊 Telemetría ignorada de agente inexistente: {$agentId}\n";
+            return;
+        }
         $existing = $this->db->findOne('host_monitor', ['agentId' => $agentId]);
         if ($existing) {
             $this->db->updateOne('host_monitor', ['_id' => $existing['_id']], $doc);
@@ -455,8 +460,7 @@ class AgentWebSocket implements MessageComponentInterface {
             $this->db->insertOne('host_monitor', $doc);
         }
         // Mantener sync de estado de bloqueo en el agente
-        $agent = $this->db->findOne('agents', ['agentId' => $agentId]);
-        if ($agent && isset($agent['lockdown'])) {
+        if (isset($agent['lockdown'])) {
             $this->db->updateOne('host_monitor', ['agentId' => $agentId], ['lockdown' => $agent['lockdown']]);
         }
         echo "📊 Telemetría recibida de {$agentId}\n";

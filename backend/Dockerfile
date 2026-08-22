@@ -65,13 +65,12 @@ RUN rm -f /etc/nginx/sites-enabled/default && \
 # Configurar PHP (production)
 RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 
-# Instalar dependencias PHP (composer)
+# Copiar la aplicación PHP (backend) ANTES de composer install para que vendor se genere correctamente
 WORKDIR /var/www/html
-COPY composer.json ./composer.json
-RUN composer install --no-dev --no-interaction --prefer-source --optimize-autoloader --no-security-blocking --ignore-platform-req=ext-gd
-
-# Copiar el resto de la aplicación PHP (backend)
 COPY . .
+
+# Instalar dependencias PHP (composer)
+RUN composer install --no-dev --no-interaction --prefer-source --optimize-autoloader --no-security-blocking --ignore-platform-req=ext-gd
 
 # Copiar solo los binarios del agente (no el código fuente completo)
 COPY --from=agent-builder /out/ /var/www/html/agent-bin/
