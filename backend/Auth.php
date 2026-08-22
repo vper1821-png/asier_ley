@@ -45,6 +45,12 @@ class Auth {
         if (!$user) json_error('usuario no encontrado', 401);
         if (empty($user['isActive'])) json_error('cuenta no activa', 403);
 
+        $tokenVersion = $decoded['tokenVersion'] ?? 1;
+        $currentVersion = $user['tokenVersion'] ?? 1;
+        if ($tokenVersion !== $currentVersion) {
+            json_error('sesión cerrada. Vuelve a iniciar sesión.', 401);
+        }
+
         // Remove password from user object
         unset($user['password']);
         return $user;

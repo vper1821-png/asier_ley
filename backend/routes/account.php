@@ -33,11 +33,15 @@ function changePassword() {
         json_error('contraseña actual incorrecta');
     }
 
+    $newVersion = ($fullUser['tokenVersion'] ?? 1) + 1;
     $db->updateOne('users', ['_id' => $user['_id']], [
         'password' => Auth::hashPassword($newPassword),
+        'tokenVersion' => $newVersion,
     ]);
 
-    json_response(['success' => true]);
+    $newToken = Auth::createToken($user['_id'], ['tokenVersion' => $newVersion]);
+
+    json_response(['success' => true, 'token' => $newToken]);
 }
 
 function changeEmail() {
@@ -61,6 +65,23 @@ function changeEmail() {
         json_error('email ya registrado');
     }
 
-    $db->updateOne('users', ['_id' => $user['_id']], ['email' => $newEmail]);
-    json_response(['success' => true, 'email' => $newEmail]);
+    $newVersion = ($fullUser['tokenVersion'] ?? 1) + 1;
+    $db->updateOne('users', ['_id' => $user['_id']], [
+        'email' => $newEmail,
+        'tokenVersion' => $newVersion,
+    ]);
+
+    $newToken = Auth::createToken($user['_id'], ['tokenVersion' => $newVersion]);
+
+    json_response(['success' => true, 'email' => $newEmail, 'token' => $newToken]);
+}
+
+function logoutAll() {
+    $user = Auth::requireAuth();
+    $db = Database::getInstance();
+    $fullUser = $db->findOne('users', ['_id' => $user['_id']]);
+    $newVersion = ($fullUser['tokenVersion'] ?? 1) + 1;
+    $db->updateOne('users', ['_id' => $user['_id']], ['tokenVersion' => $newVersion]);
+    $newToken = Auth::createToken($user['_id'], ['tokenVersion' => $newVersion]);
+    json_response(['success' => true, 'token' => $newToken]);
 }

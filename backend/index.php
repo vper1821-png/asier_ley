@@ -61,6 +61,8 @@ $routes = [
     'POST /api/alerts/dismiss' => 'routes/alerts.php@dismiss',
     'POST /api/alerts/resolve-bulk' => 'routes/alerts.php@resolveBulk',
     'POST /api/alerts/delete-all' => 'routes/alerts.php@deleteAll',
+    'POST /api/alerts/read' => 'routes/alerts.php@markRead',
+    'POST /api/alerts/export' => 'routes/alerts.php@exportCsv',
 
     // Databases
     'POST /api/databases' => 'routes/databases.php@listAll',
@@ -200,6 +202,7 @@ $routes = [
     'POST /api/account/update'          => 'routes/account.php@update',
     'POST /api/account/change-password' => 'routes/account.php@changePassword',
     'POST /api/account/change-email'    => 'routes/account.php@changeEmail',
+    'POST /api/account/logout-all'      => 'routes/account.php@logoutAll',
 
     // Notifications
     'POST /api/notifications' => 'routes/notifications.php@listAll',
@@ -278,6 +281,13 @@ if (preg_match('#^/api/agents/([a-zA-Z0-9_-]+)/data$#', $uri, $m)) {
     exit;
 }
 
+if (preg_match('#^/api/agents/([a-zA-Z0-9_-]+)/forensics$#', $uri, $m)) {
+    $_GET['id'] = $m[1];
+    require_once __DIR__ . '/routes/agents.php';
+    forensics();
+    exit;
+}
+
 if (preg_match('#^/api/agents/([a-zA-Z0-9_-]+)/commands$#', $uri, $m) && in_array($method, ['GET', 'POST'])) {
     $_GET['id'] = $m[1];
     require_once __DIR__ . '/routes/agents.php';
@@ -310,6 +320,31 @@ if (preg_match('#^/api/agents/([a-zA-Z0-9_-]+)/message$#', $uri, $m) && $method 
     exit;
 }
 
+if (preg_match('#^/api/agents/([a-zA-Z0-9_-]+)$#', $uri, $m) && $method === 'POST') {
+    $_GET['id'] = $m[1];
+    require_once __DIR__ . '/routes/agents.php';
+    updateAgent();
+    exit;
+}
+
+if ($uri === '/api/folders/list' && $method === 'POST') {
+    require_once __DIR__ . '/routes/agents.php';
+    folderList();
+    exit;
+}
+
+if ($uri === '/api/folders/create' && $method === 'POST') {
+    require_once __DIR__ . '/routes/agents.php';
+    folderCreate();
+    exit;
+}
+
+if ($uri === '/api/folders/delete' && $method === 'POST') {
+    require_once __DIR__ . '/routes/agents.php';
+    folderDelete();
+    exit;
+}
+
 if ($uri === '/api/reports/download-all' && $method === 'GET') {
     $_GET['id'] = 'all';
     require_once __DIR__ . '/routes/reports.php';
@@ -321,6 +356,13 @@ if (preg_match('#^/api/reports/download/(.+)$#', $uri, $m) && $method === 'GET')
     $_GET['id'] = $m[1];
     require_once __DIR__ . '/routes/reports.php';
     download();
+    exit;
+}
+
+if (preg_match('#^/api/arco/requests/([A-Z0-9-]+)/document$#', $uri, $m) && $method === 'GET') {
+    $_GET['requestId'] = $m[1];
+    require_once __DIR__ . '/routes/arco.php';
+    downloadResponse();
     exit;
 }
 

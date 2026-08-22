@@ -47,7 +47,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $agentsRes = api_post_form('/api/agents/list', ['token' => $token]);
 $agents = is_array($agentsRes) && empty($agentsRes['error']) ? ($agentsRes['agents'] ?? $agentsRes) : [];
 if (!is_array($agents)) $agents = [];
+usort($agents, function($a, $b) {
+    $ga = $a['group'] ?? '';
+    $gb = $b['group'] ?? '';
+    $sort = $_GET['sort'] ?? 'pinned';
+    if ($sort === 'name') {
+        if ($ga !== $gb) return strcmp($ga, $gb);
+        $na = $a['name'] ?? $a['hostname'] ?? '';
+        $nb = $b['name'] ?? $b['hostname'] ?? '';
+        return strcmp($na, $nb);
+    }
+    if ($sort === 'date') {
+        if ($ga !== $gb) return strcmp($ga, $gb);
+        return strcmp($b['lastSeen'] ?? '', $a['lastSeen'] ?? '');
+    }
+    if ($ga === '' && $gb !== '') return 1;
+    if ($gb === '' && $ga !== '') return -1;
+    if ($ga !== $gb) return strcmp($ga, $gb);
+    $pa = !empty($a['pinned']);
+    $pb = !empty($b['pinned']);
+    if ($pa !== $pb) return ($pb <=> $pa);
+    $na = $a['name'] ?? $a['hostname'] ?? '';
+    $nb = $b['name'] ?? $b['hostname'] ?? '';
+    return strcmp($na, $nb);
+});
 $online = count(array_filter($agents, fn($a) => ($a['status'] ?? '') === 'online'));
+
+$foldersRes = api_post_form('/api/folders/list', ['token' => $token]);
+$folders = is_array($foldersRes) && empty($foldersRes['error']) ? $foldersRes : [];
+if (!is_array($folders)) $folders = [];
 
 $hostsRes = api_post_form('/api/host-monitor', ['token' => $token]);
 $hosts = is_array($hostsRes) && empty($hostsRes['error']) ? $hostsRes : [];
@@ -77,12 +105,20 @@ $platforms = [
         <div class="flex-shrink-0 px-5 md:px-8 py-5 border-b border-white/[0.04] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
                 <h2 class="text-[15px] font-semibold text-white tracking-tight">Agentes</h2>
-                <p class="text-[11px] text-text-subtle mt-0.5 font-medium"><?= count($agents) ?> registrados · <?= $online ?> online</p>
+                <p class="text-[11px] text-text-subtle mt-0.5 font-medium"><span id="agent-count"><?= count($agents) ?></span> registrados · <?= $online ?> online</p>
             </div>
-            <button onclick="location.reload()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-white/[0.03] hover:bg-white/[0.06] text-text-muted hover:text-text-body border border-white/[0.05] transition-all">
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                Refrescar
-            </button>
+            <div class="flex items-center gap-2">
+                <input id="agent-search" type="text" placeholder="Buscar agente..." value="<?= h($_GET['search'] ?? '') ?>" oninput="filterAgents(this.value)" class="w-40 md:w-56 bg-bg-input border border-border-theme rounded-lg px-3 py-1.5 text-[12px] text-text-heading focus:border-primary-500 outline-none" />
+                <select id="agent-sort" onchange="location.href = '/agents?sort=' + encodeURIComponent(this.value)" class="bg-bg-input border border-border-theme rounded-lg px-3 py-1.5 text-[12px] text-text-heading focus:border-primary-500 outline-none">
+                    <option value="pinned" <?= ($_GET['sort'] ?? '') === 'pinned' ? 'selected' : '' ?>>Fijados primero</option>
+                    <option value="name" <?= ($_GET['sort'] ?? '') === 'name' ? 'selected' : '' ?>>Nombre A-Z</option>
+                    <option value="date" <?= ($_GET['sort'] ?? '') === 'date' ? 'selected' : '' ?>>Último latido</option>
+                </select>
+                <button onclick="location.reload()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-white/[0.03] hover:bg-white/[0.06] text-text-muted hover:text-text-body border border-white/[0.05] transition-all">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    Refrescar
+                </button>
+            </div>
         </div>
 
         <div class="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 space-y-5 scrollbar-custom">
@@ -105,6 +141,32 @@ $platforms = [
                 <p class="text-[10px] text-text-subtle mt-3">Al descargar se crea un <strong>deploy</strong> vinculado a tu cuenta. El agente se preconfigura con tu API URL y token.</p>
             </div>
 
+            <!-- Carpetas -->
+            <div class="rounded-xl border border-white/[0.04] bg-white/[0.015] p-5 tour-detail-1">
+                <p class="text-[12px] font-semibold text-white mb-1">Carpetas</p>
+                <p class="text-[11px] text-text-subtle mb-4">Crea, visualiza y borra carpetas para organizar agentes.</p>
+                <div class="flex items-center gap-2 mb-3">
+                    <input id="new-folder" type="text" placeholder="Nombre de nueva carpeta..." class="flex-1 min-w-0 bg-bg-input border border-border-theme rounded-lg px-3 py-2 text-[12px] text-text-heading focus:border-primary-500 outline-none" />
+                    <button onclick="createFolder()" class="px-4 py-2 rounded-lg text-[11px] font-medium bg-primary-600 hover:bg-primary-500 text-white transition-all">Crear</button>
+                </div>
+                <div id="folders-list" class="space-y-2">
+                    <?php foreach ($folders as $f): $fn = h($f['name'] ?? ''); ?>
+                    <div class="folder-row flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-border-theme/40 bg-bg-panel/40" data-folder="<?= $fn ?>">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <svg class="w-4 h-4 text-primary-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+                            <span class="text-[12px] text-text-heading truncate"><?= $fn ?></span>
+                        </div>
+                        <button onclick="deleteFolder('<?= addslashes($f['name'] ?? '') ?>')" title="Borrar carpeta" class="p-1.5 rounded-lg text-[11px] text-red-400 hover:bg-red-500/10 transition-all">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                        </button>
+                    </div>
+                    <?php endforeach; ?>
+                    <?php if (empty($folders)): ?>
+                    <p class="text-[11px] text-text-subtle">No hay carpetas creadas todavía.</p>
+                    <?php endif; ?>
+                </div>
+            </div>
+
             <!-- Agents list -->
             <?php if (empty($agents)): ?>
             <div class="rounded-xl border border-white/[0.04] bg-white/[0.015] p-12 text-center">
@@ -116,15 +178,32 @@ $platforms = [
             </div>
             <?php else: ?>
             <div class="space-y-2 tour-detail-2">
-                <?php foreach ($agents as $i => $agent): $isOnline = ($agent['status'] ?? '') === 'online'; $isLocked = !empty($agent['lockdown']['enabled']); ?>
-                <div class="rounded-xl border p-4 flex flex-col md:flex-row md:items-center gap-3 <?= $isLocked ? 'border-red-500/30 bg-red-500/[0.04]' : 'border-white/[0.04] bg-white/[0.015]' ?>">
+                <?php $lastGroup = '___unset___'; foreach ($agents as $i => $agent): $isOnline = ($agent['status'] ?? '') === 'online'; $isLocked = !empty($agent['lockdown']['enabled']); $g = $agent['group'] ?? ''; if ($g !== $lastGroup): if ($lastGroup !== '___unset___') echo '</div></details>'; $lastGroup = $g; ?>
+                <details class="agent-folder rounded-xl border border-border-theme/40 bg-bg-panel/40 overflow-hidden mb-3" data-group="<?= h($g) ?>" open>
+                    <summary class="px-4 py-3 flex items-center justify-between cursor-pointer list-none hover:bg-white/[0.02]" onclick="return true">
+                        <div class="flex items-center gap-3">
+                            <svg class="w-4 h-4 text-primary-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+                            <span class="text-[13px] font-medium text-text-heading"><?= $g ? h($g) : 'Sin sección' ?></span>
+                            <span class="text-[10px] text-text-subtle folder-count">(0)</span>
+                        </div>
+                        <svg class="w-4 h-4 text-text-subtle chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    </summary>
+                    <div class="p-3 space-y-2 border-t border-border-theme/30">
+                <?php endif; ?>
+                <div class="agent-card rounded-xl border p-4 flex flex-col md:flex-row md:items-center gap-3 <?= $isLocked ? 'border-red-500/30 bg-red-500/[0.04]' : 'border-white/[0.04] bg-white/[0.015]' ?>"
+                     data-search="<?= h(strtolower(($agent['name'] ?? '') . ' ' . ($agent['hostname'] ?? '') . ' ' . ($agent['agentId'] ?? '') . ' ' . $g)) ?>"
+                     data-pinned="<?= !empty($agent['pinned']) ? '1' : '0' ?>"
+                     data-group="<?= h($g) ?>">
                     <div class="flex items-center gap-3 flex-1 min-w-0">
                         <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 <?= $isOnline ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400' ?>">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                         </div>
                         <div class="min-w-0">
                             <div class="flex items-center gap-2">
-                                <p class="text-[12px] font-medium text-text-heading truncate"><?= h($agent['hostname'] ?? $agent['agentId'] ?? 'Agente') ?></p>
+                                <p id="agent-title-<?= $i ?>" class="text-[12px] font-medium text-text-heading truncate">
+                                    <?php if (!empty($agent['pinned'])): ?><span title="Fijado" class="text-amber-400 mr-1">★</span><?php endif; ?>
+                                    <?= h($agent['name'] ?? $agent['hostname'] ?? $agent['agentId'] ?? 'Agente') ?>
+                                </p>
                                 <?php if ($isLocked): ?>
                                 <span class="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/30">
                                     <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
@@ -149,13 +228,21 @@ $platforms = [
                             class="p-2 rounded-lg text-[11px] bg-bg-panel/80 border border-border-theme text-text-muted hover:text-indigo-400 hover:bg-bg-elevated transition-all">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                         </button>
-                        <button onclick="deleteAgent('<?= h($agent['agentId'] ?? '') ?>','<?= h($agent['hostname'] ?? '') ?>')" title="Eliminar agente"
+                        <button onclick="pinAgent(<?= $i ?>, '<?= h($agent['agentId'] ?? '') ?>', <?= !empty($agent['pinned']) ? 'true' : 'false' ?>)" title="<?= !empty($agent['pinned']) ? 'Desfijar' : 'Fijar' ?>"
+                            class="p-2 rounded-lg text-[11px] bg-bg-panel/80 border border-border-theme <?= !empty($agent['pinned']) ? 'text-amber-400 border-amber-500/30 hover:bg-amber-500/10' : 'text-text-muted hover:text-amber-400 hover:border-amber-500/30' ?> transition-all">
+                            <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                        </button>
+                        <button onclick="openEditModal(<?= $i ?>)" title="Editar nombre y carpeta"
+                            class="p-2 rounded-lg text-[11px] bg-bg-panel/80 border border-border-theme text-text-muted hover:text-primary-400 hover:bg-bg-elevated transition-all">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                        </button>
+                        <button onclick="deleteAgent('<?= h($agent['agentId'] ?? '') ?>','<?= addslashes($agent['name'] ?? $agent['hostname'] ?? '') ?>')" title="Eliminar agente"
                             class="p-2 rounded-lg text-[11px] bg-bg-panel/80 border border-red-500/20 text-red-400 hover:bg-red-500/10 hover:border-red-500/30 transition-all">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                         </button>
                     </div>
                 </div>
-                <?php endforeach; ?>
+                <?php endforeach; if ($lastGroup !== '___unset___') echo '</div></details>'; ?>
             </div>
             <?php endif; ?>
         </div>
@@ -169,17 +256,107 @@ $platforms = [
     </div>
 </div>
 
+<!-- Modal editar agente -->
+<div id="edit-agent-modal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-sm items-center justify-center z-50 p-4" onclick="if (event.target.id === 'edit-agent-modal') closeEditModal()">
+    <div class="bg-bg-panel border border-border-theme rounded-2xl w-full max-w-md shadow-2xl">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-border-theme">
+            <h3 class="text-[14px] font-semibold text-white">Editar agente</h3>
+            <button onclick="closeEditModal()" class="text-text-muted hover:text-white transition-colors p-1.5 rounded-lg hover:bg-bg-elevated">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="p-6 space-y-4">
+            <div>
+                <label class="text-[11px] text-text-subtle">Nombre personalizado</label>
+                <input id="edit-name" type="text" class="w-full mt-1 bg-bg-input border border-border-theme rounded-lg px-3 py-2 text-[12px] text-text-heading focus:border-primary-500 outline-none" placeholder="Nombre del agente">
+            </div>
+            <div>
+                <label class="text-[11px] text-text-subtle">Carpeta / sección</label>
+                <input id="edit-group" type="text" list="existing-groups" class="w-full mt-1 bg-bg-input border border-border-theme rounded-lg px-3 py-2 text-[12px] text-text-heading focus:border-primary-500 outline-none" placeholder="General, Oficina, etc.">
+                <datalist id="existing-groups">
+                    <?php foreach ($folders as $f): ?><option value="<?= h($f['name'] ?? '') ?>"><?php endforeach; ?>
+                </datalist>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button onclick="closeEditModal()" class="px-4 py-2 rounded-lg text-[12px] text-text-muted hover:bg-bg-elevated transition-all">Cancelar</button>
+                <button onclick="saveEditAgent()" class="px-4 py-2 rounded-lg text-[12px] bg-primary-600 hover:bg-primary-500 text-white transition-all">Guardar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 const SL_TOKEN = <?= json_encode($token) ?>;
 let AGENTS = <?= $combinedJson ?>;
 let currentAgentIdx = null;
 let agentModalInterval = null;
+let editAgentIdx = null;
+let editAgentId = '';
 
 function closeAgentModal() {
     document.getElementById('agent-modal').classList.add('hidden');
     document.getElementById('agent-modal').classList.remove('flex');
     if (agentModalInterval) { clearInterval(agentModalInterval); agentModalInterval = null; }
     currentAgentIdx = null;
+}
+
+function openEditModal(idx) {
+    const d = AGENTS[idx];
+    if (!d) return;
+    const a = d.agent || {};
+    editAgentIdx = idx;
+    editAgentId = a.agentId || '';
+    document.getElementById('edit-name').value = a.name || a.hostname || '';
+    document.getElementById('edit-group').value = a.group || '';
+    const m = document.getElementById('edit-agent-modal');
+    m.classList.remove('hidden');
+    m.classList.add('flex');
+}
+
+function closeEditModal() {
+    document.getElementById('edit-agent-modal').classList.add('hidden');
+    document.getElementById('edit-agent-modal').classList.remove('flex');
+    editAgentIdx = null;
+    editAgentId = '';
+}
+
+function saveEditAgent() {
+    if (!editAgentId) return;
+    const name = document.getElementById('edit-name').value.trim();
+    const group = document.getElementById('edit-group').value.trim();
+    fetch('/api/agents/' + encodeURIComponent(editAgentId), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SL_TOKEN },
+        body: JSON.stringify({ name: name, group: group, token: SL_TOKEN })
+    }).then(function(r){ return r.json(); }).then(function(res){
+        if (res.success) { location.reload(); } else { alert(res.error || 'Error al guardar'); }
+    }).catch(function(){ alert('Error de red'); });
+}
+
+function createFolder() {
+    const input = document.getElementById('new-folder');
+    const name = input.value.trim();
+    if (!name) return;
+    fetch('/api/folders/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SL_TOKEN },
+        body: JSON.stringify({ name: name, token: SL_TOKEN })
+    }).then(function(r){ return r.json(); }).then(function(res){
+        if (res.success) { location.reload(); } else { alert(res.error || 'Error al crear carpeta'); }
+    }).catch(function(){ alert('Error de red'); });
+}
+
+function deleteFolder(name) {
+    if (!confirm('¿Borrar la carpeta "' + name + '"? Los agentes que estuvieran en ella volverán a "Sin sección".\n\nEscribe el nombre de la carpeta para confirmar:')) return;
+    const check = prompt('Confirma escribiendo el nombre de la carpeta:');
+    if (check !== name) { alert('No coincide'); return; }
+    fetch('/api/folders/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SL_TOKEN },
+        body: JSON.stringify({ name: name, token: SL_TOKEN })
+    }).then(function(r){ return r.json(); }).then(function(res){
+        if (res.success) { location.reload(); } else { alert(res.error || 'Error al borrar carpeta'); }
+    }).catch(function(){ alert('Error de red'); });
 }
 
 function fmtBytes(b) {
@@ -236,7 +413,7 @@ function openAgentModal(idx) {
     const isOnline = a.status === 'online';
     const isLocked = !!(a.lockdown && a.lockdown.enabled) || !!(h.lockdown && h.lockdown.enabled);
     const lockedInfo = (a.lockdown && a.lockdown.enabled) ? a.lockdown : (h.lockdown || {});
-    const hostname = a.hostname || h.hostname || a.agentId || 'N/A';
+    const displayName = a.name || a.hostname || h.hostname || a.agentId || 'N/A';
     const diskTotal = h.diskTotal || 0;
     const diskUsed = h.diskUsed != null ? h.diskUsed : (diskTotal - (h.diskFree || 0));
     const diskPct = h.disk != null ? h.disk : (diskTotal > 0 ? Math.round((diskUsed / diskTotal) * 100) : 0);
@@ -250,7 +427,10 @@ function openAgentModal(idx) {
             </div>
             <div class="min-w-0">
                 <div class="flex items-center gap-2 flex-wrap">
-                    <h3 class="text-[18px] font-bold text-white truncate">${hostname}</h3>
+                    <h3 id="agent-modal-title" class="text-[18px] font-bold text-white truncate">${displayName}</h3>
+                    <button onclick="openEditModal(currentAgentIdx)" title="Editar nombre y carpeta" class="p-1.5 rounded-lg text-text-muted hover:text-primary-400 hover:bg-bg-elevated transition-all">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                    </button>
                     <span class="inline-flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full ${isOnline ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}">
                         <span class="w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-400' : 'bg-red-400'}"></span>${isOnline ? 'Online' : 'Offline'}
                     </span>
@@ -330,26 +510,6 @@ function openAgentModal(idx) {
                     </div>
                 </div>
 
-                <div>
-                    ${sectionTitle('#fb923c', 'Audio de intruso (máximo volumen)')}
-                    <div class="flex gap-2 mb-2">
-                        <button onclick="agentAction('${a.agentId}','alarm',{})" class="flex-1 px-3 py-2 rounded-lg text-[11px] font-medium bg-orange-600/20 border border-orange-500/30 text-orange-400 hover:bg-orange-600/30 transition-all inline-flex items-center justify-center gap-1.5">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5L6 9H2v6h4l5 4V5zM15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14"/></svg>
-                            Alarma
-                        </button>
-                        <button onclick="agentAction('${a.agentId}','alarm_stop',{})" class="flex-1 px-3 py-2 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white transition-all inline-flex items-center justify-center gap-1.5">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/></svg>
-                            Parar
-                        </button>
-                    </div>
-                    <div class="flex gap-2">
-                        <input id="speak-text" type="text" placeholder="Texto a anunciar en el equipo..." class="flex-1 input-premium" />
-                        <button onclick="agentAction('${a.agentId}','speak',{text:document.getElementById('speak-text').value})" class="px-4 py-2 rounded-lg text-[11px] font-medium bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 hover:bg-indigo-600/30 transition-all inline-flex items-center gap-1.5">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-14 0M12 4v13m-3 3h6"/></svg>
-                            Anunciar
-                        </button>
-                    </div>
-                </div>
 
                 <div>
                     ${sectionTitle('#fbbf24', 'Energía remota')}
@@ -387,6 +547,17 @@ function openAgentModal(idx) {
             <button onclick="loadCommandHistory('${a.agentId}','cmds-box')" class="px-3 py-2 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-surface-600 transition-all">Ver historial</button>
             <div id="cmds-box" class="mt-2"></div>
         </div>
+
+        <!-- Forense -->
+        <div>
+            ${sectionTitle('#a78bfa', 'Forense')}
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
+                <button onclick="loadForensics('${a.agentId}','files','forense-box')" class="px-3 py-2.5 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-purple-500/40 transition-all inline-flex items-center gap-1.5 justify-center">Archivos recientes</button>
+                <button onclick="loadForensics('${a.agentId}','db','forense-box')" class="px-3 py-2.5 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-purple-500/40 transition-all inline-flex items-center gap-1.5 justify-center">Logs BBDD</button>
+                <button onclick="loadForensics('${a.agentId}','host','forense-box')" class="px-3 py-2.5 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-purple-500/40 transition-all inline-flex items-center gap-1.5 justify-center">Eventos del sistema</button>
+            </div>
+            <div id="forense-box" class="rounded-xl border border-border-theme/40 bg-bg-elevated/30 p-3 min-h-[60px]"></div>
+        </div>
     </div>
     `;
 
@@ -398,20 +569,7 @@ function openAgentModal(idx) {
     window.curAgentId = a.agentId || '';
 
     if (agentModalInterval) clearInterval(agentModalInterval);
-    agentModalInterval = setInterval(() => {
-        fetch('/api-proxy.php?path=/api/agents/combined', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: 'token=' + encodeURIComponent(SL_TOKEN)
-        })
-        .then(r => r.json())
-        .then(data => {
-            if (Array.isArray(data)) {
-                AGENTS = data;
-                if (currentAgentIdx !== null) openAgentModal(currentAgentIdx);
-            }
-        });
-    }, 3000);
+    agentModalInterval = null;
 }
 
 function detailBox(label, value) {
@@ -610,6 +768,110 @@ function loadCommandHistory(agentId, boxId) {
     }).catch(function () { box.innerHTML = '<p class="text-[10px] text-red-400">Error al cargar historial.</p>'; });
 }
 
+function loadForensics(agentId, type, boxId) {
+    const box = document.getElementById(boxId);
+    if (!box) return;
+    box.innerHTML = '<p class="text-[10px] text-text-subtle animate-pulse">Cargando forense...</p>';
+    fetch('/api/agents/' + encodeURIComponent(agentId) + '/forensics?type=' + encodeURIComponent(type), {
+        method: 'GET', headers: { 'Authorization': 'Bearer ' + SL_TOKEN }
+    }).then(function (r) { return r.json(); }).then(function (res) {
+        if (!res.success || !Array.isArray(res.events)) { box.innerHTML = '<p class="text-[10px] text-text-subtle">Sin datos forenses.</p>'; return; }
+        renderForensics(res.events, type, box);
+    }).catch(function () { box.innerHTML = '<p class="text-[10px] text-red-400">Error de red.</p>'; });
+}
+
+function renderForensics(events, type, box) {
+    if (!events.length) { box.innerHTML = '<p class="text-[10px] text-text-subtle">Sin eventos.</p>'; return; }
+    const headers = type === 'files'
+        ? '<th class="px-2 py-1.5 font-medium">Fecha</th><th class="px-2 py-1.5 font-medium">Evento</th><th class="px-2 py-1.5 font-medium">Ruta</th><th class="px-2 py-1.5 font-medium">Proceso</th>'
+        : type === 'db'
+            ? '<th class="px-2 py-1.5 font-medium">Fecha</th><th class="px-2 py-1.5 font-medium">BBDD</th><th class="px-2 py-1.5 font-medium">Consulta</th><th class="px-2 py-1.5 font-medium">Op</th>'
+            : '<th class="px-2 py-1.5 font-medium">Fecha</th><th class="px-2 py-1.5 font-medium">Gravedad</th><th class="px-2 py-1.5 font-medium">Título</th><th class="px-2 py-1.5 font-medium">Detalle</th>';
+    const rows = events.map(function (e) {
+        const d = (e.createdAt || e.timestamp || '').substring ? (e.createdAt || e.timestamp || '').substring(0, 19) : '';
+        if (type === 'files') {
+            return '<tr class="border-t border-border-theme/30"><td class="px-2 py-1.5 text-[10px] font-mono text-text-muted">' + esc(d) + '</td><td class="px-2 py-1.5 text-[10px] text-text-body">' + esc(e.eventType || '') + '</td><td class="px-2 py-1.5 text-[10px] text-text-body break-all">' + esc(e.path || '') + '</td><td class="px-2 py-1.5 text-[10px] text-text-muted">' + esc(e.process || '') + '</td></tr>';
+        }
+        if (type === 'db') {
+            return '<tr class="border-t border-border-theme/30"><td class="px-2 py-1.5 text-[10px] font-mono text-text-muted">' + esc(d) + '</td><td class="px-2 py-1.5 text-[10px] text-text-body">' + esc(e.database || '') + '</td><td class="px-2 py-1.5 text-[10px] text-text-body break-all">' + esc(e.query || '') + '</td><td class="px-2 py-1.5 text-[10px] text-text-muted">' + esc(e.operation || '') + '</td></tr>';
+        }
+        return '<tr class="border-t border-border-theme/30"><td class="px-2 py-1.5 text-[10px] font-mono text-text-muted">' + esc(d) + '</td><td class="px-2 py-1.5 text-[10px] text-text-body">' + esc(e.severity || '') + '</td><td class="px-2 py-1.5 text-[10px] text-text-body break-all">' + esc(e.title || '') + '</td><td class="px-2 py-1.5 text-[10px] text-text-muted">' + esc(String(e.detail || '').substring(0, 80)) + '</td></tr>';
+    }).join('');
+    box.innerHTML = '<div class="rounded-lg border border-border-theme overflow-hidden mt-1"><table class="w-full text-[10px] text-left"><thead class="bg-bg-elevated/60 text-text-subtle"><tr>' + headers + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+
+function filterAgents(q) {
+    q = q.toLowerCase().trim();
+    let visible = 0;
+    document.querySelectorAll('.agent-card').forEach(function (card) {
+        const match = !q || (card.dataset.search || '').includes(q);
+        card.style.display = match ? '' : 'none';
+        if (match) visible++;
+    });
+    document.querySelectorAll('.agent-folder').forEach(function (folder) {
+        const shown = folder.querySelectorAll('.agent-card:not([style*="display: none"])');
+        const count = shown.length;
+        const badge = folder.querySelector('.folder-count');
+        if (badge) badge.textContent = '(' + count + ')';
+        if (count > 0) {
+            folder.style.display = '';
+            if (q) folder.setAttribute('open', '');
+        } else {
+            folder.style.display = 'none';
+        }
+    });
+    const c = document.getElementById('agent-count');
+    if (c) c.textContent = visible;
+}
+
+function pinAgent(idx, agentId, pinned) {
+    if (!agentId) return;
+    fetch('/api/agents/' + encodeURIComponent(agentId), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SL_TOKEN },
+        body: JSON.stringify({ pinned: !pinned, token: SL_TOKEN })
+    }).then(function(r){ return r.json(); }).then(function(res){
+        if (res.success) { location.reload(); } else { alert(res.error || 'Error al fijar'); }
+    }).catch(function(){ alert('Error de red'); });
+}
+
+function promptRename(idx, agentId, current) {
+    if (current === null) current = '';
+    const name = prompt('Nuevo nombre para el agente:', current);
+    if (name === null) return;
+    fetch('/api/agents/' + encodeURIComponent(agentId), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SL_TOKEN },
+        body: JSON.stringify({ name: name, token: SL_TOKEN })
+    }).then(function(r){ return r.json(); }).then(function(res){
+        if (res.success) {
+            if (AGENTS[idx] && AGENTS[idx].agent) AGENTS[idx].agent.name = name;
+            const listTitle = document.getElementById('agent-title-' + idx);
+            if (listTitle) {
+                const star = listTitle.querySelector('span');
+                listTitle.innerHTML = (star ? star.outerHTML : '') + esc(name || '');
+            }
+            const modalTitle = document.getElementById('agent-modal-title');
+            if (modalTitle) modalTitle.textContent = name || current;
+        } else {
+            alert(res.error || 'Error al renombrar');
+        }
+    }).catch(function(){ alert('Error de red'); });
+}
+
+function promptGroup(idx, agentId, current) {
+    if (current === null) current = '';
+    const group = prompt('Nombre de sección/carpeta:', current);
+    if (group === null) return;
+    fetch('/api/agents/' + encodeURIComponent(agentId), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SL_TOKEN },
+        body: JSON.stringify({ group: group, token: SL_TOKEN })
+    }).then(function(r){ return r.json(); }).then(function(res){
+        if (res.success) { location.reload(); } else { alert(res.error || 'Error al mover'); }
+    }).catch(function(){ alert('Error de red'); });
+}
+
 function deleteAgent(agentId, hostname) {
     if (!confirm('¿Eliminar el agente "' + hostname + '" (' + agentId + ')?')) return;
     fetch('/api/agents/' + encodeURIComponent(agentId) + '/delete', {
@@ -654,8 +916,11 @@ async function downloadAgent(platform) {
     }
 }
 
+filterAgents(document.getElementById('agent-search').value);
+
 document.addEventListener('click', function (e) {
     if (e.target.id === 'agent-modal') closeAgentModal();
+    if (e.target.id === 'edit-agent-modal') closeEditModal();
 });
 </script>
 

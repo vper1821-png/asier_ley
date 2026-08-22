@@ -44,6 +44,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($res['body']['error']) && !empty($res['body']['success'])) {
             $_SESSION['user']['email'] = $newEmail;
             $user['email'] = $newEmail;
+            if (!empty($res['body']['token'])) {
+                $_SESSION['token'] = $res['body']['token'];
+                $token = $res['body']['token'];
+            }
             $success = 'Dirección de correo electrónico modificada a ' . htmlspecialchars($newEmail) . '.';
         } else {
             $error = $res['body']['error'] ?? 'No se pudo actualizar el email. Verifica tu contraseña actual.';
@@ -64,10 +68,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'newPassword' => $newPass,
             ]);
             if (empty($res['body']['error']) && !empty($res['body']['success'])) {
-                $success = 'Contraseña de seguridad actualizada correctamente.';
+                if (!empty($res['body']['token'])) {
+                    $_SESSION['token'] = $res['body']['token'];
+                    $token = $res['body']['token'];
+                }
+                $success = 'Contraseña de seguridad actualizada correctamente. Las demás sesiones quedan cerradas.';
             } else {
                 $error = $res['body']['error'] ?? 'Error al actualizar contraseña. Verifica tu contraseña actual.';
             }
+        }
+    } elseif (isset($_POST['logout_all']) || $action === 'logout_all') {
+        $activeTab = 'security';
+        $res = api_request('POST', '/api/account/logout-all', ['token' => $token]);
+        if (empty($res['body']['error']) && !empty($res['body']['token'])) {
+            $_SESSION['token'] = $res['body']['token'];
+            $token = $res['body']['token'];
+            $success = 'Todas las demás sesiones se han cerrado. Este dispositivo permanece activo.';
+        } else {
+            $error = $res['body']['error'] ?? 'No se pudieron cerrar las sesiones.';
         }
     } elseif (isset($_POST['setup_2fa']) || $action === 'setup_2fa') {
         $activeTab = '2fa';
@@ -711,11 +729,14 @@ $initials = mb_strtoupper(mb_substr($displayName ?: ($userEmail ?: 'U'), 0, 2));
                                     </div>
 
                                     <div class="pt-2 flex justify-end">
-                                        <a href="/logout"
-                                           class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-950/20 hover:bg-red-950/40 text-red-400 border border-red-800/30 text-xs font-semibold transition-all">
-                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
-                                            Cerrar Todas las Sesiones
-                                        </a>
+                                        <form method="POST" class="inline">
+                                            <input type="hidden" name="action" value="logout_all">
+                                            <button type="submit" name="logout_all" value="1"
+                                                    class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-950/20 hover:bg-red-950/40 text-red-400 border border-red-800/30 text-xs font-semibold transition-all">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+                                                Cerrar Todas las Sesiones
+                                            </button>
+                                        </form>
                                     </div>
                                 </div>
                             </div>

@@ -1,4 +1,10 @@
-<?php require_once __DIR__ . '/../config.php'; ?>
+<?php
+require_once __DIR__ . '/../config.php';
+function infoIcon($text, $cls = 'w-4 h-4') {
+    $safe = htmlspecialchars(strip_tags($text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    return '<span class="info-icon ' . $cls . '" data-tooltip="' . $safe . '">i</span>';
+}
+?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -509,7 +515,104 @@
         }
         select { color-scheme: light dark; background-color: var(--bg-input); color: var(--text-heading); }
         select option { background-color: var(--bg-panel); color: var(--text-heading); }
+
+        .info-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.15em;
+            height: 1.15em;
+            min-width: 1.15em;
+            border-radius: 9999px;
+            background: var(--primary-500, #3b82f6);
+            color: #fff;
+            font: 700 0.62em/1 sans-serif;
+            cursor: help;
+            margin-left: 0.35em;
+            vertical-align: middle;
+            position: relative;
+            box-shadow: 0 0 0 1.5px rgba(255,255,255,0.08) inset;
+        }
+        #info-tooltip {
+            position: fixed;
+            z-index: 99999;
+            width: 260px;
+            max-width: calc(100vw - 24px);
+            padding: 8px 10px;
+            background: var(--bg-elevated, #141419);
+            color: var(--text-body, #d1d5db);
+            border: 1px solid var(--border-theme, rgba(255,255,255,0.06));
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 400;
+            line-height: 1.4;
+            text-align: left;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            display: none;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.12s, visibility 0.12s;
+            pointer-events: none;
+        }
+        #info-tooltip.visible {
+            display: block;
+            opacity: 1;
+            visibility: visible;
+        }
     </style>
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var tooltip = document.createElement('div');
+        tooltip.id = 'info-tooltip';
+        document.body.appendChild(tooltip);
+
+        function positionTooltip(icon) {
+            var text = icon.getAttribute('data-tooltip');
+            if (!text) return;
+            tooltip.textContent = text;
+            tooltip.classList.add('visible');
+
+            var rect = icon.getBoundingClientRect();
+            var margin = 8;
+            var vw = window.innerWidth;
+            var vh = window.innerHeight;
+            var tt = tooltip.getBoundingClientRect();
+
+            // Prefer below the icon
+            var top = rect.bottom + margin;
+            var left = rect.left + rect.width / 2 - tt.width / 2;
+
+            // If it overflows the right edge, push it back
+            if (left + tt.width > vw - margin) {
+                left = vw - tt.width - margin;
+            }
+            // If it overflows the left edge
+            if (left < margin) {
+                left = margin;
+            }
+
+            // If it overflows the bottom, show it above
+            if (top + tt.height > vh - margin) {
+                top = rect.top - tt.height - margin;
+            }
+
+            tooltip.style.left = left + 'px';
+            tooltip.style.top = top + 'px';
+        }
+
+        document.body.addEventListener('mouseenter', function (e) {
+            if (e.target && e.target.classList && e.target.classList.contains('info-icon')) {
+                positionTooltip(e.target);
+            }
+        }, true);
+
+        document.body.addEventListener('mouseleave', function (e) {
+            if (e.target && e.target.classList && e.target.classList.contains('info-icon')) {
+                tooltip.classList.remove('visible');
+            }
+        }, true);
+    });
+    </script>
     <?php require __DIR__ . '/theme.php'; ?>
 </head>
 <body class="bg-bg-base text-text-body min-h-screen">

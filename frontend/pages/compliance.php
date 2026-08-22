@@ -137,10 +137,11 @@ $tabs = [
     ['id' => 'breaches', 'label' => 'Brechas', 'icon' => 'alert'],
     ['id' => 'violations', 'label' => 'Violaciones', 'icon' => 'alert'],
     ['id' => 'dpia', 'label' => 'Eval. Impacto', 'icon' => 'shield'],
+    ['id' => 'pseudonymization', 'label' => 'Seudonimización', 'icon' => 'search'],
     ['id' => 'trainings', 'label' => 'Capacitaciones', 'icon' => 'info'],
     ['id' => 'invites', 'label' => 'Firmas', 'icon' => 'pen'],
     ['id' => 'files', 'label' => 'Archivos', 'icon' => 'fileText'],
-    ['id' => 'file-audit', 'label' => 'Auditoría Archivos', 'icon' => 'fileText'], // ← nueva pestaña
+    ['id' => 'file-audit', 'label' => 'Auditoría Archivos', 'icon' => 'fileText'],
 ];
 $activeLabel = 'Compliance';
 foreach ($tabs as $t) { if ($t['id'] === $tab) $activeLabel = $t['label']; }
@@ -190,17 +191,17 @@ require_once __DIR__ . '/../includes/header.php';
             <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
                 <?php
                 $statCards = [
-                    ['icon' => 'shield', 'label' => 'Nivel Cumplimiento', 'value' => $checklistPct . '%', 'color' => $pctColor, 'sub' => $checklistDone . '/' . $checklistTotal . ' requisitos cumplidos'],
-                    ['icon' => 'users', 'label' => 'Consentimientos Activos', 'value' => $activeConsents, 'color' => 'text-cyan-400', 'sub' => 'Total: ' . count($consents)],
-                    ['icon' => 'database', 'label' => 'Datos Registrados', 'value' => count($inventory), 'color' => 'text-indigo-400', 'sub' => $sensitiveItems . ' sensibles'],
-                    ['icon' => 'alert', 'label' => 'Incidentes Activos', 'value' => $activeBreaches, 'color' => $activeBreaches ? 'text-red-400' : 'text-emerald-400', 'sub' => count($breaches) . ' total · ' . $criticalBreaches . ' críticos'],
-                    ['icon' => 'info', 'label' => 'Capacitaciones', 'value' => $completedTrainings, 'color' => 'text-amber-400', 'sub' => count($trainings) . ' registradas'],
+                    ['icon' => 'shield', 'label' => 'Nivel Cumplimiento', 'value' => $checklistPct . '%', 'color' => $pctColor, 'sub' => $checklistDone . '/' . $checklistTotal . ' requisitos cumplidos', 'help' => 'Porcentaje de cumplimiento de los requisitos de la Ley 21.719 según la checklist.'],
+                    ['icon' => 'users', 'label' => 'Consentimientos Activos', 'value' => $activeConsents, 'color' => 'text-cyan-400', 'sub' => 'Total: ' . count($consents), 'help' => 'Número de consentimientos vigentes. Un consentimiento puede ser revocado o expirado.'],
+                    ['icon' => 'database', 'label' => 'Datos Registrados', 'value' => count($inventory), 'color' => 'text-indigo-400', 'sub' => $sensitiveItems . ' sensibles', 'help' => 'Total de bases de datos/activos de tratamiento registrados y cuántos contienen datos sensibles.'],
+                    ['icon' => 'alert', 'label' => 'Incidentes Activos', 'value' => $activeBreaches, 'color' => $activeBreaches ? 'text-red-400' : 'text-emerald-400', 'sub' => count($breaches) . ' total · ' . $criticalBreaches . ' críticos', 'help' => 'Brechas o incidentes de seguridad que aún no han sido cerrados/resueltos.'],
+                    ['icon' => 'info', 'label' => 'Capacitaciones', 'value' => $completedTrainings, 'color' => 'text-amber-400', 'sub' => count($trainings) . ' registradas', 'help' => 'Capacitaciones del personal firmadas/completadas según el programa de formación.'],
                 ];
                 foreach ($statCards as $c): ?>
                 <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-4 md:p-5 hover:border-border-theme/60 transition-colors duration-200">
                     <div class="flex items-center gap-2 md:gap-2.5 mb-2 md:mb-3">
                         <span class="text-text-muted"><?= cIcon($c['icon']) ?></span>
-                        <span class="text-[9px] md:text-[10px] text-text-subtle font-medium uppercase tracking-widest truncate"><?= h($c['label']) ?></span>
+                        <span class="text-[9px] md:text-[10px] text-text-subtle font-medium uppercase tracking-widest truncate"><?= h($c['label']) ?><?= !empty($c['help']) ? ' ' . infoIcon($c['help']) : '' ?></span>
                     </div>
                     <p class="text-[22px] md:text-[26px] font-bold leading-none tracking-tight <?= $c['color'] ?>"><?= h($c['value']) ?></p>
                     <p class="text-[9px] md:text-[10px] text-text-subtle mt-1.5 md:mt-2 truncate"><?= h($c['sub']) ?></p>
@@ -226,7 +227,7 @@ require_once __DIR__ . '/../includes/header.php';
                         <span class="mt-0.5 <?= $item['done'] ? 'text-emerald-400' : 'text-text-subtle' ?>"><?= cIcon($item['icon']) ?></span>
                         <div class="flex-1 min-w-0">
                             <div class="flex items-center gap-2 flex-wrap">
-                                <span class="text-[12px] font-medium <?= $item['done'] ? 'text-emerald-300' : 'text-text-muted' ?>"><?= h($item['label']) ?></span>
+                                <span class="text-[12px] font-medium <?= $item['done'] ? 'text-emerald-300' : 'text-text-muted' ?>"><?= h($item['label']) ?> <?= infoIcon($item['desc']) ?></span>
                                 <?php if ($item['done']): ?>
                                 <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-emerald-500/10 text-emerald-400 border-emerald-500/20"><?= cIcon('check', 'w-3 h-3') ?> Cumple</span>
                                 <?php else: ?>
@@ -369,7 +370,7 @@ require_once __DIR__ . '/../includes/header.php';
                     <div class="flex items-start justify-between gap-3 flex-wrap">
                         <div class="flex items-center gap-2.5">
                             <span class="text-<?= $sevColor ?>-400"><?= cIcon('alert') ?></span>
-                            <h4 class="text-[13px] font-semibold text-text-heading"><?= h($v['title']) ?></h4>
+                            <h4 class="text-[13px] font-semibold text-text-heading inline-flex items-center gap-1.5"><?= h($v['title']) ?> <?= infoIcon($v['desc']) ?></h4>
                             <span class="px-2 py-0.5 text-[9px] font-bold rounded uppercase bg-<?= $sevColor ?>-500/15 text-<?= $sevColor ?>-400 border border-<?= $sevColor ?>-500/20"><?= h($sevLabel) ?></span>
                         </div>
                         <div class="flex items-center gap-2 text-[10px]">
@@ -393,19 +394,188 @@ require_once __DIR__ . '/../includes/header.php';
                 <?php renderComplianceStat('Activos', $cActive, 'text-emerald-400', cIcon('check')); ?>
                 <?php renderComplianceStat('Revocados', $cRevoked, 'text-red-400', cIcon('xmark')); ?>
             </div>
-            <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5">
+
+            <!-- Formulario profesional de consentimiento (Art. 12 Ley 21.719) -->
+            <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5 mb-5">
                 <div class="flex items-center justify-between mb-4">
-                    <p class="text-[12px] font-semibold text-white">Nuevo consentimiento</p>
+                    <p class="text-[12px] font-semibold text-white flex items-center gap-2">
+                        <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        Registrar consentimiento (Art. 12 - Libre, expreso, informado, específico)
+                    </p>
                     <?php renderImportBtn('consents'); ?>
                 </div>
-                <form method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-3">
+
+                <form method="POST" class="space-y-4">
                     <input type="hidden" name="collection" value="consents">
-                    <input type="text" name="fields[name]" required placeholder="Nombre del titular" class="input-premium">
-                    <input type="email" name="fields[email]" required placeholder="Email" class="input-premium">
-                    <input type="text" name="fields[purpose]" required placeholder="Finalidad del tratamiento" class="input-premium">
-                    <div class="flex gap-2">
+
+                    <!-- Identificación del titular -->
+                    <fieldset class="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.02] p-4">
+                        <legend class="text-[11px] font-medium text-emerald-300 px-2">Identificación del Titular (Art. 12.1)</legend>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div>
+                                <label class="label-premium">Nombre completo *</label>
+                                <input type="text" name="fields[name]" required class="input-premium w-full" placeholder="Juan Pérez González">
+                            </div>
+                            <div>
+                                <label class="label-premium">RUT *</label>
+                                <input type="text" name="fields[rut]" required class="input-premium w-full" placeholder="12.345.678-9" pattern="[0-9]{1,2}\.[0-9]{3}\.[0-9]{3}-[0-9kK]{1}">
+                            </div>
+                            <div>
+                                <label class="label-premium">Email *</label>
+                                <input type="email" name="fields[email]" required class="input-premium w-full" placeholder="juan.perez@ejemplo.cl">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                            <div>
+                                <label class="label-premium">Teléfono</label>
+                                <input type="tel" name="fields[phone]" class="input-premium w-full" placeholder="+56 9 1234 5678">
+                            </div>
+                            <div>
+                                <label class="label-premium">Dirección</label>
+                                <input type="text" name="fields[address]" class="input-premium w-full" placeholder="Calle 123, Santiago">
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- Información del tratamiento (Art. 12.2) -->
+                    <fieldset class="rounded-lg border border-blue-500/20 bg-blue-500/[0.02] p-4">
+                        <legend class="text-[11px] font-medium text-blue-300 px-2">Información del Tratamiento (Art. 12.2)</legend>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="label-premium">Finalidad específica *</label>
+                                <select name="fields[purpose]" required class="input-premium w-full">
+                                    <option value="">Seleccionar finalidad</option>
+                                    <optgroup label="Clientes/Comercial">
+                                        <option value="gestion_clientes">Gestión de clientes y facturación</option>
+                                        <option value="marketing">Marketing y comunicaciones comerciales</option>
+                                        <option value="soporte">Soporte técnico y atención al cliente</option>
+                                    </optgroup>
+                                    <optgroup label="Empleados/RRHH">
+                                        <option value="gestion_personal">Gestión de personal y nómina</option>
+                                        <option value="seguridad_social">Seguridad social y prevención de riesgos</option>
+                                    </optgroup>
+                                    <optgroup label="Otras">
+                                        <option value="cumplimiento_legal">Cumplimiento obligaciones legales</option>
+                                        <option value="investigacion">Investigación y desarrollo</option>
+                                        <option value="otro">Otra (especificar en observaciones)</option>
+                                    </optgroup>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="label-premium">Base legal (Ley 21.719) *</label>
+                                <select name="fields[legalBasis]" required class="input-premium w-full">
+                                    <option value="">Seleccionar base legal</option>
+                                    <option value="consentimiento">Art. 12 - Consentimiento del titular</option>
+                                    <option value="ejecucion_contrato">Art. 13.1.a - Ejecución de contrato</option>
+                                    <option value="obligacion_legal">Art. 13.1.b - Obligación legal</option>
+                                    <option value="interes_vital">Art. 13.1.c - Interés vital</option>
+                                    <option value="interes_publico">Art. 13.1.d - Interés público</option>
+                                    <option value="interes_legitimo">Art. 13.1.e - Interés legítimo</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                            <div>
+                                <label class="label-premium">Categorías de datos *</label>
+                                <select name="fields[dataCategories]" multiple required class="input-premium w-full" size="4">
+                                    <option value="identificacion">Identificación (nombre, RUT, dirección)</option>
+                                    <option value="contacto">Contacto (email, teléfono)</option>
+                                    <option value="financieros">Financieros (cuentas, tarjetas, ingresos)</option>
+                                    <option value="laborales">Laborales (cargo, sueldo, antigüedad)</option>
+                                    <option value="salud">Salud (historial, diagnósticos, recetas)</option>
+                                    <option value="biometricos">Biométricos (huella, facial, iris)</option>
+                                    <option value="geneticos">Genéticos</option>
+                                    <option value="ninos">Datos de niños/niñas/adolescentes</option>
+                                    <option value="navegacion">Navegación (IP, cookies, device ID)</option>
+                                    <option value="ubicacion">Ubicación geográfica</option>
+                                </select>
+                                <p class="text-[10px] text-text-muted mt-1">Ctrl+Click para seleccionar múltiples</p>
+                            </div>
+                            <div>
+                                <label class="label-premium">¿Incluye datos sensibles? (Art. 16)</label>
+                                <select name="fields[sensitive]" class="input-premium w-full">
+                                    <option value="no">No</option>
+                                    <option value="si">Sí - Requiere consentimiento explícito reforzado</option>
+                                </select>
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- Derechos ARCO y revocación -->
+                    <fieldset class="rounded-lg border border-amber-500/20 bg-amber-500/[0.02] p-4">
+                        <legend class="text-[11px] font-medium text-amber-300 px-2">Derechos del Titular y Vigencia</legend>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div>
+                                <label class="label-premium">Fecha inicio *</label>
+                                <input type="date" name="fields[startDate]" required class="input-premium w-full" value="<?= date('Y-m-d') ?>">
+                            </div>
+                            <div>
+                                <label class="label-premium">Fecha fin / Vigencia</label>
+                                <input type="date" name="fields[endDate]" class="input-premium w-full" placeholder="Opcional - indefinido si vacío">
+                            </div>
+                            <div>
+                                <label class="label-premium">Método de obtención *</label>
+                                <select name="fields[method]" required class="input-premium w-full">
+                                    <option value="formulario_web">Formulario web</option>
+                                    <option value="formulario_papel">Formulario papel</option>
+                                    <option value="contrato">En contrato</option>
+                                    <option value="verbal_grabado">Verbal grabado</option>
+                                    <option value="opt_in">Opt-in (casilla de verificación)</option>
+                                    <option value="otro">Otro</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" name="fields[arcoInformed]" id="arcoInformed" value="1" class="w-4 h-4 rounded border-border-theme text-primary-600 focus:ring-primary-500">
+                                <label for="arcoInformed" class="text-[11px] text-text-body">Titular informado de derechos ARCO + Portabilidad (Art. 8-13)</label>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" name="fields[revocationInformed]" id="revocationInformed" value="1" class="w-4 h-4 rounded border-border-theme text-primary-600 focus:ring-primary-500">
+                                <label for="revocationInformed" class="text-[11px] text-text-body">Titular informado de derecho a revocar consentimiento (Art. 12.3)</label>
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- Responsable y DPD -->
+                    <fieldset class="rounded-lg border border-purple-500/20 bg-purple-500/[0.02] p-4">
+                        <legend class="text-[11px] font-medium text-purple-300 px-2">Responsable del Tratamiento y DPD (Art. 28)</legend>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div>
+                                <label class="label-premium">Responsable (Empresa) *</label>
+                                <input type="text" name="fields[controllerName]" required class="input-premium w-full" value="<?= h($config['companyName'] ?? '') ?>" placeholder="Nombre de la empresa responsable">
+                            </div>
+                            <div>
+                                <label class="label-premium">DPD (Delegado Protección Datos)</label>
+                                <input type="text" name="fields[dpdName]" class="input-premium w-full" value="<?= h($config['dpdName'] ?? '') ?>" placeholder="Nombre del DPD">
+                            </div>
+                            <div>
+                                <label class="label-premium">Contacto DPD</label>
+                                <input type="email" name="fields[dpdEmail]" class="input-premium w-full" value="<?= h($config['dpdEmail'] ?? '') ?>" placeholder="dpd@empresa.cl">
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- Observaciones y evidencia -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                            <label class="label-premium">Observaciones / Contexto</label>
+                            <textarea name="fields[notes]" rows="3" class="input-premium w-full" placeholder="Contexto adicional, canal de obtención, observaciones legales..."></textarea>
+                        </div>
+                        <div>
+                            <label class="label-premium">URL de evidencia (formulario, contrato, grabación)</label>
+                            <input type="url" name="fields[evidenceUrl]" class="input-premium w-full" placeholder="https://empresa.cl/consentimiento-juan-perez">
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-3 pt-2 border-t border-border-theme">
                         <input type="hidden" name="fields[active]" value="1">
-                        <button type="submit" name="create_item" value="1" class="flex-1 px-3 py-2 rounded-lg text-[11px] font-medium bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white transition-all">Registrar</button>
+                        <input type="hidden" name="fields[createdAt]" value="<?= date('c') ?>">
+                        <button type="submit" name="create_item" value="1" class="px-4 py-2.5 rounded-lg text-[12px] font-semibold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white transition-all flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                            Registrar consentimiento conforme Art. 12
+                        </button>
+                        <span class="text-[10px] text-text-muted">Este registro cumple requisitos Art. 12: libre, expreso, informado, específico e inequívoco</span>
                     </div>
                 </form>
             </div>
@@ -598,12 +768,12 @@ require_once __DIR__ . '/../includes/header.php';
                 </div>
             </div>
 
-            <!-- ═══ FORMULARIO DE CREACIÓN (colapsable) ═══ -->
+            <!-- ═══ FORMULARIO DE CREACIÓN (colapsable) - RAT Completo Art. 14 Ley 21.719 ═══ -->
             <div id="inventory-create-form" class="hidden rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5 mb-5">
                 <div class="flex items-center justify-between mb-4">
                     <p class="text-[12px] font-semibold text-white flex items-center gap-2">
                         <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"/></svg>
-                        Nueva actividad de tratamiento
+                        Nueva actividad de tratamiento (RAT - Art. 14 Ley 21.719)
                     </p>
                     <button onclick="document.getElementById('inventory-create-form').classList.add('hidden')" class="text-text-muted hover:text-text-heading">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -615,81 +785,307 @@ require_once __DIR__ . '/../includes/header.php';
                     <div>
                         <p><span class="text-indigo-300 font-semibold">¿Qué es una actividad de tratamiento?</span></p>
                         <p>Toda operación que realices con datos personales: recopilar, almacenar, usar, modificar, compartir o eliminar.
-                           Cada actividad debe registrarse con su finalidad, base legal y medidas de seguridad.</p>
-                        <p class="mt-1"><span class="text-indigo-300 font-semibold">Art. 14 Ley 21.719:</span> El responsable debe mantener un registro documentado de todas las actividades de tratamiento.</p>
+                           Cada actividad debe registrarse con su finalidad, base legal, categorías de datos, destinatarios y medidas de seguridad.</p>
+                        <p class="mt-1"><span class="text-indigo-300 font-semibold">Art. 14 Ley 21.719:</span> El responsable debe mantener un registro documentado (RAT) de todas las actividades de tratamiento.</p>
                     </div>
                 </div>
 
-                <form method="POST" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <form method="POST" class="space-y-4">
                     <input type="hidden" name="create_inventory_item" value="1">
 
-                    <div>
-                        <label class="label-premium">Nombre de la actividad *</label>
-                        <input type="text" name="name" required class="input-premium w-full" placeholder="Ej: Gestión de clientes">
-                        <p class="text-[8px] text-text-subtle mt-0.5">Identifica claramente qué tratamiento realizas.</p>
+                    <!-- Identificación básica -->
+                    <fieldset class="rounded-lg border border-cyan-500/20 bg-cyan-500/[0.02] p-4">
+                        <legend class="text-[11px] font-medium text-cyan-300 px-2">Identificación de la Actividad (Art. 14.1.a)</legend>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="label-premium">Nombre de la actividad *</label>
+                                <input type="text" name="name" required class="input-premium w-full" placeholder="Ej: Gestión de clientes y facturación">
+                                <p class="text-[8px] text-text-subtle mt-0.5">Nombre descriptivo único de la actividad de tratamiento.</p>
+                            </div>
+                            <div>
+                                <label class="label-premium">Código / Referencia</label>
+                                <input type="text" name="code" class="input-premium w-full" placeholder="Ej: RAT-001">
+                                <p class="text-[8px] text-text-subtle mt-0.5">Código interno para trazabilidad.</p>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                            <div>
+                                <label class="label-premium">Responsable del tratamiento *</label>
+                                <input type="text" name="controllerName" required class="input-premium w-full" value="<?= h($config['companyName'] ?? '') ?>" placeholder="Nombre empresa/organización">
+                            </div>
+                            <div>
+                                <label class="label-premium">Encargado del tratamiento (si aplica)</label>
+                                <input type="text" name="processorName" class="input-premium w-full" placeholder="Proveedor cloud, SaaS, etc.">
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- Finalidad y base legal -->
+                    <fieldset class="rounded-lg border border-blue-500/20 bg-blue-500/[0.02] p-4">
+                        <legend class="text-[11px] font-medium text-blue-300 px-2">Finalidad y Base de Licitud (Art. 14.1.b / Art. 12-13)</legend>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="label-premium">Finalidad específica *</label>
+                                <select name="purpose" required class="input-premium w-full">
+                                    <option value="">Seleccionar finalidad</option>
+                                    <optgroup label="Clientes/Comercial">
+                                        <option value="gestion_clientes">Gestión de clientes y facturación</option>
+                                        <option value="marketing">Marketing y comunicaciones comerciales</option>
+                                        <option value="soporte">Soporte técnico y atención al cliente</option>
+                                        <option value="cobranza">Cobranza y recuperación de cartera</option>
+                                    </optgroup>
+                                    <optgroup label="Empleados/RRHH">
+                                        <option value="gestion_personal">Gestión de personal y nómina</option>
+                                        <option value="seguridad_social">Seguridad social y prevención de riesgos</option>
+                                        <option value="capacitacion">Capacitación y desarrollo</option>
+                                    </optgroup>
+                                    <optgroup label="Legales/Regulatorio">
+                                        <option value="cumplimiento_legal">Cumplimiento obligaciones legales/regulatorias</option>
+                                        <option value="auditoria">Auditoría y control interno</option>
+                                    </optgroup>
+                                    <optgroup label="Otras">
+                                        <option value="investigacion">Investigación y desarrollo</option>
+                                        <option value="seguridad">Seguridad física/lógica de instalaciones</option>
+                                        <option value="videovigilancia">Videovigilancia</option>
+                                        <option value="otro">Otra (especificar en observaciones)</option>
+                                    </optgroup>
+                                </select>
+                                <p class="text-[8px] text-text-subtle mt-0.5">Finalidad específica, explícita y legítima (Art. 3 letra b).</p>
+                            </div>
+                            <div>
+                                <label class="label-premium">Base de licitud *</label>
+                                <select name="legalBasis" required class="input-premium w-full">
+                                    <option value="">Seleccionar base legal</option>
+                                    <option value="consentimiento">Art. 12 - Consentimiento del titular</option>
+                                    <option value="ejecucion_contrato">Art. 13.1.a - Ejecución de contrato</option>
+                                    <option value="obligacion_legal">Art. 13.1.b - Obligación legal</option>
+                                    <option value="interes_vital">Art. 13.1.c - Interés vital</option>
+                                    <option value="interes_publico">Art. 13.1.d - Interés público</option>
+                                    <option value="interes_legitimo">Art. 13.1.e - Interés legítimo</option>
+                                </select>
+                                <p class="text-[8px] text-text-subtle mt-0.5">Sin base legal válida, el tratamiento es ilícito (Art. 11).</p>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                            <div>
+                                <label class="label-premium">¿Interés legítimo? (si aplica Art. 13.1.e)</label>
+                                <textarea name="legitimateInterest" rows="2" class="input-premium w-full" placeholder="Describe el interés legítimo y la ponderación realizada..."></textarea>
+                                <p class="text-[8px] text-text-subtle mt-0.5">Obligatorio si base legal = Interés legítimo. Debe documentarse la ponderación.</p>
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- Categorías de datos y sujetos -->
+                    <fieldset class="rounded-lg border border-amber-500/20 bg-amber-500/[0.02] p-4">
+                        <legend class="text-[11px] font-medium text-amber-300 px-2">Categorías de Datos y Titulares (Art. 14.1.c / Art. 15-16)</legend>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div class="md:col-span-2">
+                                <label class="label-premium">Categorías de datos personales *</label>
+                                <select name="dataCategories[]" multiple required class="input-premium w-full" size="6">
+                                    <option value="identificacion">Identificación: nombre, RUT, dirección, nacionalidad</option>
+                                    <option value="contacto">Contacto: email, teléfono, redes sociales</option>
+                                    <option value="financieros">Financieros: cuentas bancarias, tarjetas, ingresos, historial crediticio</option>
+                                    <option value="laborales">Laborales: cargo, sueldo, antigüedad, evaluaciones</option>
+                                    <option value="salud">Salud: historial clínico, diagnósticos, recetas, discapacidad</option>
+                                    <option value="biometricos">Biométricos: huella, reconocimiento facial, iris, voz</option>
+                                    <option value="geneticos">Genéticos</option>
+                                    <option value="ninos">Datos de niños/niñas/adolescentes (Art. 17)</option>
+                                    <option value="navegacion">Navegación: IP, cookies, device ID, geolocalización</option>
+                                    <option value="ubicacion">Ubicación geográfica precisa</option>
+                                    <option value="comportamiento">Perfilado y análisis de comportamiento</option>
+                                    <option value="antecedentes">Antecedentes penales/judiciales</option>
+                                </select>
+                                <p class="text-[8px] text-text-subtle mt-0.5">Ctrl+Click para múltiples. Según Art. 15: categorías de datos tratados.</p>
+                            </div>
+                            <div>
+                                <label class="label-premium">Categorías de titulares *</label>
+                                <select name="subjectCategories[]" multiple required class="input-premium w-full" size="6">
+                                    <option value="clientes">Clientes / Usuarios</option>
+                                    <option value="empleados">Empleados / Colaboradores</option>
+                                    <option value="proveedores">Proveedores / Contratistas</option>
+                                    <option value="postulantes">Postulantes a empleo</option>
+                                    <option value="ninos">Niños / Niñas / Adolescentes (Art. 17)</option>
+                                    <option value="pacientes">Pacientes / Usuarios de salud</option>
+                                    <option value="visitantes">Visitantes / Invitados</option>
+                                    <option value="ex_empleados">Ex-empleados</option>
+                                    <option value="publico_general">Público general</option>
+                                </select>
+                                <p class="text-[8px] text-text-subtle mt-0.5">Art. 15: categorías de interesados afectados.</p>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                            <div>
+                                <label class="label-premium">¿Incluye datos sensibles? (Art. 16)</label>
+                                <select name="sensitive" class="input-premium w-full">
+                                    <option value="0">No</option>
+                                    <option value="1">Sí - Requiere consentimiento explícito reforzado</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="label-premium">¿Incluye datos de niños? (Art. 17)</label>
+                                <select name="childrenData" class="input-premium w-full">
+                                    <option value="0">No</option>
+                                    <option value="1">Sí - Requiere consentimiento del representante legal</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="label-premium">¿Análisis de riesgo realizado? (Art. 25)</label>
+                                <select name="riskAssessment" class="input-premium w-full">
+                                    <option value="no">No</option>
+                                    <option value="si_simple">Sí - Evaluación simplificada</option>
+                                    <option value="si_completa">Sí - EIPD completa (Art. 29)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- Destinatarios y transferencias -->
+                    <fieldset class="rounded-lg border border-purple-500/20 bg-purple-500/[0.02] p-4">
+                        <legend class="text-[11px] font-medium text-purple-300 px-2">Destinatarios y Transferencias (Art. 14.1.d / Art. 21-22)</legend>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="label-premium">Destinatarios / Cesionarios</label>
+                                <select name="recipients[]" multiple class="input-premium w-full" size="4">
+                                    <option value="ninguno">Ninguno (solo responsable)</option>
+                                    <option value="encargados">Encargados de tratamiento (proveedores SaaS, cloud)</option>
+                                    <option value="autoridades">Autoridades públicas / Reguladores</option>
+                                    <option value="terceros">Terceros con consentimiento del titular</option>
+                                    <option value="grupo_empresas">Empresas del mismo grupo</option>
+                                </select>
+                                <p class="text-[8px] text-text-subtle mt-0.5">Art. 14.1.d: destinatarios o categorías de destinatarios.</p>
+                            </div>
+                            <div>
+                                <label class="label-premium">Transferencias internacionales (Art. 21)</label>
+                                <select name="internationalTransfers" class="input-premium w-full">
+                                    <option value="no">No hay transferencias internacionales</option>
+                                    <option value="pais_adecuado">País con nivel adecuado (decisión APDP)</option>
+                                    <option value="clausulas_tipo">Cláusulas contractuales tipo</option>
+                                    <option value="normas_corporativas">Normas corporativas vinculantes (BCR)</option>
+                                    <option value="consentimiento_explicito">Consentimiento explícito del titular</option>
+                                    <option value="otras_garantias">Otras garantías adecuadas</option>
+                                </select>
+                                <p class="text-[8px] text-text-subtle mt-0.5">Art. 21: garantías para transferencias internacionales.</p>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <label class="label-premium">Países de destino (si hay transferencias)</label>
+                            <input type="text" name="transferCountries" class="input-premium w-full" placeholder="EE.UU., España, Brasil, etc.">
+                        </div>
+                    </fieldset>
+
+                    <!-- Medidas de seguridad y retención -->
+                    <fieldset class="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.02] p-4">
+                        <legend class="text-[11px] font-medium text-emerald-300 px-2">Medidas de Seguridad y Retención (Art. 14.1.e / Art. 25)</legend>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div>
+                                <label class="label-premium">Medidas técnicas</label>
+                                <select name="technicalMeasures[]" multiple class="input-premium w-full" size="5">
+                                    <option value="cifrado_reposo">Cifrado en reposo (AES-256)</option>
+                                    <option value="cifrado_transito">Cifrado en tránsito (TLS 1.3)</option>
+                                    <option value="pseudonimizacion">Seudonimización (Art. 30)</option>
+                                    <option value="anonimizacion">Anonimización</option>
+                                    <option value="acceso_controlado">Control de acceso basado en roles (RBAC)</option>
+                                    <option value="mfa">Autenticación multifactor (MFA)</option>
+                                    <option value="auditoria_accesos">Auditoría de accesos (logs)</option>
+                                    <option value="dlp">DLP (Prevención fuga de datos)</option>
+                                    <option value="backup_cifrado">Backups cifrados y probados</option>
+                                    <option value="segmentacion_red">Segmentación de red</option>
+                                </select>
+                                <p class="text-[8px] text-text-subtle mt-0.5">Ctrl+Click. Art. 25: medidas técnicas y organizativas.</p>
+                            </div>
+                            <div>
+                                <label class="label-premium">Medidas organizativas</label>
+                                <select name="organizationalMeasures[]" multiple class="input-premium w-full" size="5">
+                                    <option value="politica_privacidad">Política de privacidad publicada</option>
+                                    <option value="dpd_asignado">DPD designado (Art. 28)</option>
+                                    <option value="capacitacion">Capacitación periódica al personal</option>
+                                    <option value="procedimiento_arco">Procedimiento ARCO implementado</option>
+                                    <option value="protocolo_brechas">Protocolo de brechas (Art. 26)</option>
+                                    <option value="eipd">EIPD realizada (Art. 29)</option>
+                                    <option value="contratos_encargados">Contratos con encargados (Art. 22)</option>
+                                    <option value="inventario_actualizado">RAT actualizado (Art. 14)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="label-premium">Plazo de retención (días) *</label>
+                                <input type="number" name="retentionDays" required class="input-premium w-full" min="1" max="3650" placeholder="Ej: 365 (1 año)">
+                                <p class="text-[8px] text-text-subtle mt-0.5">Art. 14: plazo de conservación. Máx. 10 años salvo obligación legal.</p>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                            <div>
+                                <label class="label-premium">Criterio de retención</label>
+                                <select name="retentionCriteria" class="input-premium w-full">
+                                    <option value="cumplimiento_contractual">Cumplimiento contractual</option>
+                                    <option value="obligacion_legal">Obligación legal/regulatoria</option>
+                                    <option value="prescripcion_legal">Prescripción legal</option>
+                                    <option value="interes_legitimo">Interés legítimo documentado</option>
+                                    <option value="consentimiento">Mientras dure el consentimiento</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="label-premium">Eliminación segura al vencimiento</label>
+                                <select name="secureDeletion" class="input-premium w-full">
+                                    <option value="si">Sí - Procedimiento documentado</option>
+                                    <option value="no">No implementado</option>
+                                    <option value="parcial">Parcial - Solo algunos sistemas</option>
+                                </select>
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- Evaluación de riesgo y EIPD -->
+                    <fieldset class="rounded-lg border border-red-500/20 bg-red-500/[0.02] p-4">
+                        <legend class="text-[11px] font-medium text-red-300 px-2">Evaluación de Riesgo y EIPD (Art. 25, 29)</legend>
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                            <div>
+                                <label class="label-premium">Nivel de riesgo *</label>
+                                <select name="risk" required class="input-premium w-full">
+                                    <option value="low">Bajo - Datos básicos, pocos titulares</option>
+                                    <option value="medium">Medio - Datos personales comunes</option>
+                                    <option value="high">Alto - Datos sensibles / muchos titulares / perfilado</option>
+                                    <option value="critical">Crítico - Salud, biometría, niños, vigilancia masiva</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="label-premium">¿Requiere EIPD? (Art. 29)</label>
+                                <select name="requiresEIPD" class="input-premium w-full">
+                                    <option value="no">No (riesgo bajo/medio)</option>
+                                    <option value="si">Sí - Evaluación de impacto obligatoria</option>
+                                    <option value="en_proceso">En proceso</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="label-premium">Fecha EIPD (si aplica)</label>
+                                <input type="date" name="eipdDate" class="input-premium w-full">
+                            </div>
+                            <div>
+                                <label class="label-premium">Responsable EIPD</label>
+                                <input type="text" name="eipdResponsible" class="input-premium w-full" placeholder="DPD / CISO / Asesor legal">
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- Observaciones y evidencia -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                            <label class="label-premium">Observaciones / Contexto</label>
+                            <textarea name="notes" rows="3" class="input-premium w-full" placeholder="Contexto adicional, dependencias, sistemas involucrados, observaciones legales..."></textarea>
+                        </div>
+                        <div>
+                            <label class="label-premium">URL de evidencia (políticas, contratos, EIPD)</label>
+                            <input type="url" name="evidenceUrl" class="input-premium w-full" placeholder="https://intranet.empresa.cl/rat-001">
+                        </div>
                     </div>
 
-                    <div>
-                        <label class="label-premium">Finalidad / Propósito</label>
-                        <input type="text" name="purpose" class="input-premium w-full" placeholder="Ej: Enviar facturación y promociones">
-                        <p class="text-[8px] text-text-subtle mt-0.5">¿Para qué usas estos datos? (Art. 3 letra b)</p>
-                    </div>
-
-                    <div>
-                        <label class="label-premium">Categorías de datos</label>
-                        <input type="text" name="dataCategories" class="input-premium w-full" placeholder="Ej: nombres, RUT, emails, teléfonos">
-                        <p class="text-[8px] text-text-subtle mt-0.5">¿Qué tipo de datos personales tratas?</p>
-                    </div>
-
-                    <div>
-                        <label class="label-premium">Base de licitud *</label>
-                        <select name="legalBasis" required class="input-premium w-full">
-                            <option value="">Seleccionar...</option>
-                            <option value="Consentimiento">Consentimiento del titular (Art. 12)</option>
-                            <option value="Ejecución de contrato">Ejecución de contrato (Art. 13)</option>
-                            <option value="Obligación legal">Obligación legal (Art. 13)</option>
-                            <option value="Interés legítimo">Interés legítimo (Art. 13)</option>
-                            <option value="Interés público">Interés público (Art. 13)</option>
-                        </select>
-                        <p class="text-[8px] text-text-subtle mt-0.5">Base legal que justifica el tratamiento. Sin esta, el tratamiento es ilegal.</p>
-                    </div>
-
-                    <div>
-                        <label class="label-premium">Nivel de riesgo</label>
-                        <select name="risk" class="input-premium w-full">
-                            <option value="low">Bajo - Datos básicos</option>
-                            <option value="medium">Medio - Datos personales comunes</option>
-                            <option value="high">Alto - Datos sensibles o muchos registros</option>
-                            <option value="critical">Crítico - Datos muy sensibles (salud, biometría)</option>
-                        </select>
-                        <p class="text-[8px] text-text-subtle mt-0.5">Evalúa el impacto si estos datos se ven comprometidos.</p>
-                    </div>
-
-                    <div>
-                        <label class="label-premium">Datos sensibles</label>
-                        <select name="sensitive" class="input-premium w-full">
-                            <option value="0">No</option>
-                            <option value="1">Sí - Salud, biometría, religión, etc.</option>
-                        </select>
-                        <p class="text-[8px] text-text-subtle mt-0.5">Según Art. 16: datos de salud, origen racial, creencias, etc.</p>
-                    </div>
-
-                    <div>
-                        <label class="label-premium">Días de retención</label>
-                        <input type="number" name="retentionDays" class="input-premium w-full" placeholder="Ej: 365">
-                        <p class="text-[8px] text-text-subtle mt-0.5">¿Cuánto tiempo conservas estos datos? (Art. 14)</p>
-                    </div>
-
-                    <div>
-                        <label class="label-premium">Almacenamiento</label>
-                        <input type="text" name="storage" class="input-premium w-full" placeholder="Ej: AWS, servidor local, Google Drive">
-                        <p class="text-[8px] text-text-subtle mt-0.5">¿Dónde se guardan estos datos?</p>
-                    </div>
-
-                    <div class="md:col-span-2 flex justify-end gap-2 mt-1">
+                    <div class="flex items-center gap-3 pt-2 border-t border-border-theme">
                         <button type="button" onclick="document.getElementById('inventory-create-form').classList.add('hidden')"
-                                class="px-3 py-1.5 text-[11px] font-medium rounded-lg bg-bg-elevated text-text-body border border-border-theme transition-all">Cancelar</button>
-                        <button type="submit" class="px-4 py-1.5 text-[11px] font-medium rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white transition-all">Registrar actividad</button>
+                                class="px-4 py-2 rounded-lg text-[11px] font-medium bg-bg-elevated text-text-body border border-border-theme transition-all">Cancelar</button>
+                        <button type="submit" class="px-5 py-2.5 rounded-lg text-[12px] font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white transition-all flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                            Registrar actividad en RAT (Art. 14)
+                        </button>
+                        <span class="text-[10px] text-text-muted">Cumple Art. 14.1: responsable, finalidad, categorías, destinatarios, transferencias, seguridad, retención, EIPD</span>
                     </div>
                 </form>
             </div>
@@ -1293,7 +1689,7 @@ require_once __DIR__ . '/../includes/header.php';
             ?>
             <?php renderSectionHeader('Brechas', 'Registro de incidentes de seguridad y violaciones de datos — Art. 26 de la Ley 21.719'); ?>
             <div class="px-4 py-3 rounded-lg bg-red-500/[0.06] border border-red-500/20 text-[11px] text-text-body">
-                <b class="text-red-300">Ley 21.719:</b> Las brechas deben notificarse a la APDP sin dilación indebida y, cuando proceda, a los titulares afectados.
+                <b class="text-red-300">Ley 21.719 Art. 26:</b> Notificación a APDP sin dilación indebida (máx. 72h tras conocimiento) y a titulares si hay riesgo alto para sus derechos. Multas hasta 20.000 UTM.
             </div>
             <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <?php renderComplianceStat('Total', count($items), 'text-white', cIcon('alert')); ?>
@@ -1301,22 +1697,247 @@ require_once __DIR__ . '/../includes/header.php';
                 <?php renderComplianceStat('Críticas activas', $bCritical, $bCritical ? 'text-red-400' : 'text-text-subtle', cIcon('alert')); ?>
                 <?php renderComplianceStat('Resueltas', $bResolved, 'text-emerald-400', cIcon('check')); ?>
             </div>
-            <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5">
+
+            <!-- Formulario profesional de brecha (Art. 26 Ley 21.719) -->
+            <div class="rounded-xl border border-red-500/20 bg-red-500/[0.02] p-5 mb-5">
                 <div class="flex items-center justify-between mb-4">
-                    <p class="text-[12px] font-semibold text-white">Reportar brecha</p>
+                    <p class="text-[12px] font-semibold text-white flex items-center gap-2">
+                        <svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+                        Reportar brecha de seguridad (Art. 26)
+                    </p>
                     <?php renderImportBtn('breaches'); ?>
                 </div>
-                <form method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-3">
+
+                <form method="POST" class="space-y-4">
                     <input type="hidden" name="collection" value="breaches">
-                    <input type="text" name="fields[title]" required placeholder="Título de la brecha" class="input-premium">
-                    <input type="text" name="fields[description]" placeholder="Descripción" class="input-premium">
-                    <select name="fields[severity]" class="input-premium">
-                        <option value="low">🟢 Baja</option><option value="medium">🟡 Media</option>
-                        <option value="high">🟠 Alta</option><option value="critical">🔴 Crítica</option>
-                    </select>
-                    <div class="flex gap-2">
-                        <input type="hidden" name="fields[status]" value="open">
-                        <button type="submit" name="create_item" value="1" class="flex-1 px-3 py-2 rounded-lg text-[11px] font-medium bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white transition-all">Reportar</button>
+
+                    <!-- Identificación básica -->
+                    <fieldset class="rounded-lg border border-red-500/20 bg-red-500/[0.02] p-4">
+                        <legend class="text-[11px] font-medium text-red-300 px-2">Identificación del Incidente</legend>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div>
+                                <label class="label-premium">Título / Referencia *</label>
+                                <input type="text" name="fields[title]" required class="input-premium w-full" placeholder="Ej: Fuga de base de datos clientes - Acceso no autorizado">
+                            </div>
+                            <div>
+                                <label class="label-premium">Fecha/Hora detección *</label>
+                                <input type="datetime-local" name="fields[detectedAt]" required class="input-premium w-full" value="<?= date('Y-m-d\TH:i') ?>">
+                            </div>
+                            <div>
+                                <label class="label-premium">Fecha/Hora ocurrencia (estimada)</label>
+                                <input type="datetime-local" name="fields[occurredAt]" class="input-premium w-full">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                            <div>
+                                <label class="label-premium">Tipo de brecha * (Art. 26)</label>
+                                <select name="fields[breachType]" required class="input-premium w-full">
+                                    <option value="">Seleccionar tipo</option>
+                                    <optgroup label="Confidencialidad">
+                                        <option value="confidencialidad_acceso">Acceso no autorizado a datos</option>
+                                        <option value="confidencialidad_divulgacion">Divulgación no autorizada</option>
+                                        <option value="confidencialidad_fuga">Fuga de información (exfiltración)</option>
+                                        <option value="confidencialidad_copia">Copia no autorizada</option>
+                                    </optgroup>
+                                    <optgroup label="Integridad">
+                                        <option value="integridad_modificacion">Modificación no autorizada</option>
+                                        <option value="integridad_corrupcion">Corrupción de datos</option>
+                                        <option value="integridad_inyeccion">Inyección de datos falsos</option>
+                                    </optgroup>
+                                    <optgroup label="Disponibilidad">
+                                        <option value="disponibilidad_ransomware">Ransomware / Cifrado malicioso</option>
+                                        <option value="disponibilidad_borrado">Borrado accidental o malicioso</option>
+                                        <option value="disponibilidad_denegacion">Denegación de servicio</option>
+                                        <option value="disponibilidad_fallo">Fallo de sistema sin backup</option>
+                                    </optgroup>
+                                </select>
+                                <p class="text-[8px] text-text-subtle mt-0.5">Clasificación CIA: Confidencialidad, Integridad, Disponibilidad.</p>
+                            </div>
+                            <div>
+                                <label class="label-premium">Severidad *</label>
+                                <select name="fields[severity]" required class="input-premium w-full">
+                                    <option value="low">🟢 Baja - Sin datos personales afectados</option>
+                                    <option value="medium">🟡 Media - Datos personales básicos afectados</option>
+                                    <option value="high">🟠 Alta - Datos sensibles afectados</option>
+                                    <option value="critical">🔴 Crítica - Datos sensibles + niños / escala masiva</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="label-premium">Origen de la brecha</label>
+                                <select name="fields[source]" class="input-premium w-full">
+                                    <option value="">Desconocido</option>
+                                    <option value="externo_ataque">Ataque externo (hacking, phishing, malware)</option>
+                                    <option value="interno_malicioso">Interno malicioso (insider threat)</option>
+                                    <option value="interno_error">Error humano interno</option>
+                                    <option value="falla_sistema">Falla de sistema/software</option>
+                                    <option value="terceros">Proveedor/tercero (encargado tratamiento)</option>
+                                    <option value="fisico">Pérdida/robo dispositivo físico</option>
+                                </select>
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- Datos y titulares afectados -->
+                    <fieldset class="rounded-lg border border-amber-500/20 bg-amber-500/[0.02] p-4">
+                        <legend class="text-[11px] font-medium text-amber-300 px-2">Datos y Titulares Afectados (Art. 26.2)</legend>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div>
+                                <label class="label-premium">Categorías de datos afectados *</label>
+                                <select name="fields[affectedCategories][]" multiple required class="input-premium w-full" size="5">
+                                    <option value="identificacion">Identificación (nombre, RUT, dirección)</option>
+                                    <option value="contacto">Contacto (email, teléfono)</option>
+                                    <option value="financieros">Financieros (cuentas, tarjetas)</option>
+                                    <option value="salud">Salud (historial, diagnósticos)</option>
+                                    <option value="biometricos">Biométricos</option>
+                                    <option value="geneticos">Genéticos</option>
+                                    <option value="ninos">Datos de niños (Art. 17)</option>
+                                    <option value="credenciales">Credenciales de acceso (passwords, tokens)</option>
+                                    <option value="ubicacion">Ubicación geográfica</option>
+                                    <option value="navegacion">Datos de navegación</option>
+                                </select>
+                                <p class="text-[8px] text-text-subtle mt-0.5">Ctrl+Click para múltiples. Art. 26.2: naturaleza de los datos afectados.</p>
+                            </div>
+                            <div>
+                                <label class="label-premium">Nº aproximado de titulares afectados</label>
+                                <input type="number" name="fields[affectedCount]" class="input-premium w-full" min="0" placeholder="Ej: 15000">
+                                <p class="text-[8px] text-text-subtle mt-0.5">Art. 26.2: número aproximado de interesados.</p>
+                            </div>
+                            <div>
+                                <label class="label-premium">¿Incluye datos sensibles? (Art. 16)</label>
+                                <select name="fields[sensitiveInvolved]" class="input-premium w-full">
+                                    <option value="no">No</option>
+                                    <option value="si">Sí - Notificación obligatoria a titulares</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                            <div>
+                                <label class="label-premium">Categorías de titulares afectados</label>
+                                <select name="fields[affectedSubjectCategories][]" multiple class="input-premium w-full" size="4">
+                                    <option value="clientes">Clientes</option>
+                                    <option value="empleados">Empleados</option>
+                                    <option value="proveedores">Proveedores</option>
+                                    <option value="ninos">Niños/Adolescentes</option>
+                                    <option value="pacientes">Pacientes</option>
+                                    <option value="publico">Público general</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="label-premium">Sistemas/BD afectados</label>
+                                <input type="text" name="fields[affectedSystems]" class="input-premium w-full" placeholder="Ej: CRM clientes, BD nóminas, servidor archivos">
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- Evaluación de riesgo y consecuencias -->
+                    <fieldset class="rounded-lg border border-orange-500/20 bg-orange-500/[0.02] p-4">
+                        <legend class="text-[11px] font-medium text-orange-300 px-2">Evaluación de Riesgo y Consecuencias (Art. 26.3)</legend>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="label-premium">Consecuencias probables *</label>
+                                <textarea name="fields[likelyConsequences]" required rows="3" class="input-premium w-full" placeholder="Describe las consecuencias probables para los titulares: robo de identidad, fraude financiero, daño reputacional, discriminación, etc."></textarea>
+                                <p class="text-[8px] text-text-subtle mt-0.5">Art. 26.3: descripción de las consecuencias probables.</p>
+                            </div>
+                            <div>
+                                <label class="label-premium">Medidas adoptadas / propuestas *</label>
+                                <textarea name="fields[measuresTaken]" required rows="3" class="input-premium w-full" placeholder="Describe medidas técnicas y organizativas adoptadas: contención, investigación, notificación, corrección, prevención futura..."></textarea>
+                                <p class="text-[8px] text-text-subtle mt-0.5">Art. 26.3: medidas adoptadas o propuestas para mitigar efectos.</p>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                            <div>
+                                <label class="label-premium">Nivel de riesgo para titulares</label>
+                                <select name="fields[riskLevel]" class="input-premium w-full">
+                                    <option value="bajo">Bajo - Impacto mínimo</option>
+                                    <option value="moderado">Moderado - Posible daño limitado</option>
+                                    <option value="alto">Alto - Probable daño significativo</option>
+                                    <option value="muy_alto">Muy alto - Daño severo/irreversible</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="label-premium">¿Notificación a APDP realizada? (Art. 26.1)</label>
+                                <select name="fields[notifiedAPDP]" class="input-premium w-full">
+                                    <option value="no">No - Pendiente</option>
+                                    <option value="si">Sí - Notificada</option>
+                                    <option value="en_proceso">En proceso</option>
+                                    <option value="no_procede">No procede (riesgo bajo)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="label-premium">Fecha notificación APDP</label>
+                                <input type="datetime-local" name="fields[apdpNotifiedAt]" class="input-premium w-full">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                            <div>
+                                <label class="label-premium">¿Notificación a titulares? (Art. 26.4)</label>
+                                <select name="fields[notifiedSubjects]" class="input-premium w-full">
+                                    <option value="no">No - Pendiente / No procede</option>
+                                    <option value="si">Sí - Notificados individualmente</option>
+                                    <option value="publica">Sí - Comunicación pública (web/medios)</option>
+                                    <option value="en_proceso">En proceso</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="label-premium">Fecha notificación titulares</label>
+                                <input type="datetime-local" name="fields[subjectsNotifiedAt]" class="input-premium w-full">
+                            </div>
+                            <div>
+                                <label class="label-premium">Canal de notificación</label>
+                                <select name="fields[notificationChannel]" class="input-premium w-full">
+                                    <option value="email">Email directo</option>
+                                    <option value="carta">Carta certificada</option>
+                                    <option value="web">Publicación en web/app</option>
+                                    <option value="medios">Medios de comunicación</option>
+                                    <option value="mixto">Múltiples canales</option>
+                                </select>
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- Resolución y evidencia -->
+                    <fieldset class="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.02] p-4">
+                        <legend class="text-[11px] font-medium text-emerald-300 px-2">Resolución y Evidencia</legend>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div>
+                                <label class="label-premium">Estado</label>
+                                <select name="fields[status]" class="input-premium w-full">
+                                    <option value="open">Abierta - En investigación</option>
+                                    <option value="contained">Contenida - Sin más fuga</option>
+                                    <option value="investigating">Investigando causa raíz</option>
+                                    <option value="resolved">Resuelta - Cerrada</option>
+                                    <option value="closed_no_action">Cerrada - Sin acción (falso positivo)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="label-premium">Fecha resolución</label>
+                                <input type="datetime-local" name="fields[resolvedAt]" class="input-premium w-full">
+                            </div>
+                            <div>
+                                <label class="label-premium">Responsable gestión</label>
+                                <input type="text" name="fields[incidentManager]" class="input-premium w-full" placeholder="DPD / CISO / Equipo seguridad">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                            <div>
+                                <label class="label-premium">Lecciones aprendidas</label>
+                                <textarea name="fields[lessonsLearned]" rows="2" class="input-premium w-full" placeholder="Qué se aprendió y qué se mejorará para evitar recurrencia..."></textarea>
+                            </div>
+                            <div>
+                                <label class="label-premium">URL de evidencia (logs, informes forenses, notificaciones)</label>
+                                <input type="url" name="fields[evidenceUrl]" class="input-premium w-full" placeholder="https://intranet.empresa.cl/brecha-2024-001">
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <div class="flex items-center gap-3 pt-2 border-t border-border-theme">
+                        <input type="hidden" name="fields[createdAt]" value="<?= date('c') ?>">
+                        <input type="hidden" name="fields[reportedBy]" value="<?= h($user['email'] ?? '') ?>">
+                        <button type="submit" name="create_item" value="1" class="px-5 py-2.5 rounded-lg text-[12px] font-semibold bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white transition-all flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+                            Reportar brecha (Art. 26 Ley 21.719)
+                        </button>
+                        <span class="text-[10px] text-text-muted">Obligatorio notificar a APDP en 72h. Si datos sensibles/niños → notificar a titulares.</span>
                     </div>
                 </form>
             </div>
@@ -1422,29 +2043,402 @@ require_once __DIR__ . '/../includes/header.php';
             </div>
             <?php endif; ?>
 
+            <?php elseif ($tab === 'pseudonymization'): ?>
+            <?php
+            $pExecuted = count(array_filter($items, fn($it) => ($it['status'] ?? '') === 'executed'));
+            $pPending = count($items) - $pExecuted;
+            $pRules = count($items);
+            ?>
+            <?php renderSectionHeader('Seudonimización', 'Reemplazo de identificadores directos por seudónimos — Art. 30 de la Ley 21.719'); ?>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <?php renderComplianceStat('Total reglas', $pRules, 'text-white', cIcon('search')); ?>
+                <?php renderComplianceStat('Ejecutadas', $pExecuted, 'text-emerald-400', cIcon('check')); ?>
+                <?php renderComplianceStat('Pendientes', $pPending, $pPending ? 'text-amber-400' : 'text-emerald-400', cIcon('pen')); ?>
+                <?php renderComplianceStat('Avance', $pRules ? round($pExecuted / $pRules * 100) . '%' : '—', 'text-indigo-400', cIcon('shield')); ?>
+            </div>
+
+            <!-- Formulario profesional de seudonimización (Art. 30 Ley 21.719) -->
+            <div class="rounded-xl border border-purple-500/20 bg-purple-500/[0.02] p-5 mb-5">
+                <div class="flex items-center justify-between mb-4">
+                    <p class="text-[12px] font-semibold text-white flex items-center gap-2">
+                        <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                        Nueva regla de seudonimización (Art. 30)
+                    </p>
+                    <?php renderImportBtn('pseudonymization'); ?>
+                </div>
+
+                <form method="POST" class="space-y-4">
+                    <input type="hidden" name="collection" value="pseudonymization">
+
+                    <!-- Identificación básica -->
+                    <fieldset class="rounded-lg border border-purple-500/20 bg-purple-500/[0.02] p-4">
+                        <legend class="text-[11px] font-medium text-purple-300 px-2">Identificación de la Regla (Art. 30)</legend>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="label-premium">Nombre de la regla *</label>
+                                <input type="text" name="fields[name]" required class="input-premium w-full" placeholder="Ej: Seudonimización RUT clientes">
+                            </div>
+                            <div>
+                                <label class="label-premium">Código / Referencia</label>
+                                <input type="text" name="fields[code]" class="input-premium w-full" placeholder="Ej: PSEUDO-001">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                            <div>
+                                <label class="label-premium">Técnica de seudonimización *</label>
+                                <select name="fields[technique]" required class="input-premium w-full">
+                                    <option value="">Seleccionar técnica</option>
+                                    <option value="tokenizacion">Tokenización (token aleatorio reversible)</option>
+                                    <option value="hashing">Hashing unidireccional (SHA-256, SHA-3)</option>
+                                    <option value="cifrado_reversible">Cifrado reversible (AES-256 con key management)</option>
+                                    <option value="masking">Enmascaramiento / Masking (parcial)</option>
+                                    <option value="format_preserving">Cifrado conservador de formato (FPE)</option>
+                                    <option value="differential_privacy">Privacidad diferencial (ruido estadístico)</option>
+                                    <option value="otro">Otra (especificar en observaciones)</option>
+                                </select>
+                                <p class="text-[8px] text-text-subtle mt-0.5">Art. 30: reemplazo de identificadores directos por seudónimos.</p>
+                            </div>
+                            <div>
+                                <label class="label-premium">Alcance *</label>
+                                <select name="fields[scope]" required class="input-premium w-full">
+                                    <option value="">Seleccionar alcance</option>
+                                    <option value="todos_identificadores">Todos los identificadores directos (RUT, email, nombre)</option>
+                                    <option value="solo_rut">Solo RUT / DNI / RUN</option>
+                                    <option value="solo_email">Solo emails</                                    >
+                                    <option value="solo_nombres">Solo nombres y apellidos</option>
+                                    <option value="datos_sensibles">Solo datos sensibles (salud, biometría)</option>
+                                    <option value="personalizado">Personalizado (detallar en observaciones)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- Configuración técnica -->
+                    <fieldset class="rounded-lg border border-blue-500/20 bg-blue-500/[0.02] p-4">
+                        <legend class="text-[11px] font-medium text-blue-300 px-2">Configuración Técnica y Gestión de Claves</legend>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div>
+                                <label class="label-premium">Gestión de claves *</label>
+                                <select name="fields[keyManagement]" required class="input-premium w-full">
+                                    <option value="">Seleccionar</option>
+                                    <option value="kms_dedicado">KMS dedicado (AWS KMS, Azure Key Vault, GCP KMS)</option>
+                                    <option value="hsm">HSM (Hardware Security Module)</option>
+                                    <option value="vault">HashiCorp Vault / CyberArk / Thycotic</option>
+                                    <option value="cloud_kms">Cloud KMS nativo (AWS/Azure/GCP)</option>
+                                    <option value="manual_seguro">Manual con procedimiento documentado y custodia dual</option>
+                                </select>
+                                <p class="text-[8px] text-text-subtle mt-0.5">Art. 30: la re-identificación debe requerir información adicional bajo custodia.</p>
+                            </div>
+                            <div>
+                                <label class="label-premium">Base de datos / Tabla origen</label>
+                                <input type="text" name="fields[sourceTable]" class="input-premium w-full" placeholder="Ej: public.clientes, dbo.empleados">
+                            </div>
+                            <div>
+                                <label class="label-premium">Columna(s) seudonimizadas</label>
+                                <input type="text" name="fields[columns]" class="input-premium w-full" placeholder="Ej: rut, email, nombre_completo">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                            <div>
+                                <label class="label-premium">Algoritmo / Parámetros</label>
+                                <textarea name="fields[algorithmDetails]" rows="2" class="input-premium w-full" placeholder="Ej: AES-256-GCM, key rotation 90d, IV aleatorio por registro..."></textarea>
+                            </div>
+                            <div>
+                                <label class="label-premium">Tabla/Columna de mapeo (si reversible)</label>
+                                <input type="text" name="fields[mappingTable]" class="input-premium w-full" placeholder="Ej: pseudo_mapping (pseudonym, original_hash)">
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- Aplicación y cumplimiento -->
+                    <fieldset class="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.02] p-4">
+                        <legend class="text-[11px] font-medium text-emerald-300 px-2">Aplicación y Cumplimiento (Art. 30.2)</legend>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div>
+                                <label class="label-premium">Frecuencia de ejecución</label>
+                                <select name="fields[frequency]" class="input-premium w-full">
+                                    <option value="bajo_demanda">Bajo demanda</option>
+                                    <option value="diaria">Diaria (batch nocturno)</option>
+                                    <option value="semanal">Semanal</option>
+                                    <option value="mensual">Mensual</option>
+                                    <option value="evento">Por evento (nuevo registro, migración)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="label-premium">Entorno de aplicación</label>
+                                <select name="fields[environment]" class="input-premium w-full">
+                                    <option value="produccion">Producción</option>
+                                    <option value="preproduccion">Pre-producción / Staging</option>
+                                    <option value="desarrollo">Desarrollo</option>
+                                    <option value="analitica">Entorno analítico / Data Warehouse</option>
+                                    <option value="todos">Todos los entornos</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="label-premium">Estado</label>
+                                <select name="fields[status]" class="input-premium w-full">
+                                    <option value="draft">Borrador</option>
+                                    <option value="testing">En pruebas</option>
+                                    <option value="executed">Ejecutada / En producción</option>
+                                    <option value="deprecated">Deprecada</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                            <div>
+                                <label class="label-premium">Fecha última ejecución</label>
+                                <input type="datetime-local" name="fields[lastExecutedAt]" class="input-premium w-full">
+                            </div>
+                            <div>
+                                <label class="label-premium">Próxima ejecución programada</label>
+                                <input type="datetime-local" name="fields[nextExecutionAt]" class="input-premium w-full">
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <label class="label-premium">Verificación de irreversibilidad (para hashing)</label>
+                            <select name="fields[irreversibilityVerified]" class="input-premium w-full">
+                                <option value="no">No verificada</option>
+                                <option value="si_teorica">Sí - Verificación teórica (análisis entropía)</option>
+                                <option value="si_practica">Sí - Verificación práctica (ataques de diccionario, rainbow tables)</option>
+                                <option value="certificado">Certificado por tercero</option>
+                            </select>
+                        </div>
+                    </fieldset>
+
+                    <!-- Evidencia y observaciones -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                            <label class="label-premium">Observaciones / Contexto</label>
+                            <textarea name="fields[notes]" rows="3" class="input-premium w-full" placeholder="Contexto: finalidad, tratamiento al que aplica, limitaciones, excepciones..."></textarea>
+                        </div>
+                        <div>
+                            <label class="label-premium">URL de evidencia (scripts, configs, logs de ejecución)</label>
+                            <input type="url" name="fields[evidenceUrl]" class="input-premium w-full" placeholder="https://gitlab.empresa.cl/pseudo-rules/rut-clientes">
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-3 pt-2 border-t border-border-theme">
+                        <input type="hidden" name="fields[createdAt]" value="<?= date('c') ?>">
+                        <input type="hidden" name="fields[createdBy]" value="<?= h($user['email'] ?? '') ?>">
+                        <button type="submit" name="create_item" value="1" class="px-5 py-2.5 rounded-lg text-[12px] font-semibold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white transition-all flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                            Registrar regla de seudonimización (Art. 30 Ley 21.719)
+                        </button>
+                        <span class="text-[10px] text-text-muted">La seudonimización permite tratar datos sin identificación directa. Claves de re-identificación bajo custodia separada (Art. 30.2).</span>
+                    </div>
+                </form>
+            </div>
+
             <?php elseif ($tab === 'trainings'): ?>
             <?php
             $tDone = count(array_filter($items, fn($it) => !empty($it['completed'])));
             $tPending = count($items) - $tDone;
             ?>
-            <?php renderSectionHeader('Capacitaciones Ley 21.719', 'Registro de empleados capacitados en protección de datos personales — Art. 28 letra c)'); ?>
+            <?php renderSectionHeader('Capacitaciones Ley 21.719', 'Registro de capacitación en protección de datos personales — Art. 28 letra c) (DPD debe capacitar al personal)'); ?>
             <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <?php renderComplianceStat('Total', count($items), 'text-white', cIcon('info')); ?>
                 <?php renderComplianceStat('Completadas', $tDone, 'text-emerald-400', cIcon('check')); ?>
                 <?php renderComplianceStat('Pendientes', $tPending, $tPending ? 'text-amber-400' : 'text-emerald-400', cIcon('pen')); ?>
                 <?php renderComplianceStat('Avance', $items ? round($tDone / count($items) * 100) . '%' : '—', 'text-indigo-400', cIcon('shield')); ?>
             </div>
-            <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5">
+
+            <!-- Formulario profesional de capacitación (Art. 28.c Ley 21.719) -->
+            <div class="rounded-xl border border-amber-500/20 bg-amber-500/[0.02] p-5 mb-5">
                 <div class="flex items-center justify-between mb-4">
-                    <p class="text-[12px] font-semibold text-white">Nueva capacitación</p>
+                    <p class="text-[12px] font-semibold text-white flex items-center gap-2">
+                        <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+                        Nueva capacitación en protección de datos
+                    </p>
                     <?php renderImportBtn('trainings'); ?>
                 </div>
-                <form method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-3">
+
+                <form method="POST" class="space-y-4">
                     <input type="hidden" name="collection" value="trainings">
-                    <input type="text" name="fields[title]" required placeholder="Título de la capacitación" class="input-premium">
-                    <input type="text" name="fields[attendee]" placeholder="Participante / equipo" class="input-premium">
-                    <input type="date" name="fields[date]" class="input-premium">
-                    <button type="submit" name="create_item" value="1" class="px-3 py-2 rounded-lg text-[11px] font-medium bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white transition-all">Registrar</button>
+
+                    <!-- Información básica -->
+                    <fieldset class="rounded-lg border border-amber-500/20 bg-amber-500/[0.02] p-4">
+                        <legend class="text-[11px] font-medium text-amber-300 px-2">Información de la Capacitación</legend>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="label-premium">Título / Tema *</label>
+                                <select name="fields[title]" required class="input-premium w-full">
+                                    <option value="">Seleccionar tema</option>
+                                    <optgroup label="Fundamentos">
+                                        <option value="intro_ley_21719">Introducción a la Ley 21.719</option>
+                                        <option value="principios">Principios de protección de datos (Art. 3)</option>
+                                        <option value="derechos_arco">Derechos ARCO + Portabilidad (Art. 8-13)</option>
+                                        <option value="consentimiento">Consentimiento informado (Art. 12)</option>
+                                    </optgroup>
+                                    <optgroup label="Tratamiento específico">
+                                        <option value="datos_sensibles">Tratamiento de datos sensibles (Art. 16)</option>
+                                        <option value="datos_ninos">Datos de niños/niñas/adolescentes (Art. 17)</option>
+                                        <option value="transferencias">Transferencias internacionales (Art. 21)</option>
+                                        <option value="seudonimizacion">Seudonimización y anonimización (Art. 30)</option>
+                                    </optgroup>
+                                    <optgroup label="Seguridad y Procedimientos">
+                                        <option value="medidas_seguridad">Medidas de seguridad Art. 25</option>
+                                        <option value="protocolo_brechas">Protocolo de brechas Art. 26</option>
+                                        <option value="procedimiento_arco">Procedimiento atención solicitudes ARCO</option>
+                                        <option value="eipd">Evaluación de Impacto (EIPD) Art. 29</option>
+                                    </optgroup>
+                                    <optgroup label="Roles específicos">
+                                        <option value="dpd_role">Rol y obligaciones del DPD (Art. 28)</option>
+                                        <option value="encargado_tratamiento">Obligaciones de encargados (Art. 22)</option>
+                                        <option value="seguridad_informacion">Seguridad de la información y phishing</option>
+                                    </optgroup>
+                                    <option value="otro">Otro (especificar en observaciones)</option>
+                                </select>
+                                <p class="text-[8px] text-text-subtle mt-0.5">Art. 28.c: DPD debe capacitar al personal que trata datos.</p>
+                            </div>
+                            <div>
+                                <label class="label-premium">Modalidad *</label>
+                                <select name="fields[modality]" required class="input-premium w-full">
+                                    <option value="presencial">Presencial</option>
+                                    <option value="virtual_sync">Virtual sincrónica (Zoom/Teams en vivo)</option>
+                                    <option value="virtual_async">Virtual asincrónica (LMS/Moodle)</option>
+                                    <option value="hibrida">Híbrida</option>
+                                    <option value="e_learning">E-learning autogestionado</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                            <div>
+                                <label class="label-premium">Fecha *</label>
+                                <input type="date" name="fields[date]" required class="input-premium w-full" value="<?= date('Y-m-d') ?>">
+                            </div>
+                            <div>
+                                <label class="label-premium">Duración (horas) *</label>
+                                <input type="number" name="fields[durationHours]" required class="input-premium w-full" min="0.5" max="40" step="0.5" value="2" placeholder="Ej: 2, 4, 8">
+                            </div>
+                            <div>
+                                <label class="label-premium">Instructor / Entidad</label>
+                                <input type="text" name="fields[instructor]" class="input-premium w-full" placeholder="Nombre del capacitador o entidad externa">
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- Participantes y alcance -->
+                    <fieldset class="rounded-lg border border-blue-500/20 bg-blue-500/[0.02] p-4">
+                        <legend class="text-[11px] font-medium text-blue-300 px-2">Participantes y Alcance</legend>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="label-premium">Público objetivo *</label>
+                                <select name="fields[targetAudience]" required class="input-premium w-full">
+                                    <option value="">Seleccionar</option>
+                                    <option value="todo_personal">Todo el personal</option>
+                                    <option value="tratamiento_datos">Personal que trata datos personales</option>
+                                    <option value="nuevo_ingreso">Nuevos ingresos (onboarding)</option>
+                                    <option value="directivos">Directivos y mandos medios</option>
+                                    <option value="ti_seguridad">TI / Seguridad / DPD</option>
+                                    <option value="atencion_publico">Atención al público / ARCO</option>
+                                    <option value="proveedores">Proveedores / Encargados tratamiento</option>
+                                    <option value="especifico">Equipo específico (detallar en observaciones)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="label-premium">Nº participantes esperados</label>
+                                <input type="number" name="fields[expectedAttendees]" class="input-premium w-full" min="1" placeholder="Ej: 50">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                            <div>
+                                <label class="label-premium">Participantes reales (lista RUT/Nombres)</label>
+                                <textarea name="fields[attendeesList]" rows="3" class="input-premium w-full" placeholder="RUT, Nombre completo (uno por línea)&#10;12.345.678-9, Juan Pérez González&#10;98.765.432-1, María González López"></textarea>
+                                <p class="text-[8px] text-text-subtle mt-0.5">Para trazabilidad y evidencia ante fiscalización.</p>
+                            </div>
+                            <div>
+                                <label class="label-premium">Departamentos/Áreas</label>
+                                <input type="text" name="fields[departments]" class="input-premium w-full" placeholder="RRHH, Comercial, TI, Finanzas, Operaciones">
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- Contenido y evaluación -->
+                    <fieldset class="rounded-lg border border-purple-500/20 bg-purple-500/[0.02] p-4">
+                        <legend class="text-[11px] font-medium text-purple-300 px-2">Contenido y Evaluación</legend>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="label-premium">Temario / Contenido *</label>
+                                <textarea name="fields[content]" required rows="3" class="input-premium w-full" placeholder="Detalle de temas cubiertos, referencias legales (Art. 3, 12, 16, 25, 26, 28, 30), casos prácticos..."></textarea>
+                                <p class="text-[8px] text-text-subtle mt-0.5">Debe incluir referencias a artículos específicos de la Ley 21.719.</p>
+                            </div>
+                            <div>
+                                <label class="label-premium">Materiales entregados</label>
+                                <select name="fields[materials][]" multiple class="input-premium w-full" size="5">
+                                    <option value="presentacion">Presentación (PDF/PPT)</option>
+                                    <option value="guia">Guía / Manual de procedimientos</option>
+                                    <option value="casos_practicos">Casos prácticos / Ejercicios</option>
+                                    <option value="test">Test de evaluación</option>
+                                    <option value="video">Grabación de la sesión</option>
+                                    <option value="certificado">Certificado de participación</option>
+                                </select>
+                                <p class="text-[8px] text-text-subtle mt-0.5">Ctrl+Click. Evidencia para fiscalización.</p>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                            <div>
+                                <label class="label-premium">¿Incluye evaluación? *</label>
+                                <select name="fields[hasEvaluation]" required class="input-premium w-full">
+                                    <option value="si_test">Sí - Test escrito</option>
+                                    <option value="si_casos">Sí - Casos prácticos</option>
+                                    <option value="si_ambos">Sí - Test + Casos prácticos</option>
+                                    <option value="no">No (solo asistencia)</option>
+                                </select>
+                                <p class="text-[8px] text-text-subtle mt-0.5">Recomendado: evaluación para demostrar efectividad.</p>
+                            </div>
+                            <div>
+                                <label class="label-premium">Nota mínima aprobación (%)</label>
+                                <input type="number" name="fields[passingScore]" class="input-premium w-full" min="50" max="100" value="70" placeholder="70">
+                            </div>
+                            <div>
+                                <label class="label-premium">% Aprobados</label>
+                                <input type="number" name="fields[approvalRate]" class="input-premium w-full" min="0" max="100" placeholder="Ej: 85">
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- Evidencia y certificados -->
+                    <fieldset class="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.02] p-4">
+                        <legend class="text-[11px] font-medium text-emerald-300 px-2">Evidencia y Certificación</legend>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div>
+                                <label class="label-premium">URL de evidencias</label>
+                                <input type="url" name="fields[evidenceUrl]" class="input-premium w-full" placeholder="https://drive.empresa.cl/capacitaciones/2024-01">
+                            </div>
+                            <div>
+                                <label class="label-premium">¿Entrega certificado?</label>
+                                <select name="fields[certificateIssued]" class="input-premium w-full">
+                                    <option value="si">Sí - Certificado individual</option>
+                                    <option value="si_grupal">Sí - Certificado grupal</option>
+                                    <option value="no">No</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="label-premium">Fecha próxima recertificación</label>
+                                <input type="date" name="fields[recertificationDate]" class="input-premium w-full" placeholder="Recomendado: 12 meses">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                            <div>
+                                <label class="label-premium">Observaciones</label>
+                                <textarea name="fields[notes]" rows="2" class="input-premium w-full" placeholder="Observaciones, incidencias, mejoras para próxima edición..."></textarea>
+                            </div>
+                            <div>
+                                <label class="label-premium">Costo (CLP)</label>
+                                <input type="number" name="fields[costCLP]" class="input-premium w-full" min="0" placeholder="Ej: 500000">
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <div class="flex items-center gap-3 pt-2 border-t border-border-theme">
+                        <input type="hidden" name="fields[createdAt]" value="<?= date('c') ?>">
+                        <input type="hidden" name="fields[createdBy]" value="<?= h($user['email'] ?? '') ?>">
+                        <button type="submit" name="create_item" value="1" class="px-5 py-2.5 rounded-lg text-[12px] font-semibold bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white transition-all flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477 4.5 1.253"/></svg>
+                            Registrar capacitación (Art. 28.c Ley 21.719)
+                        </button>
+                        <span class="text-[10px] text-text-muted">El DPD debe capacitar al personal que trata datos. Registrar asistentes, evaluación y evidencia.</span>
+                    </div>
                 </form>
             </div>
             <?php if (empty($items)): ?>
@@ -1921,7 +2915,7 @@ require_once __DIR__ . '/../includes/header.php';
             try {
                 $auditRes = api_get('/api/compliance/files/audit-logs', ['token' => $token, 'limit' => 200]);
                 if (is_array($auditRes) && !isset($auditRes['error'])) {
-                    $auditLogs = $auditRes;
+                    $auditLogs = $auditRes['logs'] ?? [];
                 }
             } catch (Exception $e) {
                 // Silently fail
@@ -2023,7 +3017,7 @@ require_once __DIR__ . '/../includes/header.php';
 
 <?php
 function renderSectionHeader($title, $desc) {
-    echo '<div class="mb-1"><h3 class="text-[14px] md:text-[15px] font-semibold text-text-heading">' . h($title) . '</h3>';
+    echo '<div class="mb-1"><h3 class="text-[14px] md:text-[15px] font-semibold text-text-heading inline-flex items-center gap-2">' . h($title) . ' ' . infoIcon($desc) . '</h3>';
     echo '<p class="text-[11px] md:text-[12px] text-text-muted mt-1">' . h($desc) . '</p></div>';
 }
 

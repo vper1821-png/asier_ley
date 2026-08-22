@@ -31,7 +31,9 @@ function login() {
     }
 
     audit_log('login_success', ['email' => $email], $user['_id']);
-    $token = Auth::createToken($user['_id']);
+    $token = Auth::createToken($user['_id'], [
+        'tokenVersion' => $user['tokenVersion'] ?? 1,
+    ]);
     json_response([
         'token' => $token,
         'user' => $user,
@@ -61,9 +63,10 @@ function register() {
         'planType' => 'free',
         'paymentStatus' => 'active',
         'onboardingComplete' => false,
+        'tokenVersion' => 1,
     ]);
 
-    $token = Auth::createToken($user['_id']);
+    $token = Auth::createToken($user['_id'], ['tokenVersion' => 1]);
     unset($user['password']);
     audit_log('user_registered', ['email' => $email, 'companyName' => $user['companyName'] ?? ''], $user['_id']);
 
@@ -119,10 +122,12 @@ function resetPassword() {
         json_error('token expirado', 403);
     }
 
+    $newVersion = ($user['tokenVersion'] ?? 1) + 1;
     $db->updateOne('users', ['_id' => $user['_id']], [
         'password' => Auth::hashPassword($password),
         'resetToken' => null,
         'resetExpires' => null,
+        'tokenVersion' => $newVersion,
     ]);
 
     json_response(['success' => true, 'message' => 'contraseña restablecida']);

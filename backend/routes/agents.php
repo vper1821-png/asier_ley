@@ -28,13 +28,38 @@ function register() {
     $decoded = Auth::verifyToken($token);
     if (!$decoded) json_error('token inválido', 401);
 
-    if (!$agentId || !$hostname) json_error('agentId y hostname requeridos');
+    if (!$hostname) json_error('hostname requerido');
 
     $db = Database::getInstance();
 
-    $existing = $db->findOne('agents', ['agentId' => $agentId]);
-    if ($existing) {        $db->updateOne('agents', ['agentId' => $agentId], [
-            'userId' => $decoded['userId'],
+    // Si el agente no envió un ID, generamos uno provisional. El backend tratará
+    // de reutilizar el agente existente del mismo hostname para evitar duplicados.
+    if (!$agentId) {
+        $agentId = 'AGT-' . strtoupper(bin2hex(random_bytes(10)));
+    }
+
+    $userId = $decoded['userId'];
+    $now = date('c');
+
+    // Buscar si ya existe un agente para este mismo hostname en la misma cuenta.
+    // Se considera plataforma para evitar colisiones entre SO distintos con mismo nombre.
+    $allSame = $db->find('agents', [
+        'userId' => $userId,
+        'hostname' => $hostname,
+        'platform' => $platform,
+    ]);
+
+    $existing = null;
+    if (!empty($allSame)) {
+        // Elegir el más reciente como el "oficial"
+        usort($allSame, fn($a, $b) => strcmp($b['lastSeen'] ?? $b['createdAt'] ?? '', $a['lastSeen'] ?? $a['createdAt'] ?? ''));
+        $existing = $allSame[0];
+    }
+
+    if ($existing) {
+        $keptAgentId = $existing['agentId'];
+        $db->updateOne('agents', ['_id' => $existing['_id']], [
+            'agentId' => $keptAgentId,
             'hostname' => $hostname,
             'platform' => $platform,
             'arch' => $arch,
@@ -42,12 +67,22 @@ function register() {
             'version' => $version,
             'user' => $user,
             'status' => 'online',
-            'lastSeen' => date('c'),
+            'lastSeen' => $now,
         ]);
-        $agent = $db->findOne('agents', ['agentId' => $agentId]);
+
+        // Limpiar duplicados antiguos del mismo equipo para que el panel no se llene
+        foreach ($allSame as $dup) {
+            if (($dup['_id'] ?? '') !== ($existing['_id'] ?? '')) {
+                $db->deleteOne('agents', ['_id' => $dup['_id']]);
+                $db->deleteOne('host_monitor', ['agentId' => $dup['agentId']]);
+            }
+        }
+
+        $agent = $db->findOne('agents', ['_id' => $existing['_id']]);
+        $agentId = $keptAgentId;
     } else {
         $agent = $db->insertOne('agents', [
-            'userId' => $decoded['userId'],
+            'userId' => $userId,
             'agentId' => $agentId,
             'hostname' => $hostname,
             'platform' => $platform,
@@ -56,9 +91,9 @@ function register() {
             'version' => $version,
             'user' => $user,
             'status' => 'online',
-            'lastSeen' => date('c'),
+            'lastSeen' => $now,
         ]);
-        audit_log('agent_registered', ['agentId' => $agentId, 'hostname' => $hostname, 'platform' => $platform, 'ip' => $ip], $decoded['userId'], $agentId);
+        audit_log('agent_registered', ['agentId' => $agentId, 'hostname' => $hostname, 'platform' => $platform, 'ip' => $ip], $userId, $agentId);
     }
 
     json_response([
@@ -196,6 +231,24 @@ function deleteAgent() {
     json_response(['success' => true]);
 }
 
+function updateAgent() {
+    $user = Auth::requireAuth();
+    $agentId = $_GET['id'] ?? '';
+    if (!$agentId) json_error('agentId requerido');
+    $agent = findAgentFor($user, $agentId);
+    if (!$agent) json_error('agente no encontrado', 404);
+    $body = get_body();
+    $db = Database::getInstance();
+    $updates = [];
+    if (array_key_exists('name', $body)) $updates['name'] = trim($body['name']);
+    if (array_key_exists('pinned', $body)) $updates['pinned'] = filter_var($body['pinned'], FILTER_VALIDATE_BOOLEAN);
+    if (array_key_exists('group', $body)) $updates['group'] = trim($body['group']);
+    if ($updates) {
+        $db->updateOne('agents', ['_id' => $agent['_id']], $updates);
+    }
+    json_response(['success' => true]);
+}
+
 function sendCommand() {
     $user = Auth::requireAuth();
     $agentId = $_GET['id'] ?? '';
@@ -308,6 +361,55 @@ function listCommands() {
     json_response(array_slice($cmds, 0, 50));
 }
 
+function forensics() {
+    $user = Auth::requireAuth();
+    $agentId = $_GET['id'] ?? '';
+    if (!$agentId) json_error('agentId requerido');
+    $agent = findAgentFor($user, $agentId);
+    if (!$agent) json_error('agente no encontrado', 404);
+    $db = Database::getInstance();
+    $type = $_GET['type'] ?? 'files';
+    $limit = (int)($_GET['limit'] ?? 50);
+    $collection = in_array($type, ['files', 'db', 'host']) ? ($type === 'files' ? 'file_events' : ($type === 'db' ? 'database_logs' : 'host_events')) : 'file_events';
+    $events = $db->find($collection, ['agentId' => $agentId, 'userId' => $user['_id']]);
+    usort($events, fn($a, $b) => strcmp($b['createdAt'] ?? '', $a['createdAt'] ?? ''));
+    json_response(['success' => true, 'type' => $type, 'events' => array_slice($events, 0, $limit)]);
+}
+
+function folderList() {
+    $user = Auth::requireAuth();
+    $db = Database::getInstance();
+    $folders = $db->find('folders', ['userId' => $user['_id']]);
+    usort($folders, fn($a, $b) => strcmp($a['name'] ?? '', $b['name'] ?? ''));
+    json_response($folders);
+}
+
+function folderCreate() {
+    $user = Auth::requireAuth();
+    $body = get_body();
+    $name = trim($body['name'] ?? '');
+    if (!$name) json_error('nombre requerido');
+    $db = Database::getInstance();
+    $existing = $db->findOne('folders', ['userId' => $user['_id'], 'name' => $name]);
+    if ($existing) json_error('la carpeta ya existe');
+    $db->insertOne('folders', ['userId' => $user['_id'], 'name' => $name, 'createdAt' => date('c')]);
+    json_response(['success' => true]);
+}
+
+function folderDelete() {
+    $user = Auth::requireAuth();
+    $body = get_body();
+    $name = trim($body['name'] ?? '');
+    if (!$name) json_error('nombre requerido');
+    $db = Database::getInstance();
+    $db->deleteOne('folders', ['userId' => $user['_id'], 'name' => $name]);
+    $agents = $db->find('agents', ['userId' => $user['_id'], 'group' => $name]);
+    foreach ($agents as $a) {
+        $db->updateOne('agents', ['_id' => $a['_id']], ['group' => '']);
+    }
+    json_response(['success' => true]);
+}
+
 function setLockdown() {
     $user = Auth::requireAuth();
     $body = get_body();
@@ -398,7 +500,7 @@ function download() {
 
         $basePath = 'C:\\Program Files\\SecureLab Agent';
         $baseUrl = API_BASE_URL !== '' ? API_BASE_URL : 'http://localhost:3838';
-        $wsBase  = preg_replace('#^https?://#', 'ws://', rtrim($baseUrl, '/'));
+        $wsBase  = preg_replace(['#^https://#', '#^http://#'], ['wss://', 'ws://'], rtrim($baseUrl, '/'));
 
         $config = [
             'api_base'           => rtrim($baseUrl, '/') . '/api/agents',
@@ -487,7 +589,7 @@ function download() {
 
     $basePath = '/opt/securelab-agent';
     $baseUrl = API_BASE_URL !== '' ? API_BASE_URL : 'http://localhost:3838';
-    $wsBase  = preg_replace('#^https?://#', 'ws://', rtrim($baseUrl, '/'));
+    $wsBase  = preg_replace(['#^https://#', '#^http://#'], ['wss://', 'ws://'], rtrim($baseUrl, '/'));
 
     $config = [
         'api_base'           => rtrim($baseUrl, '/') . '/api/agents',

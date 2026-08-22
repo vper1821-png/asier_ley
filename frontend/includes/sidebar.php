@@ -7,7 +7,7 @@ $currentPage = $currentPage ?? 'dashboard';
 $navItems = [
     ['id' => 'dashboard', 'label' => 'Dashboard', 'icon' => 'dashboard'],
     ['id' => 'agents', 'label' => 'Agentes', 'icon' => 'agents'],
-    ['id' => 'host-monitor', 'label' => 'Host Monitor', 'icon' => 'hostMonitor'],
+
     ['id' => 'alerts', 'label' => 'Alertas', 'icon' => 'alerts'],
     ['id' => 'reports', 'label' => 'Reportes', 'icon' => 'reports'],
     ['id' => 'databases', 'label' => 'Bases de Datos', 'icon' => 'databases'],

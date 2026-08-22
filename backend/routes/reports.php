@@ -94,6 +94,22 @@ function pdf_data_table(array $headers, array $rows): string {
     return $out . '</tbody></table>';
 }
 
+function url_accessible($url) {
+    if (empty($url) || !filter_var($url, FILTER_VALIDATE_URL)) return ['status' => 'No es URL', 'http' => '—'];
+    if (!function_exists('curl_init')) return ['status' => 'No se puede verificar (curl no disponible)', 'http' => '—'];
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_NOBODY, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_USERAGENT, 'SecureLab-Report/1.0');
+    curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    $ok = $code >= 200 && $code < 400;
+    return ['status' => $ok ? 'Accesible' : 'No accesible', 'http' => (string)$code];
+}
+
 function download() {
     $user = Auth::requireAuth();
     $id = $_GET['id'] ?? '';
@@ -109,6 +125,16 @@ function download() {
         $reportTitle = $report['title'] ?? ('Reporte de Cumplimiento - ' . date('Y-m-d'));
     }
 
+    if (!empty($report['type']) && $report['type'] !== 'compliance') {
+        if ($report['type'] === 'security') {
+            downloadSecurityReport($user, $report);
+            exit;
+        } elseif ($report['type'] === 'training') {
+            downloadTrainingReport($user, $report);
+            exit;
+        }
+    }
+
     $uid = $user['_id'];
     $agents = $db->find('agents', ['userId' => $uid]);
     $databases = $db->find('databases', ['userId' => $uid]);
@@ -121,6 +147,10 @@ function download() {
     $trainings = $db->find('compliance_trainings', ['userId' => $uid]);
     $pseudoRules = $db->find('compliance_pseudonymization', ['userId' => $uid]);
     $auditLogs = $db->find('audit_logs', ['userId' => $uid], ['limit' => 50]);
+    $fileEvents = $db->find('file_events', ['userId' => $uid], ['limit' => 100]);
+    $dbLogs = $db->find('database_logs', ['userId' => $uid], ['limit' => 100]);
+    $hostEvents = $db->find('host_events', ['userId' => $uid], ['limit' => 100]);
+    $fileAudits = $db->find('file_audit_logs', ['userId' => $uid], ['limit' => 100]);
 
     $companyName = $config['companyName'] ?? ($user['companyName'] ?? ($user['email'] ?? 'Empresa'));
     $months = ['', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -181,7 +211,7 @@ function download() {
         ['category' => 'Medidas de Seguridad', 'items' => [
             ['label' => 'Nivel de seguridad adecuado al riesgo', 'pass' => $complianceLevel !== '' && $complianceLevel !== 'basic', 'article' => 'Art. 14 quinquies', 'severity' => 'grave', 'detail' => $complianceLevel !== '' ? ('Nivel: ' . $complianceLevel) : 'No se ha evaluado el nivel de seguridad'],
             ['label' => 'Cifrado/seudonimización implementado', 'pass' => $hasPseudo, 'article' => 'Art. 14 quinquies', 'severity' => 'grave', 'detail' => $hasPseudo ? (count($pseudoRules) . ' regla(s) de seudonimización') : 'No se han configurado reglas de seudonimización'],
-            ['label' => 'Monitoreo de seguridad activo', 'pass' => $onlineAgents > 0, 'article' => 'Art. 14 quinquies', 'severity' => 'grave', 'detail' => $onlineAgents > 0 ? ($onlineAgents . ' agente(s) monitoreando') : 'No hay agentes de monitoreo activos'],
+            ['label' => 'Monitoreo de seguridad activo', 'pass' => $onlineAgents > 0, 'article' => 'Art. 14 quinquies', 'severity' => 'grave', 'detail' => $onlineAgents > 0 ? ($onlineAgents . ' agente(s) en línea · ' . count($hostEvents) . ' eventos de host · ' . count($fileEvents) . ' eventos de archivo · ' . count($dbLogs) . ' logs de BBDD') : 'No hay agentes de monitoreo activos'],
         ]],
         ['category' => 'Brechas de Seguridad', 'items' => [
             ['label' => 'Protocolo de notificación de brechas', 'pass' => !$hasBreaches || $resolvedBreaches > 0, 'article' => 'Art. 14 sexies', 'severity' => 'gravísima', 'detail' => $hasBreaches ? ($resolvedBreaches . ' brecha(s) resuelta(s) de ' . count($breaches) . ' total') : 'Sin incidentes registrados'],
@@ -431,8 +461,69 @@ function download() {
         $html .= '</div>';
     }
 
+    // ====== EVIDENCIA DE AGENTES ======
+    $html .= '<div class="page"></div>' . pdf_page_band('Evidencia de Agentes de Seguridad') . '<div class="content">';
+    $html .= pdf_section_title(10, 'Indicadores de Seguridad');
+    $html .= pdf_fields([
+        ['Agentes en línea', (string)$onlineAgents],
+        ['Eventos de host', (string)count($hostEvents)],
+        ['Eventos de archivo', (string)count($fileEvents)],
+        ['Logs de BBDD', (string)count($dbLogs)],
+        ['Auditorías de archivos', (string)count($fileAudits)],
+    ]);
+    $html .= '<p class="body-text">Los datos siguientes provienen del monitoreo continuo de agentes instalados en los endpoints y bases de datos. Esta evidencia permite verificar el cumplimiento de las medidas de seguridad del Art. 14 quinquies de la Ley 21.719.</p>';
+
+    if (count($fileEvents) > 0) {
+        $html .= pdf_section_title(11, 'Eventos de Archivo Recientes (' . count($fileEvents) . ')');
+        $html .= pdf_data_table(
+            ['Fecha', 'Ruta', 'Evento'],
+            array_map(fn($e) => [
+                substr(($e['timestamp'] ?? $e['createdAt'] ?? ''), 0, 16),
+                $e['path'] ?? '-',
+                $e['eventType'] ?? '-',
+            ], array_slice($fileEvents, 0, 10))
+        );
+    }
+
+    if (count($dbLogs) > 0) {
+        $html .= pdf_section_title(12, 'Logs de Base de Datos Recientes (' . count($dbLogs) . ')');
+        $html .= pdf_data_table(
+            ['Fecha', 'Base de Datos', 'Operación'],
+            array_map(fn($l) => [
+                substr(($l['timestamp'] ?? $l['createdAt'] ?? ''), 0, 16),
+                $l['database'] ?? '-',
+                $l['operation'] ?? ($l['query'] ?? '-'),
+            ], array_slice($dbLogs, 0, 10))
+        );
+    }
+
+    if (count($hostEvents) > 0) {
+        $html .= pdf_section_title(13, 'Eventos de Sistema Recientes (' . count($hostEvents) . ')');
+        $html .= pdf_data_table(
+            ['Fecha', 'Título', 'Severidad'],
+            array_map(fn($e) => [
+                substr(($e['timestamp'] ?? $e['createdAt'] ?? ''), 0, 16),
+                $e['title'] ?? ($e['event'] ?? '-'),
+                $e['severity'] ?? '-',
+            ], array_slice($hostEvents, 0, 10))
+        );
+    }
+
+    if (count($fileAudits) > 0) {
+        $html .= pdf_section_title(14, 'Auditoría de Archivos Reciente (' . count($fileAudits) . ')');
+        $html .= pdf_data_table(
+            ['Fecha', 'Archivo', 'Acción'],
+            array_map(fn($a) => [
+                substr(($a['createdAt'] ?? $a['timestamp'] ?? ''), 0, 16),
+                $a['fileName'] ?? ($a['path'] ?? '-'),
+                $a['action'] ?? '-',
+            ], array_slice($fileAudits, 0, 10))
+        );
+    }
+    $html .= '</div>';
+
     // ====== RECOMENDACIONES ======
-    $sectionNum = 10;
+    $sectionNum = 15;
     $recs = [];
     if (!$hasDpd) $recs[] = ['ALTA', 'Designar un Delegado de Protección de Datos (DPD) según Art. 28. Este será el responsable de supervisar el cumplimiento continuo de la ley.', 'Art. 28'];
     if (!$hasApdp) $recs[] = ['ALTA', 'Inscribirse en el Registro Nacional de Sanciones y Cumplimiento de la APDP antes del 1 de diciembre de 2026.', 'Art. 31'];
@@ -455,6 +546,25 @@ function download() {
         $html .= '<td><div class="rec-text">' . h_($text) . '</div><div class="rec-art">' . h_($art) . '</div></td>';
         $html .= '</tr></table></div>';
     }
+    $html .= '</div>';
+
+    // ====== VALIDACIONES EXTERNAS ======
+    $html .= '<div class="page"></div>' . pdf_page_band('Validaciones Externas') . '<div class="content">';
+    $html .= pdf_section_title($sectionNum++, 'Verificación de Recursos Públicos');
+    $html .= '<div class="art-note">Esta sección intenta verificar la accesibilidad pública de políticas documentadas. La validación real ante la APDP depende de mecanismos oficiales (no disponibles en API pública al cierre de esta versión).</div>';
+    $privacyOk = url_accessible($config['privacyPolicyUrl'] ?? '');
+    $cookiesOk = url_accessible($config['cookiesPolicyUrl'] ?? '');
+    $retentionOk = url_accessible($config['dataRetentionPolicy'] ?? '');
+    $apdpOk = $hasApdp ? ['status' => 'Registrado declarado', 'http' => '—'] : ['status' => 'Sin registro declarado', 'http' => '—'];
+    $html .= pdf_data_table(
+        ['Recurso', 'Estado', 'HTTP', 'Observación'],
+        [
+            ['Política de privacidad', $privacyOk['status'], $privacyOk['http'], $hasPrivacyPolicy ? 'URL configurada' : 'No configurada'],
+            ['Política de cookies', $cookiesOk['status'], $cookiesOk['http'], $hasCookiesPolicy ? 'URL configurada' : 'No configurada'],
+            ['Política de retención', $retentionOk['status'], $retentionOk['http'], $hasRetentionPolicy ? 'URL configurada' : 'No configurada'],
+            ['Registro APDP', $apdpOk['status'], $apdpOk['http'], 'Requiere verificación manual o API de la APDP'],
+        ]
+    );
     $html .= '</div>';
 
     // ====== MARCO LEGAL ======
@@ -481,6 +591,13 @@ function download() {
     $html .= '<div class="body-text">Fecha de emisión: ' . h_($dateStr) . '</div>';
     $html .= '<div class="body-text">Score de cumplimiento: ' . $passRate . '%</div>';
     $html .= '<div class="body-text">Requisitos evaluados: ' . $totalChecks . ' · Cumplidos: ' . $passedChecks . ' · Pendientes: ' . ($totalChecks - $passedChecks) . '</div>';
+    $html .= pdf_section_title($sectionNum++, 'Trazabilidad del Documento');
+    $html .= pdf_fields([
+        ['ID del reporte', $report['_id'] ?? ('all-' . date('Ymd-His'))],
+        ['Generado por', $user['email'] ?? '—'],
+        ['Fecha/hora UTC', date('c')],
+        ['Plataforma', 'SecureLab / Ley 21.719'],
+    ]);
     $html .= '<div class="close-rule"></div>';
     $html .= '<div class="close-center">Documento generado electrónicamente · Ley 21.719 · Protección de Datos Personales · Chile</div>';
     $html .= '<div class="close-muted">Fecha de emisión: ' . h_($dateStr) . ' · Confidencial</div>';
@@ -495,6 +612,278 @@ function download() {
 
     header('Content-Type: application/pdf');
     header('Content-Disposition: attachment; filename="' . $filename . '"');
+    echo $dompdf->output();
+    exit;
+}
+
+function downloadSecurityReport($user, $report) {
+    $db = Database::getInstance();
+    $uid = $user['_id'];
+    $config = $db->findOne('compliance_config', ['userId' => $uid]) ?? [];
+    $companyName = $config['companyName'] ?? ($user['companyName'] ?? ($user['email'] ?? 'Empresa'));
+
+    $fileEvents = $db->find('file_events', ['userId' => $uid]);
+    $dbLogs = $db->find('database_logs', ['userId' => $uid]);
+    $hostEvents = $db->find('host_events', ['userId' => $uid]);
+    $fileAudits = $db->find('file_audit_logs', ['userId' => $uid]);
+    $agents = $db->find('agents', ['userId' => $uid]);
+
+    $highSeverity = fn($ev) => in_array(($ev['severity'] ?? $ev['level'] ?? ''), ['critical', 'high', 'alta', 'critico']);
+    $criticalCount = count(array_filter(array_merge($fileEvents, $dbLogs, $hostEvents, $fileAudits), $highSeverity));
+    $totalEvents = count($fileEvents) + count($dbLogs) + count($hostEvents) + count($fileAudits);
+    $onlineAgents = count(array_filter($agents, fn($a) => ($a['status'] ?? '') === 'online'));
+
+    $recent = array_slice(array_merge($fileEvents, $dbLogs, $hostEvents, $fileAudits), 0, 15);
+    usort($recent, fn($a, $b) => strcmp(($b['timestamp'] ?? $b['createdAt'] ?? ''), ($a['timestamp'] ?? $a['createdAt'] ?? '')));
+
+    $riskScore = $totalEvents > 0 ? max(0, min(100, (int)round($criticalCount / $totalEvents * 100))) : 0;
+    $level = $riskScore >= 70 ? 'CRÍTICO' : ($riskScore >= 40 ? 'ALTO' : ($riskScore >= 15 ? 'MEDIO' : 'BAJO'));
+
+    $recommendations = [];
+    if ($criticalCount > 0) $recommendations[] = ['ALTA', 'Revisar inmediatamente los eventos críticos detectados en equipos, bases de datos y archivos.'];
+    if (count($fileEvents) > 0) $recommendations[] = ['ALTA', 'Verificar integridad de archivos sensibles y control de accesos.'];
+    if (count($dbLogs) > 0) $recommendations[] = ['MEDIA', 'Auditar consultas anómalas a bases de datos y reforzar permisos.'];
+    if (count($hostEvents) > 0) $recommendations[] = ['MEDIA', 'Revisar actividad de procesos, usuarios y conexiones en endpoints.'];
+    if (count($fileAudits) > 0) $recommendations[] = ['MEDIA', 'Reforzar monitoreo de auditoría de archivos y accesos no autorizados.'];
+    if (empty($recommendations)) $recommendations[] = ['BAJA', 'No se registraron eventos de seguridad en el período. Mantener monitoreo continuo.'];
+
+    $css = "
+        @page{margin:0}
+        body{font-family:'DejaVu Sans',Arial,sans-serif;margin:0;padding:0;color:#1a1a1a;font-size:9px}
+        .footer-fixed{position:fixed;bottom:0;left:0;right:0;height:22px;background:#f5f5f5;border-top:0.5px solid #cccccc;color:#999999;font-size:7px;padding:6px 45px 0 45px}
+        .cover{page-break-after:always;padding:0}
+        .cover-topline{height:2px;background:#000000;width:100%}
+        .cover-body{padding:0 45px;text-align:center}
+        .cover-label{color:#777777;font-size:9px;margin-top:118px}
+        .cover-law{color:#777777;font-size:8px;margin-top:6px}
+        .cover-sep{border-top:0.5px solid #000000;margin:26px 60px 0 60px}
+        .cover-company{color:#1a1a1a;font-size:14px;font-weight:bold;margin-top:28px;text-transform:uppercase}
+        .cover-title{color:#1a1a1a;font-size:20px;font-weight:bold;margin-top:14px}
+        .cover-sub{color:#555555;font-size:10px;margin-top:24px}
+        .cover-sep2{border-top:0.5px solid #000000;margin:24px 60px 0 60px}
+        .cover-box{background:#f5f5f5;border:0.5px solid #bbbbbb;margin:28px 60px 0 60px;padding:8px 10px;text-align:center}
+        .cover-box .lbl{color:#555555;font-size:8px}
+        .cover-box .val{color:#1a1a1a;font-size:10px;font-weight:bold;margin-top:3px}
+        .page{page-break-before:always}
+        .page-band{background:#000000;padding:9px 45px 10px 45px}
+        .band-sub{color:#ffffff;font-size:8px}
+        .band-title{color:#ffffff;font-size:10px;font-weight:bold;margin-top:2px}
+        .content{padding:20px 45px 40px 45px}
+        .sec-title{border-collapse:collapse;margin-top:14px;width:100%}
+        .sec-bar{width:4px;background:#000000;padding:0}
+        .sec-num{width:26px;color:#000000;font-size:9px;font-weight:bold;padding:2px 0 2px 10px;vertical-align:top}
+        .sec-text{color:#1a1a1a;font-size:14px;font-weight:bold;padding:0 0 0 4px}
+        .sec-rule{border-bottom:0.5px solid #bbbbbb;margin:6px 0 10px 0}
+        .fields{border-collapse:collapse;margin-top:4px}
+        .f-label{color:#555555;font-size:8px;width:125px;padding:4px 0}
+        .f-value{color:#1a1a1a;font-size:9px;font-weight:bold;padding:4px 0}
+        .data{width:100%;border-collapse:collapse;margin-top:8px}
+        .data th{background:#1a1a1a;color:#777777;font-size:7.5px;font-weight:bold;text-align:left;padding:7px 8px}
+        .data td{color:#1a1a1a;font-size:7.5px;padding:5px 8px}
+        .data tr.alt td{background:#f1f5f9}
+        .kpi{color:#1a1a1a;font-size:9px;line-height:1.9}
+    ";
+
+    $html = "<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'><title>Reporte de Seguridad</title><style>$css</style></head><body>";
+    $html .= '<div class="footer-fixed">Ley 21.719 · Reporte de Seguridad</div>';
+
+    $months = ['', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    $dateStr = date('j') . ' de ' . $months[(int)date('n')] . ' de ' . date('Y');
+
+    $html .= '<div class="cover"><div class="cover-topline"></div><div class="cover-body">';
+    $html .= '<div class="cover-label">REPÚBLICA DE CHILE</div>';
+    $html .= '<div class="cover-law">Ley 21.719 - Protección de Datos Personales</div>';
+    $html .= '<div class="cover-sep"></div>';
+    $html .= '<div class="cover-company">' . h_($companyName) . '</div>';
+    $html .= '<div class="cover-title">Reporte de Seguridad</div>';
+    $html .= '<div class="cover-sub">Análisis de eventos e integridad de la información</div>';
+    $html .= '<div class="cover-sep2"></div>';
+    $html .= '<div class="cover-box"><div class="lbl">FECHA DE EMISIÓN</div><div class="val">' . h_($dateStr) . '</div></div>';
+    $html .= '</div></div>';
+
+    $html .= '<div class="page"></div><div class="page-band"><div class="band-sub">Ley 21.719 · Protección de Datos Personales · Chile</div><div class="band-title">Resumen Ejecutivo de Seguridad</div></div><div class="content">';
+    $html .= '<table class="sec-title"><tr><td class="sec-bar"></td><td class="sec-num">01</td><td class="sec-text">Indicadores de Riesgo</td></tr></table><div class="sec-rule"></div>';
+    $html .= '<div class="kpi">';
+    $html .= 'Nivel de riesgo: <strong>' . h_($level) . ' (' . $riskScore . '%)</strong><br>';
+    $html .= 'Eventos totales: ' . $totalEvents . '<br>';
+    $html .= 'Eventos críticos/altos: ' . $criticalCount . '<br>';
+    $html .= 'Eventos de archivos: ' . count($fileEvents) . '<br>';
+    $html .= 'Eventos de bases de datos: ' . count($dbLogs) . '<br>';
+    $html .= 'Eventos de host: ' . count($hostEvents) . '<br>';
+    $html .= 'Auditorías de archivos: ' . count($fileAudits) . '<br>';
+    $html .= 'Agentes en línea: ' . $onlineAgents . ' / ' . count($agents) . '<br>';
+    $html .= '</div>';
+    $html .= '</div>';
+
+    $html .= '<div class="page"></div><div class="page-band"><div class="band-sub">Ley 21.719 · Protección de Datos Personales · Chile</div><div class="band-title">Eventos Recientes de Seguridad</div></div><div class="content">';
+    $html .= '<table class="sec-title"><tr><td class="sec-bar"></td><td class="sec-num">02</td><td class="sec-text">Últimos eventos detectados</td></tr></table><div class="sec-rule"></div>';
+    if (empty($recent)) {
+        $html .= '<p style="font-size:10px">No se registraron eventos recientes.</p>';
+    } else {
+        $html .= '<table class="data"><thead><tr><th>Fuente</th><th>Severidad</th><th>Descripción</th><th>Fecha</th></tr></thead><tbody>';
+        foreach ($recent as $i => $ev) {
+            $source = $ev['source'] ?? ($ev['collection'] ?? 'Sistema');
+            $sev = $ev['severity'] ?? $ev['level'] ?? 'info';
+            $desc = $ev['message'] ?? $ev['description'] ?? $ev['action'] ?? json_encode($ev);
+            $ts = $ev['timestamp'] ?? $ev['createdAt'] ?? '';
+            $html .= '<tr' . ($i % 2 === 1 ? ' class="alt"' : '') . '><td>' . h_($source) . '</td><td>' . h_($sev) . '</td><td>' . h_(substr($desc, 0, 120)) . '</td><td>' . h_(substr($ts, 0, 16)) . '</td></tr>';
+        }
+        $html .= '</tbody></table>';
+    }
+    $html .= '</div>';
+
+    $html .= '<div class="page"></div><div class="page-band"><div class="band-sub">Ley 21.719 · Protección de Datos Personales · Chile</div><div class="band-title">Recomendaciones</div></div><div class="content">';
+    $html .= '<table class="sec-title"><tr><td class="sec-bar"></td><td class="sec-num">03</td><td class="sec-text">Acciones recomendadas</td></tr></table><div class="sec-rule"></div>';
+    $html .= '<table class="data"><thead><tr><th>Prioridad</th><th>Recomendación</th></tr></thead><tbody>';
+    foreach ($recommendations as $i => $rec) {
+        $html .= '<tr' . ($i % 2 === 1 ? ' class="alt"' : '') . '><td>' . h_($rec[0]) . '</td><td>' . h_($rec[1]) . '</td></tr>';
+    }
+    $html .= '</tbody></table>';
+    $html .= '<p style="font-size:8px;color:#555;margin-top:20px">Art. 14 quinquies Ley 21.719: el responsable debe implementar medidas técnicas y organizativas adecuadas al riesgo para garantizar la seguridad, confidencialidad, integridad y disponibilidad de los datos personales.</p>';
+    $html .= '</div>';
+
+    $html .= '</body></html>';
+
+    $dompdf = new Dompdf\Dompdf();
+    $dompdf->setPaper('A4', 'portrait');
+    $dompdf->loadHtml($html);
+    $dompdf->render();
+
+    header('Content-Type: application/pdf');
+    header('Content-Disposition: attachment; filename="reporte_seguridad_' . ($report['_id'] ?? date('Ymd')) . '.pdf"');
+    echo $dompdf->output();
+    exit;
+}
+
+function downloadTrainingReport($user, $report) {
+    $db = Database::getInstance();
+    $uid = $user['_id'];
+    $config = $db->findOne('compliance_config', ['userId' => $uid]) ?? [];
+    $companyName = $config['companyName'] ?? ($user['companyName'] ?? ($user['email'] ?? 'Empresa'));
+    $trainings = $db->find('compliance_trainings', ['userId' => $uid]);
+
+    $topicLabels = ['proteccion_datos' => 'Protección de Datos Personales', 'ciberseguridad' => 'Ciberseguridad', 'brechas' => 'Protocolo de Brechas', 'arco' => 'Derechos ARCO', 'consentimientos' => 'Gestión de Consentimientos', 'general' => 'General'];
+    $total = count($trainings);
+    $signed = count(array_filter($trainings, fn($t) => !empty($t['signatureData'])));
+    $completed = count(array_filter($trainings, fn($t) => !empty($t['completed']) || !empty($t['signatureData'])));
+    $pending = $total - $completed;
+
+    $byTopic = [];
+    foreach ($trainings as $t) {
+        $topic = $t['topic'] ?? 'general';
+        if (!isset($byTopic[$topic])) $byTopic[$topic] = ['total' => 0, 'signed' => 0];
+        $byTopic[$topic]['total']++;
+        if (!empty($t['signatureData'])) $byTopic[$topic]['signed']++;
+    }
+
+    $css = "
+        @page{margin:0}
+        body{font-family:'DejaVu Sans',Arial,sans-serif;margin:0;padding:0;color:#1a1a1a;font-size:9px}
+        .footer-fixed{position:fixed;bottom:0;left:0;right:0;height:22px;background:#f5f5f5;border-top:0.5px solid #cccccc;color:#999999;font-size:7px;padding:6px 45px 0 45px}
+        .cover{page-break-after:always;padding:0}
+        .cover-topline{height:2px;background:#000000;width:100%}
+        .cover-body{padding:0 45px;text-align:center}
+        .cover-label{color:#777777;font-size:9px;margin-top:118px}
+        .cover-law{color:#777777;font-size:8px;margin-top:6px}
+        .cover-sep{border-top:0.5px solid #000000;margin:26px 60px 0 60px}
+        .cover-company{color:#1a1a1a;font-size:14px;font-weight:bold;margin-top:28px;text-transform:uppercase}
+        .cover-title{color:#1a1a1a;font-size:20px;font-weight:bold;margin-top:14px}
+        .cover-sub{color:#555555;font-size:10px;margin-top:24px}
+        .cover-sep2{border-top:0.5px solid #000000;margin:24px 60px 0 60px}
+        .cover-box{background:#f5f5f5;border:0.5px solid #bbbbbb;margin:28px 60px 0 60px;padding:8px 10px;text-align:center}
+        .cover-box .lbl{color:#555555;font-size:8px}
+        .cover-box .val{color:#1a1a1a;font-size:10px;font-weight:bold;margin-top:3px}
+        .page{page-break-before:always}
+        .page-band{background:#000000;padding:9px 45px 10px 45px}
+        .band-sub{color:#ffffff;font-size:8px}
+        .band-title{color:#ffffff;font-size:10px;font-weight:bold;margin-top:2px}
+        .content{padding:20px 45px 40px 45px}
+        .sec-title{border-collapse:collapse;margin-top:14px;width:100%}
+        .sec-bar{width:4px;background:#000000;padding:0}
+        .sec-num{width:26px;color:#000000;font-size:9px;font-weight:bold;padding:2px 0 2px 10px;vertical-align:top}
+        .sec-text{color:#1a1a1a;font-size:14px;font-weight:bold;padding:0 0 0 4px}
+        .sec-rule{border-bottom:0.5px solid #bbbbbb;margin:6px 0 10px 0}
+        .fields{border-collapse:collapse;margin-top:4px}
+        .f-label{color:#555555;font-size:8px;width:125px;padding:4px 0}
+        .f-value{color:#1a1a1a;font-size:9px;font-weight:bold;padding:4px 0}
+        .data{width:100%;border-collapse:collapse;margin-top:8px}
+        .data th{background:#1a1a1a;color:#777777;font-size:7.5px;font-weight:bold;text-align:left;padding:7px 8px}
+        .data td{color:#1a1a1a;font-size:7.5px;padding:5px 8px}
+        .data tr.alt td{background:#f1f5f9}
+        .kpi{color:#1a1a1a;font-size:9px;line-height:1.9}
+    ";
+
+    $html = "<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'><title>Reporte de Capacitación</title><style>$css</style></head><body>";
+    $html .= '<div class="footer-fixed">Ley 21.719 · Reporte de Capacitación</div>';
+
+    $months = ['', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    $dateStr = date('j') . ' de ' . $months[(int)date('n')] . ' de ' . date('Y');
+
+    $html .= '<div class="cover"><div class="cover-topline"></div><div class="cover-body">';
+    $html .= '<div class="cover-label">REPÚBLICA DE CHILE</div>';
+    $html .= '<div class="cover-law">Ley 21.719 - Protección de Datos Personales</div>';
+    $html .= '<div class="cover-sep"></div>';
+    $html .= '<div class="cover-company">' . h_($companyName) . '</div>';
+    $html .= '<div class="cover-title">Reporte de Capacitación</div>';
+    $html .= '<div class="cover-sub">Programa de formación en protección de datos personales</div>';
+    $html .= '<div class="cover-sep2"></div>';
+    $html .= '<div class="cover-box"><div class="lbl">FECHA DE EMISIÓN</div><div class="val">' . h_($dateStr) . '</div></div>';
+    $html .= '</div></div>';
+
+    $html .= '<div class="page"></div><div class="page-band"><div class="band-sub">Ley 21.719 · Protección de Datos Personales · Chile</div><div class="band-title">Resumen Ejecutivo</div></div><div class="content">';
+    $html .= '<table class="sec-title"><tr><td class="sec-bar"></td><td class="sec-num">01</td><td class="sec-text">Indicadores de Capacitación</td></tr></table><div class="sec-rule"></div>';
+    $html .= '<div class="kpi">';
+    $html .= 'Total capacitaciones registradas: ' . $total . '<br>';
+    $html .= 'Completadas/firmadas: ' . $completed . '<br>';
+    $html .= 'Pendientes: ' . $pending . '<br>';
+    $html .= 'Con firma digital: ' . $signed . '<br>';
+    $html .= '</div>';
+    $html .= '<p style="font-size:9px;line-height:1.5;margin-top:12px">Art. 28 letra c) Ley 21.719: el responsable debe implementar programas de capacitación periódica en protección de datos personales para todo el personal que participe en operaciones de tratamiento.</p>';
+    $html .= '</div>';
+
+    $html .= '<div class="page"></div><div class="page-band"><div class="band-sub">Ley 21.719 · Protección de Datos Personales · Chile</div><div class="band-title">Cobertura por Tema</div></div><div class="content">';
+    $html .= '<table class="sec-title"><tr><td class="sec-bar"></td><td class="sec-num">02</td><td class="sec-text">Capacitaciones por área</td></tr></table><div class="sec-rule"></div>';
+    if (empty($byTopic)) {
+        $html .= '<p style="font-size:10px">No se registraron capacitaciones.</p>';
+    } else {
+        $html .= '<table class="data"><thead><tr><th>Tema</th><th>Total</th><th>Firmados</th><th>%</th></tr></thead><tbody>';
+        $i = 0;
+        foreach ($byTopic as $topic => $data) {
+            $label = $topicLabels[$topic] ?? ucfirst($topic);
+            $pct = $data['total'] > 0 ? round($data['signed'] / $data['total'] * 100) . '%' : '0%';
+            $html .= '<tr' . ($i % 2 === 1 ? ' class="alt"' : '') . '><td>' . h_($label) . '</td><td>' . $data['total'] . '</td><td>' . $data['signed'] . '</td><td>' . $pct . '</td></tr>';
+            $i++;
+        }
+        $html .= '</tbody></table>';
+    }
+    $html .= '</div>';
+
+    $html .= '<div class="page"></div><div class="page-band"><div class="band-sub">Ley 21.719 · Protección de Datos Personales · Chile</div><div class="band-title">Registro de Participantes</div></div><div class="content">';
+    $html .= '<table class="sec-title"><tr><td class="sec-bar"></td><td class="sec-num">03</td><td class="sec-text">Colaboradores capacitados</td></tr></table><div class="sec-rule"></div>';
+    if (empty($trainings)) {
+        $html .= '<p style="font-size:10px">No se encontraron registros de colaboradores.</p>';
+    } else {
+        $html .= '<table class="data"><thead><tr><th>Colaborador</th><th>Tema</th><th>Estado</th><th>Fecha</th></tr></thead><tbody>';
+        foreach (array_slice($trainings, 0, 30) as $i => $t) {
+            $name = $t['employeeName'] ?? '—';
+            $topic = $topicLabels[$t['topic'] ?? ''] ?? ucfirst($t['topic'] ?? '—');
+            $status = !empty($t['signatureData']) ? 'Firmado' : (!empty($t['completed']) ? 'Completado' : 'Pendiente');
+            $date = !empty($t['date']) ? $t['date'] : (!empty($t['createdAt']) ? substr($t['createdAt'], 0, 10) : '—');
+            $html .= '<tr' . ($i % 2 === 1 ? ' class="alt"' : '') . '><td>' . h_($name) . '</td><td>' . h_($topic) . '</td><td>' . h_($status) . '</td><td>' . h_(substr($date, 0, 10)) . '</td></tr>';
+        }
+        $html .= '</tbody></table>';
+    }
+    $html .= '</div>';
+
+    $html .= '</body></html>';
+
+    $dompdf = new Dompdf\Dompdf();
+    $dompdf->setPaper('A4', 'portrait');
+    $dompdf->loadHtml($html);
+    $dompdf->render();
+
+    header('Content-Type: application/pdf');
+    header('Content-Disposition: attachment; filename="reporte_capacitacion_' . ($report['_id'] ?? date('Ymd')) . '.pdf"');
     echo $dompdf->output();
     exit;
 }
