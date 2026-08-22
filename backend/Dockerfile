@@ -7,7 +7,7 @@ FROM golang:1.25-alpine AS agent-builder
 WORKDIR /src
 
 # Copiar el código del agente (está en backend/securelab-agent/)
-COPY backend/securelab-agent/ .
+COPY securelab-agent/ .
 
 # Sincronizar dependencias y generar vendor (para builds reproducibles)
 RUN go mod tidy && go mod vendor
@@ -58,7 +58,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 # Configurar nginx (está en backend/nginx.conf)
-COPY backend/nginx.conf /etc/nginx/sites-available/default
+COPY nginx.conf /etc/nginx/sites-available/default
 RUN rm -f /etc/nginx/sites-enabled/default && \
     ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
 
@@ -67,11 +67,11 @@ RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 
 # Instalar dependencias PHP (composer)
 WORKDIR /var/www/html
-COPY backend/composer.json ./composer.json
+COPY composer.json ./composer.json
 RUN composer install --no-dev --no-interaction --prefer-source --optimize-autoloader --no-security-blocking --ignore-platform-req=ext-gd
 
 # Copiar el resto de la aplicación PHP (backend)
-COPY backend/ .
+COPY . .
 
 # Copiar solo los binarios del agente (no el código fuente completo)
 COPY --from=agent-builder /out/ /var/www/html/agent-bin/
@@ -84,7 +84,7 @@ RUN mkdir -p /var/www/html/data /var/www/html/uploads /var/www/html/reports /var
     && chown -R www-data:www-data /var/www/html
 
 # Script de inicio (arranca PHP-FPM, WebSocket y nginx)
-COPY backend/start.sh /start.sh
+COPY start.sh /start.sh
 RUN chmod +x /start.sh
 
 EXPOSE 3838
