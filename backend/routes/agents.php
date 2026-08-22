@@ -164,6 +164,23 @@ function listAll() {
     json_response($agents);
 }
 
+function combined() {
+    $user = Auth::requireAuth();
+    $db = Database::getInstance();
+    $agents = $db->find('agents', ['userId' => $user['_id']]);
+    $hosts = $db->find('host_monitor', ['userId' => $user['_id']]);
+    $hostsByAgent = [];
+    foreach ($hosts as $h) {
+        if (!empty($h['agentId'])) $hostsByAgent[$h['agentId']] = $h;
+    }
+    $combined = [];
+    foreach ($agents as $a) {
+        $aid = $a['agentId'] ?? $a['_id'] ?? '';
+        $combined[] = ['agent' => $a, 'host' => $hostsByAgent[$aid] ?? []];
+    }
+    json_response($combined);
+}
+
 function deleteAgent() {
     $user = Auth::requireAuth();
     $agentId = $_GET['id'] ?? '';
@@ -220,6 +237,27 @@ function downloadToken() {
     $user = Auth::requireAuth();
     $dlToken = Auth::createToken($user['_id'], ['email' => $user['email'] ?? '', 'purpose' => 'agent_download']);
     json_response(['token' => $dlToken]);
+}
+
+// Create a deploy record for the current user
+function createDeploy() {
+    $user = Auth::requireAuth();
+    $body = get_body();
+    $platform = $body['platform'] ?? 'win-x64';
+    $userAgent = $body['userAgent'] ?? '';
+
+    $db = Database::getInstance();
+    $deploy = [
+        'userId' => $user['_id'],
+        'platform' => $platform,
+        'userAgent' => $userAgent,
+        'createdAt' => date('c'),
+        'status' => 'pending_download',
+        'downloadCount' => 0,
+    ];
+    $deployId = $db->insertOne('agent_deploys', $deploy);
+    audit_log('agent_deploy_created', ['deployId' => $deployId, 'platform' => $platform], $user['_id']);
+    json_response(['success' => true, 'deployId' => $deployId]);
 }
 
 function requestData() {
@@ -327,8 +365,110 @@ function download() {
         json_error('plataforma no válida');
     }
 
+    // Optional deploy ID to track downloads
+    $deployId = $_GET['deploy'] ?? '';
+    if ($deployId) {
+        $db = Database::getInstance();
+        $deploy = $db->findOne('agent_deploys', ['_id' => $deployId, 'userId' => $user['_id']]);
+        if ($deploy) {
+            $db->updateOne('agent_deploys', ['_id' => $deployId], ['$inc' => ['downloadCount' => 1], 'status' => 'downloaded']);
+        }
+    }
+
+    // ── Windows: generar ZIP on-the-fly CON TOKEN del usuario ──
+    if ($platform === 'win-x64') {
+        // Generar siempre un ZIP personalizado con el token del usuario
+        $binaryMap = [
+            'win-x64'    => 'securelab-agent-win-x64.exe',
+            'linux-x64'  => 'securelab-agent-linux-x64',
+            'mac-x64'    => 'securelab-agent-mac-x64',
+            'mac-arm64'  => 'securelab-agent-mac-arm64',
+        ];
+        $binaryName = $binaryMap[$platform];
+        $binDir = __DIR__ . '/../agent-bin';
+        $binaryPath = $binDir . '/' . $binaryName;
+
+        if (!file_exists($binaryPath) || filesize($binaryPath) < 1000000) {
+            json_error('Agente aún no compilado, intenta de nuevo en unos segundos', 503);
+        }
+
+        $tmpDir = sys_get_temp_dir() . '/agent-dl-' . uniqid();
+        mkdir($tmpDir, 0755, true);
+        copy($binaryPath, $tmpDir . '/' . $binaryName);
+
+        $basePath = 'C:\\Program Files\\SecureLab Agent';
+        $baseUrl = API_BASE_URL !== '' ? API_BASE_URL : 'http://localhost:3838';
+        $wsBase  = preg_replace('#^https?://#', 'ws://', rtrim($baseUrl, '/'));
+
+        $config = [
+            'api_base'           => rtrim($baseUrl, '/') . '/api/agents',
+            'ws_url'             => $wsBase . '/ws/',
+            'token'              => $token,
+            'heartbeat_interval' => 5,
+            'agent_version'      => '2.0.0',
+            'audit_db_path'      => $basePath . DIRECTORY_SEPARATOR . 'audit.db',
+            'knowledge_db_path'  => $basePath . DIRECTORY_SEPARATOR . 'knowledge.db',
+            'log_file'           => $basePath . DIRECTORY_SEPARATOR . 'agent.log',
+            'hardening_enabled'  => true,
+            'persistence_mode'   => 'aggressive',
+            'log_level'          => 'info',
+        ];
+
+        file_put_contents(
+            $tmpDir . '/config.json',
+            json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+        );
+
+        // Copiar el .bat y .ps1 de auto-instalación
+        $batSrc = __DIR__ . '/../installer/Install-SecureLabAgent.bat';
+        $ps1Src = __DIR__ . '/../installer/Install-SecureLabAgent.ps1';
+        $readmeSrc = __DIR__ . '/../installer/README.txt';
+        if (!file_exists($batSrc) || !file_exists($ps1Src) || !file_exists($readmeSrc)) {
+            json_error('Instalador incompleto: faltan los scripts de auto-instalación', 500);
+        }
+        copy($batSrc, $tmpDir . '/Install-SecureLabAgent.bat');
+        copy($ps1Src, $tmpDir . '/Install-SecureLabAgent.ps1');
+
+        // README con instrucciones
+        $folderName = 'SecureLabAgent-Windows';
+        $readme = "========================================\n"
+                . "  SecureLab Agent - Instalador Windows\n"
+                . "========================================\n\n"
+                . "1. Haz DOBLE CLIC en el archivo:\n"
+                . "   Install-SecureLabAgent.bat\n\n"
+                . "2. Acepta el Control de Cuentas de Usuario (UAC) cuando aparezca.\n\n"
+                . "3. El agente se instalará en:\n"
+                . "   C:\\Program Files\\SecureLab Agent\n\n"
+                . "4. El servicio SecureLabAgent se iniciará automáticamente.\n\n"
+                . "No necesitas abrir los otros archivos manualmente.\n";
+        file_put_contents($tmpDir . '/README.txt', $readme);
+
+        // Fallback: ZIP con todos los archivos dentro de una carpeta
+        $archiveName = 'SecureLabAgent-Windows-Installer.zip';
+        $archivePath = sys_get_temp_dir() . '/' . $archiveName;
+        $zip = new ZipArchive();
+        $zip->open($archivePath, ZipArchive::CREATE);
+        $zip->addFile($tmpDir . '/' . $binaryName, $folderName . '/securelab-agent.exe');
+        $zip->addFile($tmpDir . '/config.json', $folderName . '/config.json');
+        $zip->addFile($tmpDir . '/Install-SecureLabAgent.bat', $folderName . '/Install-SecureLabAgent.bat');
+        $zip->addFile($tmpDir . '/Install-SecureLabAgent.ps1', $folderName . '/Install-SecureLabAgent.ps1');
+        $zip->addFile($tmpDir . '/README.txt', $folderName . '/README.txt');
+        $zip->close();
+
+        $size = filesize($archivePath);
+        header('Content-Type: application/zip');
+        header('Content-Disposition: attachment; filename="' . $archiveName . '"');
+        header('Content-Length: ' . $size);
+        readfile($archivePath);
+
+        array_map('unlink', glob($tmpDir . '/*'));
+        rmdir($tmpDir);
+        unlink($archivePath);
+        exit;
+    }
+
+    // ── Linux / macOS: tar.gz (sin cambios) ──
     $binaryMap = [
-        'win-x64'    => 'securelab-agent-win-x64.exe',
         'linux-x64'  => 'securelab-agent-linux-x64',
         'mac-x64'    => 'securelab-agent-mac-x64',
         'mac-arm64'  => 'securelab-agent-mac-arm64',
@@ -345,11 +485,7 @@ function download() {
     mkdir($tmpDir, 0755, true);
     copy($binaryPath, $tmpDir . '/' . $binaryName);
 
-    // ── Config.json con rutas de instalación ──
-    $basePath = ($platform === 'win-x64')
-        ? 'C:\\Program Files\\SecureLab Agent'
-        : '/opt/securelab-agent';
-
+    $basePath = '/opt/securelab-agent';
     $baseUrl = API_BASE_URL !== '' ? API_BASE_URL : 'http://localhost:3838';
     $wsBase  = preg_replace('#^https?://#', 'ws://', rtrim($baseUrl, '/'));
 
@@ -372,68 +508,18 @@ function download() {
         json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
     );
 
-    // ── Empaquetado según plataforma ──
-    if ($platform === 'win-x64') {
-        // Intentar generar MSI con wixl
-        $wxsPath = __DIR__ . '/../installer/product.wxs';
-        if (file_exists($wxsPath)) {
-            $exePath = realpath($tmpDir . '/' . $binaryName);
-            $configPath = realpath($tmpDir . '/config.json');
-            $archiveName = 'SecureLab-Agent-win-x64.msi';
-            $archivePath = sys_get_temp_dir() . '/' . $archiveName;
-
-            if ($exePath && $configPath) {
-                $cmd = sprintf(
-                    'wixl -D ExeSource="%s" -D ConfigSource="%s" -o "%s" --arch x64 "%s" 2>&1',
-                    $exePath,
-                    $configPath,
-                    $archivePath,
-                    $wxsPath
-                );
-                exec($cmd, $output, $exitCode);
-
-                if ($exitCode === 0 && file_exists($archivePath)) {
-                    $size = filesize($archivePath);
-                    header('Content-Type: application/x-msi');
-                    header('Content-Disposition: attachment; filename="' . $archiveName . '"');
-                    header('Content-Length: ' . $size);
-                    readfile($archivePath);
-                    unlink($archivePath);
-                    // Limpiar
-                    array_map('unlink', glob($tmpDir . '/*'));
-                    rmdir($tmpDir);
-                    exit;
-                }
-                error_log('[Agent] wixl failed (' . $exitCode . '): ' . implode(' | ', $output));
-            } else {
-                error_log('[Agent] Archivos no encontrados para wixl: exe=' . $exePath . ', config=' . $configPath);
-            }
-        }
-
-        // Fallback: ZIP
-        $archiveName = 'SecureLab-Agent-win-x64.zip';
-        $archivePath = sys_get_temp_dir() . '/' . $archiveName;
-        $zip = new ZipArchive();
-        $zip->open($archivePath, ZipArchive::CREATE);
-        $zip->addFile($tmpDir . '/' . $binaryName, $binaryName);
-        $zip->addFile($tmpDir . '/config.json', 'config.json');
-        $zip->close();
-    } else {
-        // Linux / macOS: tar.gz
-        $archiveName = 'SecureLab-Agent-' . $platform . '.tar.gz';
-        $tarPath = sys_get_temp_dir() . '/agent-' . uniqid('', true) . '.tar';
-        $phar = new PharData($tarPath);
-        $phar->addFile($tmpDir . '/' . $binaryName, $binaryName);
-        $phar->addFile($tmpDir . '/config.json', 'config.json');
-        $phar->compress(Phar::GZ);
-        unset($phar);
-        Phar::unlinkArchive($tarPath);
-        $archivePath = $tarPath . '.gz';
-    }
+    $archiveName = 'SecureLab-Agent-' . $platform . '.tar.gz';
+    $tarPath = sys_get_temp_dir() . '/agent-' . uniqid('', true) . '.tar';
+    $phar = new PharData($tarPath);
+    $phar->addFile($tmpDir . '/' . $binaryName, $binaryName);
+    $phar->addFile($tmpDir . '/config.json', 'config.json');
+    $phar->compress(Phar::GZ);
+    unset($phar);
+    Phar::unlinkArchive($tarPath);
+    $archivePath = $tarPath . '.gz';
 
     $size = filesize($archivePath);
-    $contentType = ($platform === 'win-x64') ? 'application/zip' : 'application/gzip';
-    header('Content-Type: ' . $contentType);
+    header('Content-Type: application/gzip');
     header('Content-Disposition: attachment; filename="' . $archiveName . '"');
     header('Content-Length: ' . $size);
     readfile($archivePath);

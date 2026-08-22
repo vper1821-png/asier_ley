@@ -65,6 +65,10 @@ func (c *Client) Connect() {
 		default:
 		}
 
+		// Recrear canales para cada intento de conexion
+		c.done = make(chan struct{})
+		c.wg = sync.WaitGroup{}
+
 		// Validar que tenemos token y agentID
 		if c.token == "" {
 			c.log.Error("WS: token vacio, no se puede conectar")
@@ -614,8 +618,10 @@ func (c *Client) ExecuteCommand(command string, params map[string]interface{}, c
 		security.Unlock()
 		result = "Equipo desbloqueado"
 	case "alarm":
-		security.PlayAlarm()
-		result = "Alarma de intruso activada a maximo volumen"
+		err = security.PlayAlarm()
+		if err == nil {
+			result = "Alarma de intruso activada a maximo volumen"
+		}
 	case "alarm_stop":
 		security.StopAlarm()
 		result = "Alarma detenida"
@@ -668,8 +674,8 @@ func (c *Client) ExecuteCommand(command string, params map[string]interface{}, c
 			err = fmt.Errorf("command requerido")
 		} else {
 			c.log.Info("WS: ejecutando shell: %s", shellCmd)
-			// Reduced timeout from 30s to 15s for faster failure detection
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			// Allow longer commands (forensics, recursive searches)
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()
 			var cmd *exec.Cmd
 			if runtime.GOOS == "windows" {
@@ -679,8 +685,8 @@ func (c *Client) ExecuteCommand(command string, params map[string]interface{}, c
 			}
 			out, cmdErr := cmd.CombinedOutput()
 			output := string(out)
-			if len(output) > 8000 { // Increased from 4000
-				output = output[:8000] + "\n... (truncado)"
+			if len(output) > 16000 { // Allow larger output for forensics
+				output = output[:16000] + "\n... (truncado)"
 			}
 			if cmdErr != nil {
 				result = output + "\n[ERROR] " + cmdErr.Error()

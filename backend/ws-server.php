@@ -34,7 +34,7 @@ class AgentWebSocket implements MessageComponentInterface {
     public function getDb() { return $this->db; }
     public function getAgentSessions() { return $this->agentSessions; }
 
-    private function mongoFind($collection, $filter = []) {
+    public function mongoFind($collection, $filter = []) {
         try {
             static $mongo = null;
             if ($mongo === null) $mongo = new MongoDB\Client(MONGODB_URI);
@@ -52,7 +52,7 @@ class AgentWebSocket implements MessageComponentInterface {
         }
     }
 
-    private function mongoFindOne($collection, $filter = []) {
+    public function mongoFindOne($collection, $filter = []) {
         try {
             static $mongo = null;
             if ($mongo === null) $mongo = new MongoDB\Client(MONGODB_URI);
@@ -252,14 +252,26 @@ class AgentWebSocket implements MessageComponentInterface {
         $conn->agentId = $agentId;
         $this->agentSessions[$agentId] = $conn;
 
-        // Actualizar estado en la base de datos
+        // Actualizar/insertar estado en la base de datos
         if ($this->db) {
-            $this->db->updateOne('agents', ['agentId' => $agentId], [
-                'status' => 'online',
-                'lastSeen' => date('c'),
-                'userId' => $userId
-            ]);
-            echo "📝 Agente actualizado en BD: {$agentId}\n";
+            $existing = $this->db->findOne('agents', ['agentId' => $agentId]);
+            if (!$existing) {
+                $this->db->insertOne('agents', [
+                    'userId' => $userId,
+                    'agentId' => $agentId,
+                    'status' => 'online',
+                    'lastSeen' => date('c'),
+                    'createdAt' => date('c'),
+                ]);
+                echo "📝 Agente insertado en BD: {$agentId}\n";
+            } else {
+                $this->db->updateOne('agents', ['agentId' => $agentId], [
+                    'status' => 'online',
+                    'lastSeen' => date('c'),
+                    'userId' => $userId
+                ]);
+                echo "📝 Agente actualizado en BD: {$agentId}\n";
+            }
         }
 
         echo "✅ Agente registrado: {$agentId} (usuario: {$userId})\n";

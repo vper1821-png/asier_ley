@@ -1,6 +1,0 @@
-{
-  "api_base": "http://localhost:3838/api/agents",
-  "token": "",
-  "heartbeat_interval": 5,
-  "agent_version": "1.0.0"
-}

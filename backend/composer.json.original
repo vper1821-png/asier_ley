@@ -1,0 +1,25 @@
+{
+    "require": {
+        "mongodb/mongodb": "^1.19",
+        "dompdf/dompdf": "^2.0",
+        "phpoffice/phpspreadsheet": "^2.1",
+        "cboden/ratchet": "^0.4.4"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "platform-check": false,
+        "policy.advisories.block": false,
+        "policy.advisories.ignore-id": [
+            "PKSA-cv56-2228-pzr6",
+            "PKSA-6r8f-nxsb-67bq",
+            "PKSA-gh7h-hhy4-byg7",
+            "PKSA-mwt3-h9tv-kx78",
+            "PKSA-hp6n-n4kz-21wk",
+            "PKSA-mckv-s5hg-868k",
+            "PKSA-7ztm-rpt3-qqzk",
+            "PKSA-2kw5-jd8w-5mvh",
+            "PKSA-4jrs-y99s-q8j6",
+            "PKSA-hbk6-2vfz-8f8n"
+        ]
+    }
+}

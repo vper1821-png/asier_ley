@@ -422,6 +422,91 @@ function deleteUserById() {
     json_response(['success' => true]);
 }
 
+// ── Agent Deploy ──
+function agentDeployCreate() {
+    Auth::requireAdmin();
+    $body = get_body();
+    $db = Database::getInstance();
+
+    $platform = $body['platform'] ?? 'windows';
+    $userAgent = $body['userAgent'] ?? '';
+
+    // Get current admin user
+    $user = Auth::requireAdmin();
+
+    // Create deploy record
+    $deploy = [
+        'platform' => $platform,
+        'userAgent' => $userAgent,
+        'createdBy' => $user['_id'] ?? $user['email'] ?? 'admin',
+        'createdAt' => date('c'),
+        'status' => 'pending_download',
+        'downloadCount' => 0,
+    ];
+    $deployId = $db->insertOne('agent_deploys', $deploy);
+
+    audit_log('agent_deploy_created', ['deployId' => $deployId, 'platform' => $platform], null);
+
+    json_response(['success' => true, 'deployId' => $deployId]);
+}
+
+function agentDownload() {
+    // This can be called without auth (for the actual download)
+    // But we verify the deploy token
+    $platform = $_GET['platform'] ?? 'windows';
+    $deployId = $_GET['deploy'] ?? '';
+
+    if (!$deployId) {
+        http_response_code(400);
+        echo 'deploy parameter required';
+        exit;
+    }
+
+    $db = Database::getInstance();
+    $deploy = $db->findOne('agent_deploys', ['_id' => $deployId]);
+    
+    if (!$deploy) {
+        http_response_code(404);
+        echo 'Deploy not found';
+        exit;
+    }
+
+    // Increment download count
+    $db->updateOne('agent_deploys', ['_id' => $deployId], ['$inc' => ['downloadCount' => 1], 'status' => 'downloaded']);
+
+    // Map platform to file
+    $basePath = __DIR__ . '/../installer';
+    $fileMap = [
+        'windows'  => 'SecureLabAgent-Windows.zip',  // ZIP with auto-elevation wrapper
+        'linux'    => 'securelab-agent.deb',         // Future
+        'darwin'   => 'securelab-agent.pkg',         // Future
+        'win-x64'  => 'SecureLabAgent-Windows.zip',  // Also accept agent platform format
+        'linux-x64' => 'securelab-agent.deb',
+        'mac-x64'  => 'securelab-agent.pkg',
+    ];
+
+    $fileName = $fileMap[$platform] ?? 'SecureLabAgent-Windows.zip';
+    $filePath = $basePath . '/' . $fileName;
+
+    if (!file_exists($filePath)) {
+        http_response_code(404);
+        echo 'Installer not found for platform: ' . $platform;
+        exit;
+    }
+
+    // Set headers for download
+    $contentType = ($platform === 'windows' || $platform === 'win-x64') ? 'application/zip' : 'application/octet-stream';
+    header('Content-Type: ' . $contentType);
+    header('Content-Disposition: attachment; filename="' . $fileName . '"');
+    header('Content-Length: ' . filesize($filePath));
+    header('Cache-Control: no-cache, must-revalidate');
+    header('Expires: 0');
+    header('Pragma: public');
+    
+    readfile($filePath);
+    exit;
+}
+
 function isAdmin($user) {
     return !empty($user['isAdmin']) || ($user['role'] ?? '') === 'admin' || ($user['role'] ?? '') === 'superadmin';
 }

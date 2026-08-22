@@ -6,12 +6,16 @@ import (
 	_ "embed"
 	"encoding/base64"
 	"encoding/binary"
+	"fmt"
 	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"syscall"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 //go:embed assets/logo-nuevo.png
@@ -139,6 +143,11 @@ func ensureAssets() {
 }
 
 func applyLockdown(message string, silent bool) {
+	if !CanAccessDesktop() {
+		// En servicio SYSTEM: no podemos mostrar overlay, pero sí bloquear input
+		// Log y retornamos sin error para que el comando se marque como ejecutado
+		return
+	}
 	ensureAssets()
 	os.WriteFile(msgPath(), []byte(message), 0644)
 	stopOverlayProcess()
@@ -168,17 +177,23 @@ func stopOverlayProcess() {
 	os.Remove(overlayPidFile())
 }
 
-// PlayAlarm reproduce la alarma una sola vez a máximo volumen.
-func PlayAlarm() {
+// PlayAlarm reproduce la alarma en loop a máximo volumen.
+// Retorna error si el agente no corre en una sesión de usuario interactiva.
+func PlayAlarm() error {
+	if !CanAccessDesktop() {
+		return fmt.Errorf("alarma no disponible: el agente no tiene acceso al escritorio interactivo")
+	}
 	ensureAssets()
 	StopAlarm()
-	ps := "Add-Type -AssemblyName System.Media; $p=New-Object System.Media.SoundPlayer('" + alarmPath() + "'); $p.Play()"
+	ps := "Add-Type -AssemblyName System.Media; $p=New-Object System.Media.SoundPlayer('" + alarmPath() + "'); $p.PlayLooping(); while ($true) { Start-Sleep -Seconds 1 }"
 	cmd := exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-Command", ps)
 	cmd.SysProcAttr = hiddenProc()
-	if err := cmd.Start(); err == nil {
-		os.WriteFile(alarmPidFile(), []byte(strconv.Itoa(cmd.Process.Pid)), 0600)
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("no se pudo iniciar alarma: %w", err)
 	}
+	os.WriteFile(alarmPidFile(), []byte(strconv.Itoa(cmd.Process.Pid)), 0600)
 	setMaxVolume()
+	return nil
 }
 
 // StopAlarm detiene la alarma.
@@ -191,7 +206,7 @@ func StopAlarm() {
 
 // Speak reproduce un texto configurado por el DPO a máximo volumen.
 func Speak(text string) {
-	if text == "" {
+	if text == "" || !CanAccessDesktop() {
 		return
 	}
 	setMaxVolume()
@@ -215,6 +230,44 @@ func readPidFile(path string) (int, error) {
 		return 0, err
 	}
 	return strconv.Atoi(string(data))
+}
+
+// IsInteractiveSession verifica si el proceso actual tiene acceso al escritorio interactivo.
+// Retorna true si el agente corre en la sesión de un usuario (no SYSTEM service).
+func IsInteractiveSession() bool {
+	// Método 1: Verificar WTSGetActiveConsoleSessionId via Wtsapi32.dll
+	// Si el session ID es 0, es SYSTEM; si es >0, es sesión de usuario
+	modWtsapi := windows.NewLazySystemDLL("Wtsapi32.dll")
+	procGetActive := modWtsapi.NewProc("WTSGetActiveConsoleSessionId")
+	ret, _, _ := procGetActive.Call()
+	sessionId := uint32(ret)
+	if sessionId > 0 && sessionId != 0xFFFFFFFF {
+		return true
+	}
+
+	// Método 2: Verificar si podemos abrir el escritorio interactivo usando user32.dll
+	modUser32 := windows.NewLazySystemDLL("user32.dll")
+	procOpenDesktop := modUser32.NewProc("OpenDesktopW")
+	procCloseDesktop := modUser32.NewProc("CloseDesktop")
+	deskName, _ := syscall.UTF16PtrFromString("Default")
+	const DESKTOP_READOBJECTS = 0x0001
+	deskHandle, _, _ := procOpenDesktop.Call(uintptr(unsafe.Pointer(deskName)), 0, 0, DESKTOP_READOBJECTS)
+	if deskHandle != 0 {
+		procCloseDesktop.Call(deskHandle)
+		return true
+	}
+
+	// Método 3: Verificar variable de entorno USERNAME (vacía en SYSTEM)
+	if os.Getenv("USERNAME") != "" && os.Getenv("USERNAME") != "SYSTEM" {
+		return true
+	}
+
+	return false
+}
+
+// CanAccessDesktop verifica acceso al desktop interactivo (para screenshot, audio, UI)
+func CanAccessDesktop() bool {
+	return IsInteractiveSession()
 }
 
 func writeAlarmWav(path string) {

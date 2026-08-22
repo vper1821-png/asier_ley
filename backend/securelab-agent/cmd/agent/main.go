@@ -1,10 +1,10 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"os"
-	"os/signal"
 	"path/filepath"
-	"syscall"
 	"time"
 
 	"securelab-agent/internal/api"
@@ -20,15 +20,46 @@ import (
 	"securelab-agent/internal/security"
 	"securelab-agent/internal/telemetry"
 	"securelab-agent/internal/ws"
+	"securelab-agent/platform/windows"
 )
 
 var persistenceInstaller func(cfg *config.Config, log *logger.Logger)
 
 func main() {
+	// ── Subcommands ──
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "install":
+			if err := windows.InstallService(); err != nil {
+				fmt.Fprintf(os.Stderr, "Error instalando servicio: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Println("Servicio SecureLabAgent instalado.")
+			os.Exit(0)
+		case "uninstall":
+			if err := windows.RemoveService(); err != nil {
+				fmt.Fprintf(os.Stderr, "Error eliminando servicio: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Println("Servicio SecureLabAgent eliminado.")
+			os.Exit(0)
+		}
+	}
+
+	// ── Run as Windows service (or foreground) ──
+	// Minimal setup here; heavy work happens inside the service callback
+	// so that svc.Run can report svc.Running quickly.
+	windows.RunService(func(ctx context.Context) {
+		runAgent(ctx)
+	})
+}
+
+func runAgent(ctx context.Context) {
 	cfg := config.Load()
 	log := logger.New(cfg.LogFile, cfg.LogLevel)
 
 	store := audit.NewStore(cfg.AuditDBPath)
+	defer store.Close()
 
 	// ── Cola de sincronización ──
 	pendingDB := filepath.Join(filepath.Dir(cfg.AuditDBPath), "pending.db")
@@ -37,29 +68,34 @@ func main() {
 		log.Error("Error inicializando cola de sincronización: %v", err)
 		queueInstance = nil
 	}
+	defer func() {
+		if queueInstance != nil {
+			queueInstance.Close()
+		}
+	}()
 
 	// ── API REST ──
 	apiClient := api.NewClient(cfg.APIBase, cfg.Token, log)
 
-	// ── 1. REGISTRAR PRIMERO (obtener agentID) ──
-	agentID := registerAgent(apiClient, log)
+	// ── 1. REGISTRAR (no fatal: reintentar en background) ──
+	agentID := getOrRegisterAgent(apiClient, log)
 	log.Info("Agent ID obtenido: %s", agentID)
 
 	// ── 2. CREAR CLIENTE WS y asignar agentID ──
 	wsClient := ws.NewClient(cfg.WSURL, cfg.Token, log, queueInstance)
-	wsClient.SetAgentID(agentID) // ✅ ANTES de conectar
+	wsClient.SetAgentID(agentID)
 
 	// ── 3. CONECTAR WS ──
 	go wsClient.Connect()
+	defer wsClient.Close()
 
-	// Re-aplicar bloqueo persistente si estaba activo (sobrevive a reinicios)
+	// Re-aplicar bloqueo persistente si estaba activo
 	security.ApplyLockdownIfFlagged()
 
-	// ── 3.1 Sync loop: comandos pendientes + estado de bloqueo desde el servidor ──
-	// Usar SyncInterval del config (en ms) para respuesta ultra-rapida a comandos interactivos
+	// ── 3.1 Sync loop: comandos pendientes + estado de bloqueo ──
 	syncInterval := time.Duration(cfg.SyncInterval) * time.Millisecond
 	if syncInterval < 100*time.Millisecond {
-		syncInterval = 100 * time.Millisecond // Minimum 100ms
+		syncInterval = 100 * time.Millisecond
 	}
 	wsClient.StartSyncLoop(syncInterval)
 
@@ -71,10 +107,12 @@ func main() {
 
 	dbMonitor := monitors.NewActivityMonitor(store, wsClient, piiScanner, log)
 	dbMonitor.AutoDiscoverAndConnect()
+	defer dbMonitor.Stop()
 
 	fileMon := filemonitor.NewMonitor(store, wsClient, log)
 	fileMon.WatchDirectories(cfg.FileWatchDirs)
 	go fileMon.Start()
+	defer fileMon.Stop()
 
 	hard := hardening.NewHardener(store, wsClient, log)
 	if err := hard.ApplyAll(); err != nil {
@@ -82,6 +120,7 @@ func main() {
 	}
 
 	telemetry.Start(wsClient, time.Duration(cfg.TelemetryInterval)*time.Second)
+	defer telemetry.Stop()
 
 	security.StartServices(log)
 
@@ -89,39 +128,33 @@ func main() {
 		persistenceInstaller(cfg, log)
 	}
 
-	// ── Esperar señal ──
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	<-sigChan
+	// ── Esperar señal de apagado ──
+	<-ctx.Done()
 
 	log.Info("Shutting down...")
-	dbMonitor.Stop()
-	fileMon.Stop()
-	telemetry.Stop()
-	wsClient.Close()
-	store.Close()
-	if queueInstance != nil {
-		queueInstance.Close()
-	}
 }
 
-func registerAgent(apiClient *api.Client, log *logger.Logger) string {
+func getOrRegisterAgent(apiClient *api.Client, log *logger.Logger) string {
 	agentID := config.GetAgentID()
-	if agentID == "" {
-		agentID = config.GenerateAgentID()
-		config.SetAgentID(agentID)
-		log.Info("Generado nuevo Agent ID: %s", agentID)
+	if agentID != "" {
+		return agentID
 	}
 
 	info := api.GetSystemInfo()
-	resp, err := apiClient.Register(info.Hostname, info.Platform, info.Arch, info.IP, info.User, agentID)
-	if err != nil {
-		log.Fatal("Registration failed: %v", err)
+	for i := 0; i < 3; i++ {
+		resp, err := apiClient.Register(info.Hostname, info.Platform, info.Arch, info.IP, info.User, "")
+		if err == nil && resp.AgentID != "" {
+			config.SetAgentID(resp.AgentID)
+			log.Info("Generado/actualizado Agent ID: %s", resp.AgentID)
+			return resp.AgentID
+		}
+		log.Warn("Registro fallido (intento %d): %v", i+1, err)
+		time.Sleep(2 * time.Second)
 	}
-	if resp.AgentID != "" && resp.AgentID != agentID {
-		agentID = resp.AgentID
-		config.SetAgentID(agentID)
-		log.Info("Agent ID actualizado desde el backend: %s", agentID)
-	}
+
+	// Si todo falla, generar uno local para que el servicio pueda iniciar
+	agentID = config.GenerateAgentID()
+	config.SetAgentID(agentID)
+	log.Warn("Registro offline. Usando Agent ID local: %s", agentID)
 	return agentID
 }

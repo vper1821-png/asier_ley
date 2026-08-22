@@ -95,13 +95,14 @@ $platforms = [
                 <p class="text-[11px] text-text-subtle mb-4">Instala el agente de SecureLab en tus endpoints para monitorearlos y poder bloquearlos remotamente.</p>
                 <div class="flex flex-wrap gap-2">
                     <?php foreach ($platforms as $plat => $info): ?>
-                    <a href="/download-agent?platform=<?= h($plat) ?>"
+                    <button onclick="downloadAgent('<?= h($plat) ?>')"
                        class="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-[11px] font-medium bg-bg-panel/80 border border-border-theme text-text-body hover:bg-bg-elevated hover:border-surface-600 transition-all">
                         <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="<?= $info['icon'] ?>"/></svg>
                         <?= h($info['label']) ?>
-                    </a>
+                    </button>
                     <?php endforeach; ?>
                 </div>
+                <p class="text-[10px] text-text-subtle mt-3">Al descargar se crea un <strong>deploy</strong> vinculado a tu cuenta. El agente se preconfigura con tu API URL y token.</p>
             </div>
 
             <!-- Agents list -->
@@ -170,11 +171,15 @@ $platforms = [
 
 <script>
 const SL_TOKEN = <?= json_encode($token) ?>;
-const AGENTS = <?= $combinedJson ?>;
+let AGENTS = <?= $combinedJson ?>;
+let currentAgentIdx = null;
+let agentModalInterval = null;
 
 function closeAgentModal() {
     document.getElementById('agent-modal').classList.add('hidden');
     document.getElementById('agent-modal').classList.remove('flex');
+    if (agentModalInterval) { clearInterval(agentModalInterval); agentModalInterval = null; }
+    currentAgentIdx = null;
 }
 
 function fmtBytes(b) {
@@ -189,6 +194,21 @@ function fmtUptime(s) {
     if (!s) return 'N/A';
     const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
     return (d ? d + 'd ' : '') + h + 'h ' + m + 'm';
+}
+
+function showToast(msg, type = 'info') {
+    const container = document.getElementById('toast-container') || (() => {
+        const c = document.createElement('div');
+        c.id = 'toast-container';
+        c.className = 'fixed bottom-4 right-4 z-50 flex flex-col gap-2';
+        document.body.appendChild(c);
+        return c;
+    })();
+    const el = document.createElement('div');
+    el.className = `px-3 py-2 rounded-lg text-[11px] font-medium shadow-lg animate-slide-up ${type === 'success' ? 'bg-emerald-500/90 text-white' : (type === 'error' ? 'bg-red-500/90 text-white' : 'bg-primary-500/90 text-white')}`;
+    el.textContent = msg;
+    container.appendChild(el);
+    setTimeout(() => { el.classList.add('animate-fade-out'); setTimeout(() => el.remove(), 300); }, 3000);
 }
 
 function agentAction(agentId, action, extra) {
@@ -371,10 +391,27 @@ function openAgentModal(idx) {
     `;
 
 
+    currentAgentIdx = idx;
     const m = document.getElementById('agent-modal');
     m.classList.remove('hidden');
     m.classList.add('flex');
     window.curAgentId = a.agentId || '';
+
+    if (agentModalInterval) clearInterval(agentModalInterval);
+    agentModalInterval = setInterval(() => {
+        fetch('/api-proxy.php?path=/api/agents/combined', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'token=' + encodeURIComponent(SL_TOKEN)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (Array.isArray(data)) {
+                AGENTS = data;
+                if (currentAgentIdx !== null) openAgentModal(currentAgentIdx);
+            }
+        });
+    }, 3000);
 }
 
 function detailBox(label, value) {
@@ -582,6 +619,39 @@ function deleteAgent(agentId, hostname) {
     }).then(function(r){ return r.json(); }).then(function(res){
         if (res.success) { location.reload(); } else { alert(res.error || 'Error al eliminar'); }
     }).catch(function(){ alert('Error de red'); });
+}
+
+async function downloadAgent(platform) {
+    try {
+        // 1. Crear deploy en el backend
+        const deployRes = await fetch('/api/agents/deploy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SL_TOKEN },
+            body: JSON.stringify({ platform, userAgent: navigator.userAgent })
+        });
+        const deployData = await deployRes.json();
+        
+        if (!deployData.success) {
+            throw new Error(deployData.error || 'Error creando deploy');
+        }
+        
+        // 2. Descargar el archivo (pasar token para autenticación)
+        const downloadUrl = '/api/agents/download/' + platform + '?deploy=' + encodeURIComponent(deployData.deployId) + '&token=' + encodeURIComponent(SL_TOKEN);
+        window.location.href = downloadUrl;
+        
+        // 3. Mostrar toast
+        if (typeof showToast === 'function') {
+            showToast('Deploy creado: ' + deployData.deployId + '. Descarga iniciada...', 'success');
+        } else {
+            alert('Deploy creado: ' + deployData.deployId + '. Descarga iniciada...');
+        }
+    } catch (err) {
+        if (typeof showToast === 'function') {
+            showToast('Error: ' + err.message, 'error');
+        } else {
+            alert('Error: ' + err.message);
+        }
+    }
 }
 
 document.addEventListener('click', function (e) {

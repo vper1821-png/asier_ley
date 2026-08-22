@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:bal="http://schemas.microsoft.com/wix/BalExtension">
+    <!--
+        SecureLab Agent Bootstrapper (Burn)
+        Genera un único SecureLabAgent.exe que:
+        1. Pide UAC (escudo amarillo) via manifiesto requireAdministrator
+        2. Extrae el MSI a temp
+        3. Lo instala silenciosamente como admin
+    -->
+    <Bundle
+        Name="SecureLab Agent"
+        Version="2.0.1"
+        Manufacturer="SecureLab"
+        UpgradeCode="9452a7b2-9c45-4f23-9c98-b1ed23f0a59b"
+        Copyright="Copyright (c) 2025 SecureLab. Todos los derechos reservados."
+        IconSourceFile="..\..\frontend\logo-nuevo.png"
+        Condition="VersionNT >= v6.1"
+        DisableModify="yes"
+        DisableRemove="yes">
+
+        <BootstrapperApplicationRef Id="WixStandardBootstrapperApplication.RtfLicense">
+            <bal:WixStandardBootstrapperApplication
+                LicenseUrl=""
+                ShowVersion="yes" />
+        </BootstrapperApplicationRef>
+
+        <Chain>
+            <!-- Paquete MSI embebido -->
+            <MsiPackage
+                Id="SecureLabAgentMsi"
+                SourceFile="SecureLabAgent.msi"
+                Vital="yes"
+                Compressed="yes"
+                ForcePerMachine="yes"
+                InstallCondition="NOT VersionNT64 OR VersionNT64"
+                DisplayInternalUI="no" />
+        </Chain>
+    </Bundle>
+</Wix>

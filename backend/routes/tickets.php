@@ -82,8 +82,8 @@ function reply() {
 
 function status() {
     $user = Auth::requireAuth();
-    $id = $_GET['id'] ?? '';
     $body = get_body();
+    $id = $_GET['id'] ?? ($body['id'] ?? ($body['ticketId'] ?? ''));
     $db = Database::getInstance();
     if (!$id) json_error('id requerido');
 

@@ -192,6 +192,8 @@ class Database {
     }
 
     private function normalizeFilter($filter) {
+        // Convert string _id to ObjectId for MongoDB queries
+        // The database stores _id as ObjectId but returns as string
         if (isset($filter['_id']) && is_string($filter['_id']) && preg_match('/^[0-9a-fA-F]{24}$/', $filter['_id'])) {
             $filter['_id'] = new MongoDB\BSON\ObjectId($filter['_id']);
         }

@@ -1,8 +1,5 @@
 {
     "require": {
-        "mongodb/mongodb": "^1.19",
-        "dompdf/dompdf": "^2.0",
-        "phpoffice/phpspreadsheet": "^2.1",
         "cboden/ratchet": "^0.4.4"
     },
     "config": {

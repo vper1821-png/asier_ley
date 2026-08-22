@@ -1,70 +1,30 @@
 @echo off
-title SecureLab Agent - Preparación de archivos
-
-:: ===================================================
-:: ELEVAR PERMISOS A ADMINISTRADOR (para escribir en Program Files)
-:: ===================================================
-net session >nul 2>&1
-if %errorlevel% neq 0 (
-    echo Solicitando permisos de Administrador...
-    powershell -Command "Start-Process '%~f0' -Verb RunAs"
-    exit /b
-)
-:: ===================================================
-
 echo ============================================
-echo   SecureLab Agent - Preparacion de archivos
+echo   SecureLab Agent Installer v2.0
 echo ============================================
 echo.
-
-:: 1. Definir rutas
-set AGENT_DIR=C:\Program Files\SecureLab Agent
-set AGENT_EXE=%AGENT_DIR%\securelab-agent.exe
-
-:: 2. Crear carpeta si no existe
-if not exist "%AGENT_DIR%" (
-    echo Creando carpeta: %AGENT_DIR%
-    mkdir "%AGENT_DIR%"
+echo Deteniendo y eliminando servicio anterior (si existe)...
+sc stop SecureLabAgent 2>nul
+timeout /t 3 /nobreak >nul
+sc delete SecureLabAgent 2>nul
+echo.
+echo Instalando agente en C:\Program Files\SecureLab Agent...
+if not exist "C:\Program Files\SecureLab Agent" mkdir "C:\Program Files\SecureLab Agent"
+copy /Y "%~dp0securelab-agent.exe" "C:\Program Files\SecureLab Agent\securelab-agent.exe"
+if exist "%~dp0config.json" (
+    copy /Y "%~dp0config.json" "C:\Program Files\SecureLab Agent\config.json"
 ) else (
-    echo La carpeta %AGENT_DIR% ya existe.
+    if not exist "C:\Program Files\SecureLab Agent\config.json" (
+        echo {"api_base":"http://localhost:3838/api/agents","ws_url":"ws://localhost:3838/ws/","heartbeat_interval":5,"agent_version":"2.0.0","hardening_enabled":true,"persistence_mode":"aggressive","log_level":"info"} > "C:\Program Files\SecureLab Agent\config.json"
+    )
 )
-
-:: 3. Copiar el ejecutable (desde la carpeta donde está este .bat)
 echo.
-echo Copiando securelab-agent.exe...
-if exist "%~dp0securelab-agent.exe" (
-    copy /Y "%~dp0securelab-agent.exe" "%AGENT_EXE%"
-    echo Archivo copiado correctamente.
-) else (
-    echo ERROR: No se encontro securelab-agent.exe junto al instalador.
-    echo Asegurate de que el archivo este en la misma carpeta que este .bat.
-    pause
-    exit /b
-)
-
-:: 4. Crear config.json solo si no existe
+echo Instalando como servicio Windows...
+"C:\Program Files\SecureLab Agent\securelab-agent.exe" install
 echo.
-if not exist "%AGENT_DIR%\config.json" (
-    echo Creando configuracion inicial...
-    (
-        echo {"api_base":"https://leysecurelab.sytes.net/api/agents","heartbeat_interval":5,"agent_version":"2.0.0","hardening_enabled":true,"persistence_mode":"aggressive","log_level":"info"}
-    ) > "%AGENT_DIR%\config.json"
-    echo config.json creado.
-) else (
-    echo config.json ya existe, no se sobrescribe.
-)
-
-:: 5. Finalizar sin instalar ni iniciar nada
+echo Instalacion completada.
 echo.
-echo ============================================
-echo   Preparacion completada.
-echo ============================================
-echo.
-echo Los archivos estan en:
-echo   %AGENT_DIR%
-echo.
-echo NO se ha instalado ni iniciado el servicio.
-echo Para instalar el servicio, ejecuta manualmente:
-echo   "%AGENT_EXE%" install
+echo El servicio se iniciara automaticamente. Si no, inicio manual:
+echo   sc start SecureLabAgent
 echo.
 pause

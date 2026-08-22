@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"securelab-agent/internal/security"
 )
 
 func execPS(script string) string {
@@ -104,7 +106,11 @@ $f=Get-NetFirewallProfile
 }
 
 // Screenshot captura la pantalla principal y la devuelve como data URL JPEG.
+// Solo funciona si el agente corre en una sesión de usuario interactiva (no SYSTEM service).
 func CaptureScreenshot() (string, error) {
+	if !security.CanAccessDesktop() {
+		return "", fmt.Errorf("screenshot no disponible: el agente corre como servicio SYSTEM sin acceso al escritorio interactivo")
+	}
 	tmp := filepath.Join(os.TempDir(), "slshot-"+fmt.Sprintf("%d", time.Now().UnixNano())+".jpg")
 	ps := `$ErrorActionPreference='SilentlyContinue'
 Add-Type -AssemblyName System.Windows.Forms

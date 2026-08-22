@@ -21,7 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($subject) || empty($description)) {
             $err = 'Por favor completa el asunto y el mensaje del ticket.';
         } else {
-            $fullMessage = (!empty($category) && $category !== 'general') ? "[Categoría: " . strtoupper($category) . "]\n\n" . $description : $description;
+            $fullMessage = (!empty($category) && $category !== 'general') ? "[Categoría: " . strtoupper($category) . "]\n" . $description : $description;
             
             $res = api_post_form('/api/tickets/create', [
                 'token' => $token,
@@ -544,7 +544,7 @@ $userInitials = mb_strtoupper(mb_substr($userDisplayName, 0, 2));
                                     <span class="text-[10px] text-text-subtle font-mono"><?= h($mDate) ?></span>
                                 </div>
 
-                                <div class="p-3.5 rounded-2xl text-xs leading-relaxed whitespace-pre-wrap text-left <?= $isSupport
+                                <div class="p-3.5 rounded-2xl text-xs leading-relaxed whitespace-pre-line text-left break-words <?= $isSupport
                                     ? 'bg-bg-elevated/90 border border-indigo-500/20 text-text-heading rounded-tl-none shadow-theme-sm'
                                     : 'bg-gradient-to-br from-primary-600/30 to-blue-700/25 border border-primary-500/30 text-white rounded-tr-none shadow-theme-sm' ?>">
                                     <?= h($mContent) ?>

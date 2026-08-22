@@ -2,18 +2,37 @@
 
 <?php if (function_exists('is_logged_in') && is_logged_in()): ?>
 <!-- Guided tour -->
-<div id="tour-overlay" class="hidden fixed inset-0 z-[90] bg-black/60"></div>
-<div id="tour-popover" class="hidden fixed z-[100] w-72 rounded-xl border border-border-theme bg-bg-panel shadow-2xl p-4">
-    <p id="tour-title" class="text-[12px] font-semibold text-white mb-1"></p>
-    <p id="tour-text" class="text-[11px] text-text-muted leading-relaxed mb-3"></p>
-    <div class="flex items-center justify-between">
-        <span id="tour-step-count" class="text-[10px] text-text-subtle"></span>
-        <div class="flex gap-1.5">
-            <button onclick="endTour()" class="px-2.5 py-1 rounded-lg text-[10px] bg-bg-elevated border border-border-theme text-text-muted hover:text-text-body">Salir</button>
-            <button id="tour-prev" onclick="tourStep(-1)" class="px-2.5 py-1 rounded-lg text-[10px] bg-bg-elevated border border-border-theme text-text-muted hover:text-text-body">Anterior</button>
-            <button id="tour-next" onclick="tourStep(1)" class="px-2.5 py-1 rounded-lg text-[10px] font-medium bg-primary-600 text-white hover:bg-primary-500">Siguiente</button>
+<div id="tour-overlay" class="hidden fixed inset-0 z-[90] bg-gradient-to-t from-primary-900/40 to-black/80 backdrop-blur-[3px]"></div>
+<div id="tour-popover" class="hidden fixed z-[100] w-96 rounded-2xl border border-primary-500/40 bg-gradient-to-br from-bg-panel via-bg-panel to-primary-900/[0.08] shadow-[0_0_60px_rgba(59,130,246,0.25)] p-0 overflow-hidden ring-1 ring-white/[0.06]" style="max-width: 420px;">
+    <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary-600 via-cyan-500 to-primary-600"></div>
+    <div class="p-5">
+        <div class="flex items-start gap-4 mb-4">
+            <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-primary-600/30 to-cyan-600/20 border border-primary-500/30 flex items-center justify-center text-primary-400 flex-shrink-0 shadow-lg shadow-primary-900/30">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </div>
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between gap-2 mb-1">
+                    <p id="tour-title" class="text-[14px] font-bold text-white leading-tight"></p>
+                    <button onclick="endTour()" class="p-1 rounded-md text-text-subtle hover:text-white hover:bg-white/[0.06] transition-colors" title="Cerrar tour">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+                <p id="tour-text" class="text-[12px] text-text-subtle leading-relaxed"></p>
+            </div>
         </div>
+        <div class="flex items-center justify-between pt-4 border-t border-border-theme/30">
+            <span id="tour-step-count" class="text-[10px] text-text-subtle font-mono bg-bg-elevated/50 px-2 py-1 rounded-lg border border-border-theme/30"></span>
+            <div class="flex gap-2">
+                <button id="tour-prev" onclick="tourStep(-1)" class="px-3 py-1.5 rounded-lg text-[10px] bg-bg-elevated border border-border-theme text-text-muted hover:text-text-body hover:bg-white/[0.05] transition-all">Anterior</button>
+                <button id="tour-next" onclick="tourStep(1)" class="px-3 py-1.5 rounded-lg text-[10px] font-semibold bg-gradient-to-r from-primary-600 to-cyan-600 text-white hover:from-primary-500 hover:to-cyan-500 transition-all shadow-lg shadow-primary-900/20">Siguiente</button>
+            </div>
+        </div>
+        <button id="tour-detail" onclick="toggleDetailMode()" class="hidden w-full mt-3 px-3 py-2 rounded-xl text-[11px] font-medium bg-white/[0.04] border border-dashed border-primary-500/40 text-primary-300 hover:bg-primary-500/10 hover:border-primary-500/60 hover:text-primary-200 transition-all flex items-center justify-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"/></svg>
+            Explorar esta sección en detalle
+        </button>
     </div>
+    <div class="tour-arrow absolute w-3 h-3 bg-bg-panel border-l border-t border-primary-500/40 transform -rotate-45 -z-10"></div>
 </div>
 
 <?php require_once __DIR__ . '/support-chat.php'; ?>
@@ -22,57 +41,99 @@
 // ── Guided tour (multi-página) ──
 const TOUR_KEY = 'sl_tour_step';
 const TOUR_STEPS = [
-    { page: '/dashboard', sel: '.tour-sidebar-logo', title: 'Bienvenido a SecureLab', text: 'Tu plataforma integral de ciberseguridad y cumplimiento de la Ley 21.719. Este recorrido te mostrará cada sección del sistema.' },
-    { page: '/dashboard', sel: '.tour-pending-ring', title: 'Tareas pendientes', text: 'Aquí ves tu porcentaje de cumplimiento global. Complétalo al 100% siguiendo las recomendaciones.' },
-    { page: '/dashboard', sel: '.tour-nav-items', title: 'Navegación Principal', text: 'Menú de navegación. Desde aquí accedes a todas las secciones: agentes, alertas, bases de datos, compliance, ARCO y más.' },
-    { page: '/dashboard', sel: '.tour-detail-kpi-grid', title: 'Dashboard — Indicadores clave', text: 'Resumen en tiempo real de agentes activos, bases de datos monitoreadas, cumplimiento normativo, brechas abiertas y usuarios vulnerables.' },
-    { page: '/dashboard', sel: '.tour-detail-stats-grid', title: 'Dashboard — Actividad', text: 'Alertas activas, escaneos realizados, reportes generados y agentes online.' },
-    { page: '/dashboard', sel: '.tour-detail-tabs', title: 'Dashboard — Vistas', text: 'Cambia entre el resumen de bases de datos, usuarios vulnerables y el estado de la Ley 21.719.' },
-    { page: '/agents', sel: 'main', title: 'Agentes de Seguridad', text: 'Gestiona los agentes instalados en tus endpoints: descarga instaladores para Windows, Linux y macOS, monitorea su estado y ejecuta acciones remotas.' },
-    { page: '/host-monitor', sel: 'main', title: 'Monitor de Host', text: 'Monitorea el estado de tus servidores y hosts en tiempo real: uptime, métricas de rendimiento e historial de eventos.' },
-    { page: '/alerts', sel: 'main', title: 'Sistema de Alertas', text: 'Recibe notificaciones en tiempo real sobre eventos de seguridad críticos: intrusiones, brechas y seguimiento de resolución.' },
-    { page: '/reports', sel: 'main', title: 'Reportes', text: 'Genera reportes detallados de cumplimiento y seguridad para auditorías. Exporta en PDF y consulta el historial de reportes generados.' },
-    { page: '/databases', sel: 'main', title: 'Bases de Datos', text: 'Conecta y monitorea tus bases de datos (MySQL, PostgreSQL, SQL Server) con escaneo automático de datos personales y detección de datos sensibles.' },
-    { page: '/db-logs', sel: 'main', title: 'Logs de Base de Datos', text: 'Registro cronológico de todos los eventos de tus bases de datos: escaneos, conexiones, cambios de esquema y accesos.' },
-    { page: '/compliance', sel: 'main', title: 'Cumplimiento Normativo', text: 'Módulo completo de la Ley 21.719: consentimientos, inventario de datos, DPIAs, gestión de brechas y capacitación.' },
-    { page: '/hardening', sel: 'main', title: 'Hardening de Seguridad', text: 'Análisis de endurecimiento para identificar configuraciones débiles: análisis de configuraciones, recomendaciones y score global.' },
-    { page: '/tickets', sel: 'main', title: 'Soporte Técnico', text: 'Sistema de soporte integrado: crea tickets con prioridad, haz seguimiento de estado y consulta el historial de conversaciones.' },
-    { page: '/arco', sel: 'main', title: 'Solicitudes ARCO', text: 'Gestiona las solicitudes de Acceso, Rectificación, Cancelación y Oposición de los titulares de datos, con seguimiento de plazos legales.' },
-    { page: '/dpo', sel: 'main', title: 'Panel del DPO', text: 'Dashboard dedicado para el Delegado de Protección de Datos: vista consolidada, métricas de protección y reportes para autoridades.' },
-    { page: '/settings', sel: 'main', title: 'Configuración', text: 'Administra tu cuenta y preferencias de seguridad: contraseña, autenticación 2FA y gestión de tus datos personales.' },
-    { page: '/dashboard', sel: '.tour-theme-btn', title: 'Personalización Visual', text: 'Personaliza la apariencia con 12 temas predefinidos o crea tus propios colores desde el selector de temas del sidebar.' },
-    { page: '/dashboard', sel: '.tour-start-btn', title: 'Tour guiado', text: 'Puedes volver a iniciar este tour cuando quieras desde aquí.' },
-    { page: '/dashboard', sel: '.tour-notifications', title: 'Notificaciones', text: 'Campana de notificaciones con alertas de seguridad y novedades de la plataforma en tiempo real.' },
-    { page: '/dashboard', sel: '.tour-logout-btn', title: 'Cerrar Sesión', text: 'Cierra tu sesión de forma segura cuando termines. Se recomienda en equipos compartidos.' },
-    { page: '/dashboard', sel: '#sc-root', title: 'Asistente Virtual', text: 'El chat de soporte está disponible 24/7 para resolver tus dudas. Haz clic en el ícono de la esquina inferior derecha.' },
+    { page: '/dashboard', sel: '.tour-sidebar-logo', title: 'Bienvenido a SecureLab', text: 'Tu plataforma integral de ciberseguridad y cumplimiento. Este recorrido rápido te muestra las secciones principales.' },
+    { page: '/dashboard', sel: '.tour-detail-kpi-grid', title: 'Dashboard', text: 'Vista general de agentes, bases de datos, compliance y alertas en tiempo real.', detailSteps: [
+        { sel: '.tour-pending-ring', title: 'Tareas pendientes', text: 'Porcentaje de cumplimiento global y acciones recomendadas.' },
+        { sel: '.tour-nav-items', title: 'Navegación principal', text: 'Accede a agentes, alertas, bases de datos, compliance y más.' },
+        { sel: '.tour-detail-kpi-grid', title: 'Indicadores clave', text: 'Resumen de agentes, BBDD, cumplimiento, brechas y usuarios.' },
+        { sel: '.tour-detail-stats-grid', title: 'Actividad', text: 'Alertas activas, escaneos, reportes y agentes online.' },
+        { sel: '.tour-detail-tabs', title: 'Vistas', text: 'Cambia entre bases de datos, usuarios vulnerables y estado normativo.' },
+        { sel: '.tour-detail-summary', title: 'Resumen', text: 'Estado actual del sistema y acciones rápidas.' }
+    ]},
+    { page: '/agents', sel: 'main', title: 'Agentes de Seguridad', text: 'Gestiona endpoints Windows/Linux/macOS: monitorea, controla y ejecuta acciones remotas.', detailSteps: [
+        { sel: '.tour-detail-1', title: 'Panel de agentes', text: 'Listado de todos los agentes instalados con estado, ubicación y versión.' },
+        { sel: '.tour-detail-2', title: 'Acciones y logs', text: 'Acciones remotas, control de equipos y registro de eventos del agente.' }
+    ]},
+    { page: '/databases', sel: 'main', title: 'Bases de Datos', text: 'Conecta MySQL, PostgreSQL y SQL Server. Escanea datos personales y detecta información sensible.', detailSteps: [
+        { sel: '.tour-detail-1', title: 'Conexiones', text: 'Añade y gestiona las conexiones a tus bases de datos.' },
+        { sel: '.tour-detail-2', title: 'Inventario de datos', text: 'Tablas, columnas con datos personales y hallazgos del escaneo.' }
+    ]},
+    { page: '/compliance', sel: 'main', title: 'Cumplimiento', text: 'Ley 21.719: consentimientos, inventario, DPIA, brechas y capacitación.', detailSteps: [
+        { sel: '.tour-detail-1', title: 'Requisitos normativos', text: 'Checklist interactivo del Reglamento de la Ley 21.719 y progreso de cumplimiento.' }
+    ]},
+    { page: '/hardening', sel: 'main', title: 'Hardening', text: 'Análisis de configuraciones débiles, recomendaciones y score de seguridad.', detailSteps: [
+        { sel: '.tour-detail-1', title: 'Score y recomendaciones', text: 'Puntuación global de hardening y recomendaciones priorizadas.' },
+        { sel: '.tour-detail-2', title: 'Controles aplicados', text: 'Recomendaciones detalladas y controles implementados.' }
+    ]},
+    { page: '/settings', sel: 'main', title: 'Configuración', text: 'Contraseña, 2FA, temas y preferencias de tu cuenta.', detailSteps: [
+        { sel: 'main', title: 'Gestión de cuenta', text: 'Actualiza tu contraseña, configura el 2FA, elige temas y gestiona tus datos.' }
+    ]},
+    { page: '/dashboard', sel: '.tour-logout-btn', title: 'Cerrar sesión', text: 'Cierra tu sesión de forma segura cuando termines.' },
 ];
+const DETAIL_KEY = 'sl_tour_detail';
 let tourIdx = 0;
+let detailMode = false;
+let detailIdx = 0;
+let detailSteps = [];
 
 function startTour() {
     tourIdx = 0;
+    detailMode = false;
     sessionStorage.setItem(TOUR_KEY, '0');
+    sessionStorage.removeItem(DETAIL_KEY);
     goToTourStep();
 }
 
 function endTour() {
     sessionStorage.removeItem(TOUR_KEY);
+    sessionStorage.removeItem(DETAIL_KEY);
+    detailMode = false;
     document.getElementById('tour-overlay').classList.add('hidden');
     document.getElementById('tour-popover').classList.add('hidden');
     document.querySelectorAll('.tour-highlight').forEach(el => el.classList.remove('tour-highlight'));
 }
 
 function tourStep(dir) {
-    tourIdx += dir;
-    if (tourIdx < 0) tourIdx = 0;
-    if (tourIdx >= TOUR_STEPS.length) { endTour(); return; }
-    sessionStorage.setItem(TOUR_KEY, String(tourIdx));
+    if (detailMode) {
+        detailIdx += dir;
+        if (detailIdx < 0) {
+            detailIdx = 0;
+            detailMode = false;
+            sessionStorage.removeItem(DETAIL_KEY);
+        } else if (detailIdx >= detailSteps.length) {
+            detailMode = false;
+            tourIdx += 1;
+            sessionStorage.setItem(TOUR_KEY, String(tourIdx));
+            sessionStorage.removeItem(DETAIL_KEY);
+            if (tourIdx >= TOUR_STEPS.length) { endTour(); return; }
+        } else {
+            sessionStorage.setItem(DETAIL_KEY, String(detailIdx));
+        }
+    } else {
+        tourIdx += dir;
+        if (tourIdx < 0) tourIdx = 0;
+        if (tourIdx >= TOUR_STEPS.length) { endTour(); return; }
+        sessionStorage.setItem(TOUR_KEY, String(tourIdx));
+        sessionStorage.removeItem(DETAIL_KEY);
+    }
     goToTourStep();
 }
 
-function goToTourStep() {
+function toggleDetailMode() {
     const step = TOUR_STEPS[tourIdx];
-    if (step.page && window.location.pathname !== step.page) {
-        window.location.href = step.page;
+    if (!step.detailSteps || detailMode) return;
+    detailSteps = step.detailSteps;
+    detailMode = true;
+    detailIdx = 0;
+    sessionStorage.setItem(DETAIL_KEY, '0');
+    showTourStep();
+}
+
+function goToTourStep() {
+    const step = detailMode ? detailSteps[detailIdx] : TOUR_STEPS[tourIdx];
+    const rootStep = detailMode ? TOUR_STEPS[tourIdx] : step;
+    if (rootStep.page && window.location.pathname !== rootStep.page) {
+        window.location.href = rootStep.page;
         return;
     }
     document.getElementById('tour-overlay').classList.remove('hidden');
@@ -80,30 +141,44 @@ function goToTourStep() {
 }
 
 function showTourStep() {
-    const step = TOUR_STEPS[tourIdx];
+    const step = detailMode ? detailSteps[detailIdx] : TOUR_STEPS[tourIdx];
+    const total = detailMode ? detailSteps.length : TOUR_STEPS.length;
+    const idx = detailMode ? detailIdx : tourIdx;
     let target = document.querySelector(step.sel);
     if (!target) target = document.querySelector('main') || document.body;
+    if (!target) { endTour(); return; }
 
     document.querySelectorAll('.tour-highlight').forEach(el => el.classList.remove('tour-highlight'));
     target.classList.add('tour-highlight');
-    try { target.scrollIntoView({ behavior: 'smooth', block: step.sel === 'main' ? 'start' : 'center' }); } catch (e) {}
+    try { target.scrollIntoView({ behavior: 'smooth', block: (step.sel === 'main' ? 'start' : 'center') }); } catch (e) {}
 
     const pop = document.getElementById('tour-popover');
+    if (!pop) return;
     document.getElementById('tour-title').textContent = step.title;
     document.getElementById('tour-text').textContent = step.text;
-    document.getElementById('tour-step-count').textContent = (tourIdx + 1) + ' / ' + TOUR_STEPS.length;
-    document.getElementById('tour-prev').style.visibility = tourIdx === 0 ? 'hidden' : 'visible';
-    document.getElementById('tour-next').textContent = tourIdx === TOUR_STEPS.length - 1 ? 'Finalizar' : 'Siguiente';
+    document.getElementById('tour-step-count').textContent = (idx + 1) + ' / ' + total;
+    document.getElementById('tour-prev').style.visibility = (idx === 0 && !detailMode) ? 'hidden' : 'visible';
+    document.getElementById('tour-next').textContent = (idx === total - 1 && !detailMode) ? 'Finalizar' : (detailMode ? 'Siguiente área' : 'Siguiente');
+
+    const detailBtn = document.getElementById('tour-detail');
+    if (!detailMode && TOUR_STEPS[tourIdx] && TOUR_STEPS[tourIdx].detailSteps) {
+        detailBtn.classList.remove('hidden');
+    } else {
+        detailBtn.classList.add('hidden');
+    }
     pop.classList.remove('hidden');
 
     const rect = target.getBoundingClientRect();
-    let top = rect.bottom + 10;
+    const popW = Math.min(420, window.innerWidth - 20);
+    let top = rect.bottom + 16;
     let left = rect.left;
-    if (step.sel === 'main') { top = Math.round(window.innerHeight / 2 - 90); left = Math.round(window.innerWidth / 2 - 150); }
-    if (top + 180 > window.innerHeight) top = Math.max(10, rect.top - 190);
-    if (left + 300 > window.innerWidth) left = window.innerWidth - 310;
+    if (step.sel === 'main' || rect.width === 0) { top = Math.round(window.innerHeight / 2 - 110); left = Math.round(window.innerWidth / 2 - popW / 2); }
+    if (top + 240 > window.innerHeight) top = Math.max(10, rect.top - 230);
+    if (left + popW > window.innerWidth) left = window.innerWidth - popW - 10;
+    if (left < 10) left = 10;
     pop.style.top = top + 'px';
-    pop.style.left = Math.max(10, left) + 'px';
+    pop.style.left = left + 'px';
+    pop.style.width = popW + 'px';
 }
 
 // Reanudar tour tras navegar de página
@@ -112,8 +187,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (saved !== null) {
         tourIdx = parseInt(saved, 10) || 0;
         if (tourIdx >= TOUR_STEPS.length) { endTour(); return; }
-        const step = TOUR_STEPS[tourIdx];
-        if (!step.page || window.location.pathname === step.page) {
+        const d = sessionStorage.getItem(DETAIL_KEY);
+        if (d !== null && TOUR_STEPS[tourIdx].detailSteps) {
+            detailMode = true;
+            detailIdx = parseInt(d, 10) || 0;
+            detailSteps = TOUR_STEPS[tourIdx].detailSteps;
+        } else { detailMode = false; }
+        const step = detailMode ? detailSteps[detailIdx] : TOUR_STEPS[tourIdx];
+        const rootStep = detailMode ? TOUR_STEPS[tourIdx] : step;
+        if (!rootStep.page || window.location.pathname === rootStep.page) {
             document.getElementById('tour-overlay').classList.remove('hidden');
             setTimeout(showTourStep, 300);
         }
@@ -121,7 +203,8 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 <style>
-.tour-highlight { position: relative; z-index: 95; outline: 2px solid var(--primary-500, #3b82f6); outline-offset: 3px; border-radius: 10px; background-color: var(--bg-panel, #0b1220); }
+.tour-highlight { position: relative; z-index: 95; outline: 3px solid var(--primary-500, #3b82f6); outline-offset: 4px; border-radius: 12px; box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15), 0 0 30px rgba(59, 130, 246, 0.25); background-color: var(--bg-panel, #0b1220); animation: tourPulse 2s infinite; }
+@keyframes tourPulse { 0% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15), 0 0 20px rgba(59, 130, 246, 0.2); } 50% { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0.08), 0 0 40px rgba(59, 130, 246, 0.35); } 100% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15), 0 0 20px rgba(59, 130, 246, 0.2); } }
 .chat-scroll::-webkit-scrollbar { width: 6px; }
 .chat-scroll::-webkit-scrollbar-track { background: transparent; }
 .chat-scroll::-webkit-scrollbar-thumb { background: rgba(99, 102, 241, 0.35); border-radius: 10px; }

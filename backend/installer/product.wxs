@@ -1,31 +1,177 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-    <Product Id="*" Name="SecureLab Agent" Language="1033" Version="2.0.0" Manufacturer="SecureLab" UpgradeCode="9452a7b2-9c45-4f23-9c98-b1ed23f0a59b">
-        <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" Platform="x64" />
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+    <!--
+        SecureLab Agent MSI Installer v2.0.1
+        - ProductId fijo para evitar productos fantasmas
+        - MajorUpgrade permite reinstalacion limpia
+        - CustomActions para matar procesos y limpiar servicios antes de instalar
+        - No arranca el servicio durante el MSI (evita error 1920)
+    -->
+    <Product
+        Id="B1A2C3D4-E5F6-7890-ABCD-EF1234567890"
+        Name="SecureLab Agent"
+        Language="1033"
+        Version="2.0.1"
+        Manufacturer="SecureLab"
+        UpgradeCode="9452a7b2-9c45-4f23-9c98-b1ed23f0a59b"
+        Codepage="1252">
+
+        <Package
+            InstallerVersion="200"
+            Compressed="yes"
+            InstallScope="perMachine"
+            Platform="x64"
+            InstallPrivileges="elevated"
+            AdminImage="no"
+            Comments="SecureLab Agent - Endpoint protection and remote control"
+            Description="SecureLab Agent v2.0.1"
+            Keywords="SecureLab, Agent, Security, Compliance, Ley 21.719" />
+
+        <MajorUpgrade
+            AllowSameVersionUpgrades="yes"
+            AllowDowngrades="no"
+            DowngradeErrorMessage="Ya esta instalada una version igual o mas reciente."
+            Schedule="afterInstallInitialize" />
 
         <Media Id="1" Cabinet="agent.cab" EmbedCab="yes" />
 
+        <!-- ========================================================== -->
+        <!-- Propiedades y variables -->
+        <!-- ========================================================== -->
+        <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
+        <Property Id="MSIUSEREALADMINDETECTION" Value="1" />
+        <Property Id="ARPNOREPAIR" Value="1" />
+        <Property Id="ARPNOMODIFY" Value="1" />
+        <Property Id="MSIFASTINSTALL" Value="1" />
+
+        <!-- Forzar ejecucion como admin -->
+        <Condition Message="Este instalador requiere privilegios de administrador. Haga clic derecho y ejecute como administrador.">
+            <![CDATA[Privileged]]>
+        </Condition>
+
+        <!-- ========================================================== -->
+        <!-- Custom Actions: detener y matar todo antes de instalar -->
+        <!-- ========================================================== -->
+
+        <!-- 1. Matar securelab-agent.exe forzosamente (CloseApplication no soportado en este WiX) -->
+        <CustomAction
+            Id="CloseSecureLabAgent"
+            Directory="System64Folder"
+            ExeCommand="cmd.exe /c taskkill /F /IM securelab-agent.exe 2&gt;nul || exit 0"
+            Execute="deferred"
+            Return="ignore"
+            Impersonate="no" />
+
+        <!-- 2. Detener y eliminar servicio -->
+        <CustomAction
+            Id="DeleteService"
+            Directory="System64Folder"
+            ExeCommand="cmd.exe /c sc delete SecureLabAgent 2&gt;nul || exit 0"
+            Execute="deferred"
+            Return="ignore"
+            Impersonate="no"
+            HideTarget="no" />
+
+        <!-- 4. Matar instaladores de SecureLab Agent anteriores -->
+        <CustomAction
+            Id="KillMsiExecForSecureLab"
+            Directory="System64Folder"
+            ExeCommand="cmd.exe /c taskkill /F /FI &quot;IMAGENAME eq msiexec.exe&quot; /FI &quot;WINDOWTITLE eq *SecureLab*&quot; 2&gt;nul || exit 0"
+            Execute="deferred"
+            Return="ignore"
+            Impersonate="no"
+            HideTarget="no"
+ />
+
+        <!-- 5. Limpiar carpeta vieja -->
+        <CustomAction
+            Id="RemoveOldFolder"
+            Directory="System64Folder"
+            ExeCommand="cmd.exe /c if exist &quot;C:\Program Files\SecureLab Agent&quot; rmdir /S /Q &quot;C:\Program Files\SecureLab Agent&quot; 2&gt;nul || exit 0"
+            Execute="deferred"
+            Return="ignore"
+            Impersonate="no"
+            HideTarget="no"
+ />
+
+        <!-- 6. Limpiar productos Windows Installer huérfanos de SecureLab Agent -->
+        <CustomAction
+            Id="MsiZapCleanup"
+            Directory="System64Folder"
+            ExeCommand="cmd.exe /c for /f &quot;usebackq tokens=*&quot; %i in (`powershell -NoProfile -Command &quot;Get-WmiObject Win32_Product -Filter 'Name = `'`'SecureLab Agent'`'`' | Select-Object -ExpandProperty IdentifyingNumber&quot;`) do ( msiexec /x %i /qn /norestart 2&gt;nul )"
+            Execute="deferred"
+            Return="ignore"
+            Impersonate="no"
+            HideTarget="no"
+ />
+
+        <!-- 7. Asegurar que el servicio NO esta corriendo -->
+        <CustomAction
+            Id="EnsureServiceStopped"
+            Directory="System64Folder"
+            ExeCommand="cmd.exe /c sc stop SecureLabAgent 2&gt;nul &amp; timeout /t 2 /nobreak &gt;nul &amp; sc delete SecureLabAgent 2&gt;nul || exit 0"
+            Execute="deferred"
+            Return="ignore"
+            Impersonate="no"
+            HideTarget="no"
+ />
+
+        <!-- ========================================================== -->
+        <!-- Secuencia de instalacion -->
+        <!-- ========================================================== -->
+        <InstallExecuteSequence>
+            <!-- Deferred actions deben estar entre InstallInitialize e InstallFinalize -->
+            <Custom Action="CloseSecureLabAgent" After="InstallInitialize" />
+            <Custom Action="DeleteService" After="CloseSecureLabAgent" />
+            <Custom Action="EnsureServiceStopped" After="DeleteService" />
+            <Custom Action="KillMsiExecForSecureLab" After="EnsureServiceStopped" />
+            <Custom Action="MsiZapCleanup" After="KillMsiExecForSecureLab" />
+            <Custom Action="RemoveOldFolder" After="MsiZapCleanup" />
+
+            <!-- MajorUpgrade ya programa RemoveExistingProducts automaticamente -->
+        </InstallExecuteSequence>
+
+        <!-- ========================================================== -->
+        <!-- Directorios y archivos -->
+        <!-- ========================================================== -->
         <Directory Id="TARGETDIR" Name="SourceDir">
-            <!-- ProgramFiles64Folder → C:\Program Files\ -->
+            <Directory Id="System64Folder" />
             <Directory Id="ProgramFiles64Folder">
                 <Directory Id="INSTALLDIR" Name="SecureLab Agent">
-                    <Component Id="MainComponent" Guid="*">
-                        <File Id="ExeFile" Source="$(var.ExeSource)" KeyPath="yes" />
-                        <File Id="ConfigFile" Source="$(var.ConfigSource)" />
+                    <Component
+                        Id="MainComponent"
+                        Guid="A1B2C3D4-E5F6-7890-ABCD-EF1234567890"
+                        Win64="yes"
+                        Transitive="no">
+                        <File
+                            Id="ExeFile"
+                            Source="$(var.ExeSource)"
+                            KeyPath="yes" />
+                        <File
+                            Id="ConfigFile"
+                            Source="$(var.ConfigSource)" />
+
+                        <!-- Instalacion del servicio -->
                         <ServiceInstall
                             Id="ServiceInstaller"
                             Type="ownProcess"
-                            Vital="yes"
+                            Vital="no"
                             Name="SecureLabAgent"
                             DisplayName="SecureLab Agent"
-                            Description="SecureLab Agent - Endpoint protection and compliance monitoring (Ley 21.719)."
+                            Description="SecureLab Agent - Endpoint protection and compliance monitoring."
                             Start="auto"
                             Account="LocalSystem"
                             ErrorControl="normal"
-                            Interactive="no"
-                            WorkingDirectory="INSTALLDIR" />
-                        <!-- NO Start="install" para evitar error 1920 durante la instalación -->
-                        <ServiceControl Id="StartService" Name="SecureLabAgent" Wait="yes" Stop="both" Start="install" Remove="uninstall" />
+                            Interactive="no" />
+
+                        <!-- Control del servicio: no arrancar, si detener/desinstalar -->
+                        <ServiceControl
+                            Id="StartService"
+                            Name="SecureLabAgent"
+                            Wait="no"
+                            Stop="both"
+                            Remove="uninstall" />
                     </Component>
                 </Directory>
             </Directory>
@@ -34,5 +180,13 @@
         <Feature Id="CompleteFeature" Title="SecureLab Agent" Level="1">
             <ComponentRef Id="MainComponent" />
         </Feature>
+
+        <!-- ========================================================== -->
+        <!-- UI y mensajes -->
+        <!-- ========================================================== -->
+        <Property Id="DISABLEADVTSHORTCUTS" Value="1" />
+        <Property Id="MSIDISABLERMRESTART" Value="1" />
+        <Property Id="MSIRMSHUTDOWN" Value="1" />
+
     </Product>
 </Wix>

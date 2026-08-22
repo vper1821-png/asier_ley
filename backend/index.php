@@ -44,6 +44,7 @@ $routes = [
     // Agents
     'POST /api/agents'              => 'routes/agents.php@listAll',
     'POST /api/agents/list'         => 'routes/agents.php@listAll',
+    'POST /api/agents/combined'     => 'routes/agents.php@combined',
     'POST /api/agents/register'     => 'routes/agents.php@register',
     'POST /api/agents/lockdown'     => 'routes/agents.php@setLockdown',
     'POST /api/agents/request-data' => 'routes/agents.php@requestData',
@@ -257,6 +258,12 @@ require_once __DIR__ . '/seed.php';
 seedAdminUser();
 
 // Dynamic routes
+if (preg_match('#^/api/agents/deploy$#', $uri) && $method === 'POST') {
+    require_once __DIR__ . '/routes/agents.php';
+    createDeploy();
+    exit;
+}
+
 if (preg_match('#^/api/agents/download/(.+)$#', $uri, $m)) {
     $_GET['platform'] = $m[1];
     require_once __DIR__ . '/routes/agents.php';
@@ -328,6 +335,20 @@ if (preg_match('#^/api/admin/user/([a-zA-Z0-9]+)$#', $uri, $m)) {
     $_GET['userId'] = $m[1];
     require_once __DIR__ . '/routes/admin.php';
     userDetail();
+    exit;
+}
+
+// ── Agent Deploy (admin) ──
+if (preg_match('#^/api/admin/agent-deploy$#', $uri) && $method === 'POST') {
+    require_once __DIR__ . '/routes/admin.php';
+    agentDeployCreate();
+    exit;
+}
+
+if (preg_match('#^/api/agent/download/([a-zA-Z0-9_-]+)$#', $uri, $m)) {
+    $_GET['platform'] = $m[1];
+    require_once __DIR__ . '/routes/admin.php';
+    agentDownload();
     exit;
 }
 
