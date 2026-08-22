@@ -10,7 +10,7 @@ echo "=== TEST DE ENDPOINTS (SIMULANDO FRONTEND) ===\n\n";
 // Función para hacer peticiones como el frontend
 function apiRequest($method, $endpoint, $data = null, $token = null) {
     // Usar el nombre del contenedor backend para conexiones internas
-    $baseUrl = 'http://invisia-backend-php:3838';
+    $baseUrl = 'https://leysecurelab.sytes.net';
     $ch = curl_init($baseUrl . $endpoint);
     $headers = ['Content-Type: application/json'];
     if ($token) {
@@ -41,7 +41,7 @@ function apiRequest($method, $endpoint, $data = null, $token = null) {
 
 // 1. LOGIN
 echo "1. LOGIN\n";
-echo "   URL: http://invisia-backend-php:3838/api/login\n";
+echo "   URL: https://leysecurelab.sytes.net/api/login\n";
 $loginResult = apiRequest('POST', '/api/login', [
     'email' => $email,
     'password' => $password,

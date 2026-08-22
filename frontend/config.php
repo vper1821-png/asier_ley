@@ -3,8 +3,8 @@
 session_start();
 
 // API Base URL: usar nombre del contenedor para Docker
-define('API_BASE_URL', getenv('API_BASE_URL') ?: 'http://invisia-backend-php:3838');
-define('API_BASE_URL_BROWSER', getenv('API_BASE_URL_BROWSER') ?: 'http://invisia-backend-php:3838');
+define('API_BASE_URL', getenv('API_BASE_URL') ?: 'https://leysecurelab.sytes.net');
+define('API_BASE_URL_BROWSER', getenv('API_BASE_URL_BROWSER') ?: 'https://leysecurelab.sytes.net');
 define('SITE_URL', getenv('SITE_URL') ?: 'https://leysecurelab.sytes.net');
 define('SITE_NAME', 'SecureLab');
 define('SITE_SUBTITLE', 'Cumplimiento ley 21.719');

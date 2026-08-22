@@ -54,8 +54,8 @@ Section "SecureLab Agent" SEC01
   ; Crear config.json directamente con el token real
   FileOpen $0 "$INSTDIR\config.json" w
   FileWrite $0 '{$\n'
-  FileWrite $0 '  "api_base": "http://localhost:3838/api/agents",$\n'
-  FileWrite $0 '  "ws_url": "ws://localhost:3838/ws/",$\n'
+  FileWrite $0 '  "api_base": "https://leysecurelab.sytes.net/api/agents",$\n'
+  FileWrite $0 '  "ws_url": "wss://leysecurelab.sytes.net/ws/",$\n'
   FileWrite $0 '  "token": "${AGENT_TOKEN}",$\n'
   FileWrite $0 '  "heartbeat_interval": 5,$\n'
   FileWrite $0 '  "agent_version": "2.0.0",$\n'

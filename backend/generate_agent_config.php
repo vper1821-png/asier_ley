@@ -17,8 +17,8 @@ try {
     $token = Auth::createToken($userId, $payload);
     
     $config = [
-        'api_base' => 'http://localhost:3838/api/agents',
-        'ws_url' => 'ws://localhost:3838/ws/',
+        'api_base' => 'https://leysecurelab.sytes.net/api/agents',
+        'ws_url' => 'wss://leysecurelab.sytes.net/ws/',
         'token' => $token,
         'heartbeat_interval' => 5,
         'telemetry_interval' => 10,

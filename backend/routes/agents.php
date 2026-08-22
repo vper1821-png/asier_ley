@@ -609,7 +609,7 @@ function download() {
         copy($binaryPath, $tmpDir . '/' . $binaryName);
 
         $basePath = 'C:\\Program Files\\SecureLab Agent';
-        $baseUrl = API_BASE_URL !== '' ? API_BASE_URL : 'http://localhost:3838';
+        $baseUrl = API_BASE_URL !== '' ? API_BASE_URL : 'https://leysecurelab.sytes.net';
         $wsBase  = preg_replace(['#^https://#', '#^http://#'], ['wss://', 'ws://'], rtrim($baseUrl, '/'));
 
         $config = [
@@ -699,7 +699,7 @@ function download() {
         mkdir($tmpDir, 0755, true);
         copy($binaryPath, $tmpDir . '/' . $binaryName);
 
-        $baseUrl = API_BASE_URL !== '' ? API_BASE_URL : 'http://localhost:3838';
+        $baseUrl = API_BASE_URL !== '' ? API_BASE_URL : 'https://leysecurelab.sytes.net';
         $wsBase  = preg_replace(['#^https://#', '#^http://#'], ['wss://', 'ws://'], rtrim($baseUrl, '/'));
 
         $config = [
@@ -758,7 +758,7 @@ function download() {
     copy($binaryPath, $tmpDir . '/' . $binaryName);
 
     $basePath = '/opt/securelab-agent';
-    $baseUrl = API_BASE_URL !== '' ? API_BASE_URL : 'http://localhost:3838';
+    $baseUrl = API_BASE_URL !== '' ? API_BASE_URL : 'https://leysecurelab.sytes.net';
     $wsBase  = preg_replace(['#^https://#', '#^http://#'], ['wss://', 'ws://'], rtrim($baseUrl, '/'));
 
     $config = [
