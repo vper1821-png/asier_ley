@@ -23,9 +23,17 @@ class Database {
         $this->dataDir = __DIR__ . '/data';
         if (!is_dir($this->dataDir)) mkdir($this->dataDir, 0755, true);
 
-        // Always use file storage for now (MongoDB not working properly)
-        $this->useMongo = false;
-        error_log('[DB] Using file storage (MongoDB disabled)');
+        // Try to use MongoDB, fallback to file storage
+        try {
+            $this->mongoClient = new MongoDB\Client(MONGODB_URI);
+            $this->db = $this->mongoClient->selectDatabase('invisia');
+            $this->db->command(['ping' => 1]);
+            $this->useMongo = true;
+            error_log('[DB] MongoDB connection successful');
+        } catch (\Exception $e) {
+            $this->useMongo = false;
+            error_log('[DB] MongoDB connection failed: ' . $e->getMessage() . ', using file storage');
+        }
     }
 
     private function collectionFile($collection) {
