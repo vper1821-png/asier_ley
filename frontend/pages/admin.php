@@ -529,7 +529,7 @@ require_once __DIR__ . '/../includes/header.php';
             </div>
 
             <?php elseif ($tab === 'tickets'): ?>
-            <!-- ═══ CENTRO DE SOPORTE Y TICKETS (ADMIN) ═══ -->
+<!-- ═══ CENTRO DE SOPORTE Y TICKETS (ADMIN) ═══ -->
             <?php
             $statusCfg = [
                 'open'        => ['label' => 'Abierto',      'class' => 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25', 'dot' => 'bg-emerald-400'],
@@ -549,6 +549,17 @@ require_once __DIR__ . '/../includes/header.php';
                 if ($s === 'closed') $countBy['closed']++;
                 elseif ($s === 'in_progress' || $s === 'pending') $countBy['in_progress']++;
                 else $countBy['open']++;
+            }
+
+            $selectedTicketId = $_GET['ticket_id'] ?? '';
+            $selectedTicket = null;
+            if ($selectedTicketId) {
+                foreach ($allTickets as $t) {
+                    if (($t['_id'] ?? '') === $selectedTicketId) {
+                        $selectedTicket = $t;
+                        break;
+                    }
+                }
             }
             ?>
 
@@ -592,99 +603,189 @@ require_once __DIR__ . '/../includes/header.php';
                 </div>
             </div>
 
-            <!-- Filters -->
-            <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-4 mb-5">
-                <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-                    <div class="relative max-w-xs w-full">
-                        <div class="absolute left-3 top-1/2 -translate-y-1/2 text-text-subtle pointer-events-none">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            <!-- Two Column Layout -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                <!-- Left Column: Ticket List -->
+                <div class="lg:col-span-1 space-y-4">
+                    <!-- Filters -->
+                    <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-4">
+                        <div class="flex flex-col gap-3">
+                            <div class="relative">
+                                <div class="absolute left-3 top-1/2 -translate-y-1/2 text-text-subtle pointer-events-none">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                                </div>
+                                <input type="text" id="admin-ticket-search" placeholder="Buscar por asunto, usuario o ID..." oninput="filterAdminTickets()"
+                                       class="w-full bg-[#0a0e14] border border-border-theme rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-text-subtle focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/20 transition-all">
+                            </div>
+                            <div class="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+                                <button type="button" onclick="setAdminTicketFilter('all')" data-filter="all" class="admin-ticket-filter px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all bg-primary-500/15 text-primary-300 border border-primary-500/30 whitespace-nowrap">Todos (<?= $countBy['total'] ?>)</button>
+                                <button type="button" onclick="setAdminTicketFilter('open')" data-filter="open" class="admin-ticket-filter px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all text-text-muted hover:text-white hover:bg-white/[0.04] border border-transparent whitespace-nowrap">Abiertos (<?= $countBy['open'] ?>)</button>
+                                <button type="button" onclick="setAdminTicketFilter('in_progress')" data-filter="in_progress" class="admin-ticket-filter px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all text-text-muted hover:text-white hover:bg-white/[0.04] border border-transparent whitespace-nowrap">En Atención (<?= $countBy['in_progress'] ?>)</button>
+                                <button type="button" onclick="setAdminTicketFilter('closed')" data-filter="closed" class="admin-ticket-filter px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all text-text-muted hover:text-white hover:bg-white/[0.04] border border-transparent whitespace-nowrap">Cerrados (<?= $countBy['closed'] ?>)</button>
+                            </div>
                         </div>
-                        <input type="text" id="admin-ticket-search" placeholder="Buscar por asunto, usuario o ID..." oninput="filterAdminTickets()"
-                               class="w-full bg-[#0a0e14] border border-border-theme rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-text-subtle focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/20 transition-all">
                     </div>
-                    <div class="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
-                        <button type="button" onclick="setAdminTicketFilter('all')" data-filter="all" class="admin-ticket-filter px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all bg-primary-500/15 text-primary-300 border border-primary-500/30 whitespace-nowrap">Todos (<?= $countBy['total'] ?>)</button>
-                        <button type="button" onclick="setAdminTicketFilter('open')" data-filter="open" class="admin-ticket-filter px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all text-text-muted hover:text-white hover:bg-white/[0.04] border border-transparent whitespace-nowrap">Abiertos (<?= $countBy['open'] ?>)</button>
-                        <button type="button" onclick="setAdminTicketFilter('in_progress')" data-filter="in_progress" class="admin-ticket-filter px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all text-text-muted hover:text-white hover:bg-white/[0.04] border border-transparent whitespace-nowrap">En Atención (<?= $countBy['in_progress'] ?>)</button>
-                        <button type="button" onclick="setAdminTicketFilter('closed')" data-filter="closed" class="admin-ticket-filter px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all text-text-muted hover:text-white hover:bg-white/[0.04] border border-transparent whitespace-nowrap">Cerrados (<?= $countBy['closed'] ?>)</button>
+
+                    <!-- Tickets List -->
+                    <div class="bg-bg-panel/80 border border-border-theme rounded-2xl overflow-hidden backdrop-blur-md shadow-theme-sm">
+                        <div class="p-3.5 space-y-2" id="admin-tickets-list">
+                            <?php if (empty($allTickets)): ?>
+                            <div class="flex flex-col items-center justify-center py-16 px-4 text-center space-y-3">
+                                <div class="w-12 h-12 rounded-2xl bg-white/[0.02] border border-white/[0.06] flex items-center justify-center text-text-subtle">
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/></svg>
+                                </div>
+                                <p class="text-xs font-semibold text-text-heading">Sin tickets registrados</p>
+                            </div>
+                            <?php else: ?>
+                            <?php foreach ($allTickets as $t):
+                                $tid = $t['_id'] ?? '';
+                                $tStatus = $t['status'] ?? 'open';
+                                $tPriority = $t['priority'] ?? 'medium';
+                                $st = $statusCfg[$tStatus] ?? $statusCfg['open'];
+                                $pr = $prioCfg[$tPriority] ?? $prioCfg['medium'];
+                                $shortId = substr($tid, -6);
+                                $dateStr = substr($t['updatedAt'] ?? ($t['createdAt'] ?? ''), 0, 16);
+                                $isSelected = $selectedTicketId === $tid;
+                            ?>
+                            <div class="admin-ticket-card p-3 rounded-xl border cursor-pointer transition-all duration-200 <?= $isSelected ? 'bg-primary-500/10 border-primary-500/40' : 'border-border-theme/70 bg-bg-surface/30 hover:bg-bg-elevated hover:border-surface-600' ?>"
+                                 onclick="selectTicket('<?= h($tid) ?>')"
+                                 data-status="<?= h($tStatus) ?>" data-search="<?= h(mb_strtolower(($t['subject'] ?? '') . ' ' . ($t['userEmail'] ?? '') . ' ' . $shortId)) ?>">
+                                <div class="flex flex-col gap-2">
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <span class="text-[9px] font-mono text-cyan-400 font-medium px-1.5 py-0.5 rounded bg-cyan-950/40 border border-cyan-500/20">#TK-<?= h(strtoupper($shortId)) ?></span>
+                                        <span class="text-[9px] px-1.5 py-0.5 rounded-full border inline-flex items-center gap-1 font-medium <?= $st['class'] ?>">
+                                            <span class="w-1 h-1 rounded-full <?= $st['dot'] ?>"></span>
+                                            <?= h($st['label']) ?>
+                                        </span>
+                                    </div>
+                                    <h3 class="text-[12px] font-semibold text-text-heading truncate leading-snug"><?= h($t['subject'] ?? ($t['title'] ?? 'Ticket')) ?></h3>
+                                    <div class="flex items-center gap-2 text-[10px] text-text-subtle">
+                                        <span class="font-medium"><?= h($t['userEmail'] ?? '-') ?></span>
+                                        <span>·</span>
+                                        <span class="font-mono"><?= h($dateStr) ?></span>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endforeach; ?>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Ticket Detail -->
+                <div class="lg:col-span-2">
+                    <div class="bg-bg-panel/80 border border-border-theme rounded-2xl overflow-hidden backdrop-blur-md shadow-theme-sm h-full">
+                        <?php if ($selectedTicket): ?>
+                            <?php
+                                $tid = $selectedTicket['_id'] ?? '';
+                                $tStatus = $selectedTicket['status'] ?? 'open';
+                                $tPriority = $selectedTicket['priority'] ?? 'medium';
+                                $st = $statusCfg[$tStatus] ?? $statusCfg['open'];
+                                $pr = $prioCfg[$tPriority] ?? $prioCfg['medium'];
+                                $shortId = substr($tid, -6);
+                                $messages = $selectedTicket['messages'] ?? [];
+                                $isClosed = $tStatus === 'closed';
+                            ?>
+                            <!-- Ticket Header -->
+                            <div class="p-6 border-b border-border-theme">
+                                <div class="flex flex-col gap-4">
+                                    <div class="flex items-start justify-between gap-4">
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center gap-2 flex-wrap mb-3">
+                                                <span class="text-[10px] font-mono text-cyan-400 font-medium px-2 py-0.5 rounded bg-cyan-950/40 border border-cyan-500/20">#TK-<?= h(strtoupper($shortId)) ?></span>
+                                                <span class="text-[10px] px-2 py-0.5 rounded-full border inline-flex items-center gap-1 font-medium <?= $st['class'] ?>">
+                                                    <span class="w-1 h-1 rounded-full <?= $st['dot'] ?>"></span>
+                                                    <?= h($st['label']) ?>
+                                                </span>
+                                                <span class="text-[10px] px-2 py-0.5 rounded-full border inline-flex items-center gap-1 font-medium <?= $pr['class'] ?>">
+                                                    <span class="w-1 h-1 rounded-full <?= $pr['dot'] ?>"></span>
+                                                    <?= h($pr['label']) ?>
+                                                </span>
+                                            </div>
+                                            <h2 class="text-[16px] font-bold text-white leading-tight break-words"><?= h($selectedTicket['subject'] ?? ($selectedTicket['title'] ?? 'Ticket')) ?></h2>
+                                            <p class="text-[11px] text-text-muted mt-2">Categoría: <?= h(strtoupper($selectedTicket['category'] ?? 'GENERAL')) ?></p>
+                                        </div>
+                                        <form method="POST" class="flex-shrink-0" onsubmit="return confirm('¿Cambiar estado del ticket?')">
+                                            <input type="hidden" name="ticket_id" value="<?= h($tid) ?>">
+                                            <input type="hidden" name="new_status" value="<?= $isClosed ? 'open' : 'closed' ?>">
+                                            <button type="submit" name="ticket_status" value="1" class="px-4 py-2 rounded-lg text-[11px] font-medium transition-all flex items-center gap-1.5 <?= $isClosed ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20' : 'bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500/20' ?>">
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                                <?= $isClosed ? 'Reabrir' : 'Cerrar' ?>
+                                            </button>
+                                        </form>
+                                    </div>
+                                    <?php if ($isClosed): ?>
+                                    <div class="bg-amber-500/10 border border-amber-500/20 rounded-lg px-4 py-3 text-[11px] text-amber-400">
+                                        Este ticket está cerrado. Reabre para enviar nuevas respuestas.
+                                    </div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+
+                            <!-- Messages -->
+                            <div class="p-5 space-y-4 max-h-[500px] overflow-y-auto">
+                                <?php foreach ($messages as $msg): ?>
+                                    <?php
+                                        $isAdmin = ($msg['sender'] ?? '') === 'admin';
+                                        $msgClass = $isAdmin ? 'bg-primary-500/10 border-primary-500/20 ml-auto' : 'bg-bg-surface/30 border-border-theme/50 mr-auto';
+                                        $alignClass = $isAdmin ? 'justify-end' : 'justify-start';
+                                    ?>
+                                    <div class="flex <?= $alignClass ?> max-w-[90%] mb-4">
+                                        <div class="<?= $msgClass ?> rounded-xl p-4 border">
+                                            <div class="flex items-center gap-2 mb-2">
+                                                <span class="text-[11px] font-semibold <?= $isAdmin ? 'text-primary-400' : 'text-text-heading' ?>"><?= $isAdmin ? 'Admin' : h($selectedTicket['userEmail'] ?? 'Usuario') ?></span>
+                                                <span class="text-[10px] text-text-subtle"><?= h(substr($msg['timestamp'] ?? '', 0, 16)) ?></span>
+                                            </div>
+                                            <p class="text-[12px] text-text-body leading-relaxed break-words"><?= h($msg['text'] ?? '') ?></p>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                                <?php if (empty($messages)): ?>
+                                <div class="text-center py-12 text-text-subtle text-[12px]">
+                                    No hay mensajes en este ticket.
+                                </div>
+                                <?php endif; ?>
+                            </div>
+
+                            <!-- Response Form -->
+                            <?php if (!$isClosed): ?>
+                            <div class="p-5 border-t border-border-theme bg-bg-surface/20">
+                                <form method="POST" class="flex flex-col gap-4">
+                                    <input type="hidden" name="ticket_id" value="<?= h($tid) ?>">
+                                    <div>
+                                        <label class="block text-[11px] font-medium text-text-heading mb-2">Escribe una respuesta</label>
+                                        <textarea name="response" required placeholder="Escribe tu respuesta aquí..." rows="4" class="input-premium w-full text-[12px] p-4 rounded-xl resize-none min-h-[100px]"></textarea>
+                                    </div>
+                                    <div class="flex justify-end">
+                                        <button type="submit" name="ticket_respond" value="1" class="px-8 py-3 rounded-lg text-[12px] font-semibold bg-gradient-to-r from-primary-600 to-cyan-600 hover:from-primary-500 hover:to-cyan-500 text-white transition-all shadow-lg shadow-primary-900/20 flex items-center gap-2">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+                                            Enviar Respuesta
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                            <?php endif; ?>
+                        <?php else: ?>
+                            <!-- Empty State -->
+                            <div class="flex flex-col items-center justify-center h-full py-20 px-4 text-center space-y-4">
+                                <div class="w-16 h-16 rounded-2xl bg-white/[0.02] border border-white/[0.06] flex items-center justify-center text-text-subtle">
+                                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/></svg>
+                                </div>
+                                <div>
+                                    <p class="text-sm font-semibold text-text-heading">Selecciona un ticket</p>
+                                    <p class="text-xs text-text-subtle mt-1">Haz clic en un ticket de la lista para ver los detalles</p>
+                                </div>
+                            </div>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
 
-            <!-- Tickets Inbox -->
-            <div class="bg-bg-panel/80 border border-border-theme rounded-2xl overflow-hidden backdrop-blur-md shadow-theme-sm p-3.5 space-y-2" id="admin-tickets-list">
-                <?php if (empty($allTickets)): ?>
-                <div class="flex flex-col items-center justify-center py-16 px-4 text-center space-y-3">
-                    <div class="w-12 h-12 rounded-2xl bg-white/[0.02] border border-white/[0.06] flex items-center justify-center text-text-subtle">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/></svg>
-                    </div>
-                    <p class="text-xs font-semibold text-text-heading">Sin tickets registrados</p>
-                </div>
-                <?php else: ?>
-                <?php foreach ($allTickets as $t):
-                    $tid = $t['_id'] ?? '';
-                    $tStatus = $t['status'] ?? 'open';
-                    $tPriority = $t['priority'] ?? 'medium';
-                    $st = $statusCfg[$tStatus] ?? $statusCfg['open'];
-                    $pr = $prioCfg[$tPriority] ?? $prioCfg['medium'];
-                    $shortId = substr($tid, -6);
-                    $dateStr = substr($t['updatedAt'] ?? ($t['createdAt'] ?? ''), 0, 16);
-                    $snippet = $t['description'] ?? '';
-                    $msgCount = count($t['messages'] ?? []);
-                    $isClosed = $tStatus === 'closed';
-                ?>
-                <div class="admin-ticket-card p-3.5 rounded-xl border border-border-theme/70 bg-bg-surface/30 hover:bg-bg-elevated hover:border-surface-600 transition-all duration-200"
-                     data-status="<?= h($tStatus) ?>" data-search="<?= h(mb_strtolower(($t['subject'] ?? '') . ' ' . ($t['userEmail'] ?? '') . ' ' . $shortId)) ?>">
-                    <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                        <div class="min-w-0 flex-1">
-                            <div class="flex items-center gap-2 flex-wrap mb-1.5">
-                                <span class="text-[9px] font-mono text-cyan-400 font-medium px-1.5 py-0.5 rounded bg-cyan-950/40 border border-cyan-500/20">#TK-<?= h(strtoupper($shortId)) ?></span>
-                                <span class="text-[9px] px-1.5 py-0.5 rounded-full border inline-flex items-center gap-1 font-medium <?= $st['class'] ?>">
-                                    <span class="w-1 h-1 rounded-full <?= $st['dot'] ?>"></span>
-                                    <?= h($st['label']) ?>
-                                </span>
-                                <span class="text-[9px] px-1.5 py-0.5 rounded-full border inline-flex items-center gap-1 font-medium <?= $pr['class'] ?>">
-                                    <span class="w-1 h-1 rounded-full <?= $pr['dot'] ?>"></span>
-                                    <?= h($pr['label']) ?>
-                                </span>
-                            </div>
-                            <h3 class="text-[13px] font-semibold text-text-heading truncate leading-snug"><?= h($t['subject'] ?? ($t['title'] ?? 'Ticket')) ?></h3>
-                            <p class="text-[11px] text-text-subtle truncate mt-1 leading-relaxed"><?= h($snippet ?: 'Sin contenido adicional') ?></p>
-                            <div class="flex items-center gap-2 mt-2 text-[10px] text-text-subtle">
-                                <span class="font-medium"><?= h($t['userEmail'] ?? '-') ?></span>
-                                <span>·</span>
-                                <span class="font-mono"><?= h($dateStr) ?></span>
-                                <?php if ($msgCount > 0): ?>
-                                <span class="inline-flex items-center gap-1 text-text-muted">
-                                    <svg class="w-3 h-3 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
-                                    <?= $msgCount ?>
-                                </span>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                        <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-shrink-0 w-full sm:w-auto">
-                            <form method="POST" class="inline" onsubmit="return confirm('¿Cambiar estado del ticket?')">
-                                <input type="hidden" name="ticket_id" value="<?= h($tid) ?>">
-                                <input type="hidden" name="new_status" value="<?= $isClosed ? 'open' : 'closed' ?>">
-                                <button type="submit" name="ticket_status" value="1" class="px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all flex items-center gap-1.5 <?= $isClosed ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 hover:shadow-emerald-500/10' : 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 hover:shadow-emerald-500/10' ?> shadow-sm">
-                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                                    <?= $isClosed ? 'Reabrir' : 'Cerrar' ?>
-                                </button>
-                            </form>
-                            <form method="POST" class="w-full sm:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                                <input type="hidden" name="ticket_id" value="<?= h($tid) ?>">
-                                <input type="text" name="response" required placeholder="Escribe una respuesta..." class="input-premium flex-1 min-w-[240px] text-[11px] py-1.5 px-3 rounded-lg">
-                                <button type="submit" name="ticket_respond" value="1" class="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-gradient-to-r from-primary-600 to-cyan-600 hover:from-primary-500 hover:to-cyan-500 text-white transition-all shadow-lg shadow-primary-900/20 flex items-center justify-center gap-1.5">
-                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
-                                    Responder
-                                </button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-                <?php endforeach; ?>
-                <?php endif; ?>
-            </div>
+            <script>
+            function selectTicket(ticketId) {
+                window.location.href = '/admin?tab=tickets&ticket_id=' + ticketId;
+            }
+            </script>
 
             <?php elseif ($tab === 'logs'): ?>
             <!-- ═══ LOGS DE AUDITORÍA ═══ -->

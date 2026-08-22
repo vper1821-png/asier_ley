@@ -2,7 +2,10 @@
 // SecureLab2v - API proxy: forwards browser AJAX calls to the backend with the session token
 require_once __DIR__ . '/config.php';
 
-header('Content-Type: application/json; charset=utf-8');
+// No forzar Content-Type para permitir descargas de archivos
+if ($_GET['path'] && !str_contains($_GET['path'], 'download')) {
+    header('Content-Type: application/json; charset=utf-8');
+}
 
 if (!is_logged_in()) {
     http_response_code(401);
@@ -40,6 +43,12 @@ $body['token'] = $_SESSION['token'];
 $query = $_GET;
 unset($query['path']);
 $url = API_BASE_URL . $path;
+
+// Agregar token a query string para GET requests
+if ($method === 'GET') {
+    $query['token'] = $_SESSION['token'];
+}
+
 if (!empty($query)) {
     $url .= (str_contains($path, '?') ? '&' : '?') . http_build_query($query);
 }
@@ -49,13 +58,26 @@ curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_TIMEOUT => 60,
     CURLOPT_CUSTOMREQUEST => $method,
-    CURLOPT_POSTFIELDS => http_build_query($body),
-    CURLOPT_HTTPHEADER => ['Content-Type: application/x-www-form-urlencoded'],
+    CURLOPT_BINARYTRANSFER => true, // Importante para archivos binarios
+    CURLOPT_FOLLOWLOCATION => true,
 ]);
+
+// Solo enviar body para POST/PUT/PATCH
+if ($method !== 'GET') {
+    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($body));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/x-www-form-urlencoded']);
+}
 
 $response = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE) ?: 502;
+$contentType = curl_getinfo($ch, CURLINFO_CONTENT_TYPE) ?: 'application/octet-stream';
 curl_close($ch);
 
 http_response_code($httpCode);
+
+// Pasar el Content-Type del backend
+if ($contentType) {
+    header('Content-Type: ' . $contentType);
+}
+
 echo $response !== false ? $response : json_encode(['error' => 'backend no disponible']);

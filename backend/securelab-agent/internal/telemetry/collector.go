@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"fmt"
 	"time"
 
 	"securelab-agent/internal/ws"
@@ -11,6 +12,7 @@ func Start(wsClient *ws.Client, interval time.Duration) {
 	go func() {
 		for range ticker.C {
 			data := collect()
+			fmt.Printf("📊 Telemetría recolectada: CPU=%d, RAM=%d\n", data.CPU, data.Memory)
 			wsClient.SendTelemetry(data)
 		}
 	}()

@@ -1,0 +1,4 @@
+# SecureLab - Retention Cleanup Cron
+# Runs weekly on Sunday at 03:00 AM
+
+0 3 * * 0 root php /var/www/html/retention-cleanup.php >> /var/log/retention-cleanup.log 2>&1

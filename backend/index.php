@@ -4,6 +4,44 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/Database.php';
 require_once __DIR__ . '/Auth.php';
 
+// ── Security Headers ──
+header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: DENY');
+header('X-XSS-Protection: 1; mode=block');
+header('Referrer-Policy: strict-origin-when-cross-origin');
+header('Content-Security-Policy: default-src \'self\'; script-src \'self\' \'unsafe-inline\' \'unsafe-eval\' https://cdn.tailwindcss.com https://fonts.googleapis.com; style-src \'self\' \'unsafe-inline\' https://fonts.googleapis.com https://fonts.gstatic.com; font-src \'self\' https://fonts.gstatic.com; img-src \'self\' data: https:; connect-src \'self\'; frame-ancestors \'none\';');
+
+// ── Rate Limiting (simple in-memory, per IP) ──
+$rateLimitKey = 'ratelimit_' . md5($_SERVER['REMOTE_ADDR'] ?? 'unknown');
+$rateLimitWindow = 60; // 1 minute
+$rateLimitMax = 100;   // 100 requests per minute
+if (!isset($_SESSION)) @session_start();
+if (!isset($_SESSION[$rateLimitKey])) {
+    $_SESSION[$rateLimitKey] = ['count' => 0, 'window' => time()];
+}
+if (time() - $_SESSION[$rateLimitKey]['window'] > $rateLimitWindow) {
+    $_SESSION[$rateLimitKey] = ['count' => 0, 'window' => time()];
+}
+$_SESSION[$rateLimitKey]['count']++;
+if ($_SESSION[$rateLimitKey]['count'] > $rateLimitMax) {
+    header('HTTP/1.1 429 Too Many Requests');
+    header('Retry-After: ' . ($rateLimitWindow - (time() - $_SESSION[$rateLimitKey]['window'])));
+    json_error('demasiadas solicitudes', 429);
+}
+
+// ── JWT Secret Rotation Helper ──
+function getJwtSecret() {
+    $base = JWT_SECRET ?? 'default_secret_change_me';
+    $rotation = intdiv(time(), 86400 * 30); // rotate every 30 days
+    return hash_hmac('sha256', $base . $rotation, 'rotation_salt');
+}
+
+// Override Auth::createToken to use rotated secret
+$originalCreateToken = ['Auth', 'createToken'];
+if (is_callable($originalCreateToken)) {
+    // We'll handle this in Auth.php directly
+}
+
 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $method = $_SERVER['REQUEST_METHOD'];
 
@@ -46,8 +84,11 @@ $routes = [
     'POST /api/agents/list'         => 'routes/agents.php@listAll',
     'POST /api/agents/combined'     => 'routes/agents.php@combined',
     'POST /api/agents/register'     => 'routes/agents.php@register',
+    'POST /api/agents/auto-register' => 'routes/agents.php@autoRegister',
     'POST /api/agents/lockdown'     => 'routes/agents.php@setLockdown',
     'POST /api/agents/request-data' => 'routes/agents.php@requestData',
+    'POST /api/agents/{id}/command' => 'routes/agents.php@sendCommand',
+    'GET /api/agents/download-binary' => 'routes/agents.php@downloadBinary',
     'POST /api/register'            => 'routes/auth.php@register',
     'GET /api/agents/download/'     => 'routes/agents.php@download',
     'POST /api/agents/download/'    => 'routes/agents.php@download',
@@ -166,8 +207,13 @@ $routes = [
 
     // Compliance
     'POST /api/invisia/score'           => 'routes/compliance.php@score',
+    'POST /api/invisia/checklist'       => 'routes/compliance.php@detailedChecklist',
+    'POST /api/invisia/auto-sign-training' => 'routes/compliance.php@autoSignTraining',
+    'POST /api/invisia/compliance/config' => 'routes/compliance.php@updateConfig',
+    'GET /api/invisia/compliance/config'  => 'routes/compliance.php@getConfig',
     'POST /api/compliance/verify-invite' => 'routes/compliance.php@verifyInvite',
     'POST /api/compliance/sign'          => 'routes/compliance.php@sign',
+    'GET /api/compliance/public-policy'  => 'routes/compliance.php@generatePublicPolicy',
 
     // ─── Compliance Files ───
     'POST /api/compliance/files/upload'    => 'routes/compliance_files.php@upload',
@@ -189,6 +235,7 @@ $routes = [
     'POST /api/arco/requests/update' => 'routes/arco.php@updateRequest',
     'POST /api/arco/requests/generate-response' => 'routes/arco.php@generateResponse',
     'POST /api/arco/track'    => 'routes/arco.php@track',
+    'GET /api/arco/requests/export-portabilidad' => 'routes/arco.php@exportPortabilidad',
 
     // Admin
     'POST /api/admin/users'       => 'routes/admin.php@users',

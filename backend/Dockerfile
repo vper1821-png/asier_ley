@@ -12,12 +12,14 @@ COPY securelab-agent/ .
 # Sincronizar dependencias y generar vendor (para builds reproducibles)
 RUN go mod tidy && go mod vendor
 
-# Compilar binarios Linux (amd64) y macOS (amd64/arm64) — CGO_ENABLED=0, sin tags windows
+# Compilar binarios Linux (amd64), macOS (amd64/arm64) y Windows (amd64)
 # Usamos CGO_ENABLED=0 para que los binarios sean completamente estáticos y portables.
 RUN mkdir -p /out && \
     CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -v -ldflags "-s -w" -o /out/securelab-agent-linux-x64 ./cmd/agent && \
     CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -v -ldflags "-s -w" -o /out/securelab-agent-mac-x64 ./cmd/agent && \
-    CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -v -ldflags "-s -w" -o /out/securelab-agent-mac-arm64 ./cmd/agent
+    CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -v -ldflags "-s -w" -o /out/securelab-agent-mac-arm64 ./cmd/agent && \
+    # 🔽 NUEVO: binario para Windows
+    CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -v -ldflags "-s -w" -o /out/securelab-agent-windows-amd64.exe ./cmd/agent
 
 # ── Stage 2: Runtime PHP con nginx ──
 FROM php:8.3-fpm
@@ -40,6 +42,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     default-libmysqlclient-dev \
     libfreetype-dev \
     libjpeg62-turbo-dev \
+    # 🔽 NUEVO: NSIS y jq para compilar el instalador
+    nsis \
+    jq \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install curl mbstring zip pdo_mysql gd \
     && apt-get clean \
@@ -78,11 +83,35 @@ COPY --from=agent-builder /out/ /var/www/html/agent-bin/
 # Asegurar permisos de ejecución para los binarios del agente
 RUN chmod +x /var/www/html/agent-bin/securelab-agent-*
 
-# Crear directorios necesarios (logs, uploads, reports, etc.)
-RUN mkdir -p /var/www/html/data /var/www/html/uploads /var/www/html/reports /var/run/nginx /run/nginx \
+# 🔽 NUEVO: Preparar los archivos del instalador NSIS
+# Crear directorio para el instalador
+RUN mkdir -p /var/www/html/installer/output
+
+# Copiar el binario de Windows desde la etapa de compilación
+COPY --from=agent-builder /out/securelab-agent-windows-amd64.exe /var/www/html/installer/securelab-agent.exe
+
+# Copiar el script NSIS y el archivo de licencia (deben existir en la raíz del proyecto, dentro de installer/)
+COPY installer/SecureLabAgent.nsi /var/www/html/installer/
+COPY installer/LICENSE.txt /var/www/html/installer/
+
+# Crear directorios necesarios (logs, uploads, reports, backups, etc.)
+RUN mkdir -p /var/www/html/data /var/www/html/uploads /var/www/html/reports /var/run/nginx /run/nginx /var/backups/mongodb /var/log \
     && chown -R www-data:www-data /var/www/html
 
-# Script de inicio (arranca PHP-FPM, WebSocket y nginx)
+# Copiar backup script y cron
+COPY backend/backup.sh /var/www/html/backup.sh
+COPY backend/cron-backup /etc/cron.d/mongodb-backup
+COPY backend/retention-cleanup.php /var/www/html/retention-cleanup.php
+COPY backend/cron-retention /etc/cron.d/retention-cleanup
+RUN chmod +x /var/www/html/backup.sh /var/www/html/retention-cleanup.php /etc/cron.d/mongodb-backup /etc/cron.d/retention-cleanup \
+    && chmod 644 /etc/cron.d/mongodb-backup /etc/cron.d/retention-cleanup
+
+# Instalar cron y mongodump tools
+# Note: mongodb-database-tools not available in Debian Trixie, using mongoclient from php-mongodb instead
+RUN apt-get update && apt-get install -y --no-install-recommends cron \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Script de inicio (arranca PHP-FPM, WebSocket, nginx y cron) — AHORA MODIFICADO
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
 

@@ -23,19 +23,9 @@ class Database {
         $this->dataDir = __DIR__ . '/data';
         if (!is_dir($this->dataDir)) mkdir($this->dataDir, 0755, true);
 
-        // Try MongoDB connection
-        if (class_exists('MongoDB\Client')) {
-            try {
-                $this->mongoClient = new MongoDB\Client(MONGODB_URI);
-                $uriParts = parse_url(MONGODB_URI);
-                $dbName = trim($uriParts['path'] ?? 'invisia', '/') ?: 'invisia';
-                $this->db = $this->mongoClient->selectDatabase($dbName);
-                $this->db->command(['ping' => 1]);
-                $this->useMongo = true;
-            } catch (\Exception $e) {
-                error_log('[DB] MongoDB not available, using file storage: ' . $e->getMessage());
-            }
-        }
+        // Always use file storage for now (MongoDB not working properly)
+        $this->useMongo = false;
+        error_log('[DB] Using file storage (MongoDB disabled)');
     }
 
     private function collectionFile($collection) {
@@ -135,7 +125,9 @@ class Database {
     public function updateOne($collection, $filter, $update) {
         if ($this->useMongo) {
             $filter = $this->normalizeFilter($filter);
-            $this->db->selectCollection($collection)->updateOne($filter, ['$set' => $update]);
+            error_log("[DB] updateOne on {$collection}: " . json_encode($filter) . " -> " . json_encode($update));
+            $result = $this->db->selectCollection($collection)->updateOne($filter, ['$set' => $update]);
+            error_log("[DB] updateOne result: matchedCount=" . $result->getMatchedCount() . ", modifiedCount=" . $result->getModifiedCount());
             return $this->findOne($collection, $filter);
         }
         $data = $this->readCollection($collection);

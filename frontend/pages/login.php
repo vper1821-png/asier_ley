@@ -7,32 +7,27 @@ if (is_logged_in()) {
 }
 
 $error = '';
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email = $_POST['email'] ?? '';
-    $password = $_POST['password'] ?? '';
 
-    $res = api_request('POST', '/api/auth/login', [
-        'email' => $email,
-        'password' => $password,
-    ]);
+// Handle session storage via POST
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['action'] === 'session') {
+    header('Content-Type: application/json');
+    $body = json_decode(file_get_contents('php://input'), true);
+    $token = $body['token'] ?? '';
+    $user = $body['user'] ?? [];
 
-    if (!empty($res['body']['token'])) {
-        $_SESSION['token'] = $res['body']['token'];
-        $_SESSION['user'] = $res['body']['user'] ?? ['email' => $email];
-
-        if (!empty($res['body']['user']['isActive'])) {
-            header('Location: /dashboard');
-        } else {
-            header('Location: /pending');
-        }
-        exit;
+    if ($token && $user) {
+        $_SESSION['token'] = $token;
+        $_SESSION['user'] = $user;
+        echo json_encode(['success' => true]);
     } else {
-        $error = $res['body']['error'] ?? 'Error al iniciar sesión. Verifica tus credenciales.';
+        echo json_encode(['success' => false, 'error' => 'Invalid data']);
     }
+    exit;
 }
 
 $pageTitle = 'Iniciar sesión';
 require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../includes/turnstile.php';
 ?>
 
 <div class="min-h-screen bg-bg-base text-[13px] text-text-body flex items-center justify-center px-4">
@@ -48,7 +43,8 @@ require_once __DIR__ . '/../includes/header.php';
             <p class="text-sm text-text-muted">Accede a tu panel de control</p>
         </div>
 
-        <form method="POST" class="space-y-4">
+        <form class="space-y-4" id="login-form">
+            <input type="hidden" name="captchaToken" id="captchaToken">
             <?php if ($error): ?>
             <div class="p-2.5 bg-red-500/10 border border-red-500/30 rounded-md text-red-400 text-xs text-center">
                 <?= h($error) ?>
@@ -89,6 +85,12 @@ require_once __DIR__ . '/../includes/header.php';
                     </button>
                 </div>
             </div>
+
+            <?php if (defined('TURNSTILE_SITE_KEY') && TURNSTILE_SITE_KEY): ?>
+            <div class="flex justify-center">
+                <div class="cf-turnstile" data-sitekey="<?= h(TURNSTILE_SITE_KEY) ?>"></div>
+            </div>
+            <?php endif; ?>
 
             <button type="submit" class="btn-primary w-full">
                 <span>Iniciar sesión</span>
@@ -136,6 +138,71 @@ require_once __DIR__ . '/../includes/header.php';
 </div>
 
 <script>
+document.getElementById('login-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    <?php if (defined('TURNSTILE_SITE_KEY') && TURNSTILE_SITE_KEY && TURNSTILE_SITE_KEY !== ''): ?>
+    const turnstileResponse = document.querySelector('.cf-turnstile')?.querySelector('textarea')?.value;
+    if (turnstileResponse) {
+        document.getElementById('captchaToken').value = turnstileResponse;
+    }
+    <?php else: ?>
+    // Development: generate dummy token
+    document.getElementById('captchaToken').value = 'development-bypass';
+    <?php endif; ?>
+
+    const email = document.querySelector('input[name="email"]').value;
+    const password = document.querySelector('input[name="password"]').value;
+    const captchaToken = document.getElementById('captchaToken').value;
+
+    const submitBtn = this.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span>Iniciando...</span>';
+
+    try {
+        const res = await fetch('<?= API_BASE_URL_BROWSER ?>/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password, captchaToken })
+        });
+        const data = await res.json();
+
+        if (data.token) {
+            // Store in session via PHP
+            await fetch('/login?action=session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: data.token, user: data.user })
+            });
+
+            if (data.user && data.user.isActive) {
+                window.location.href = '/dashboard';
+            } else {
+                window.location.href = '/pending';
+            }
+        } else {
+            showError(data.error || 'Error al iniciar sesión. Verifica tus credenciales.');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        }
+    } catch (err) {
+        showError('Error de conexión. Intenta nuevamente.');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+    }
+});
+
+function showError(message) {
+    const errorDiv = document.querySelector('.bg-red-500\\/10');
+    if (errorDiv) {
+        errorDiv.remove();
+    }
+    const form = document.getElementById('login-form');
+    const errorHtml = `<div class="p-2.5 bg-red-500/10 border border-red-500/30 rounded-md text-red-400 text-xs text-center">${message}</div>`;
+    form.insertAdjacentHTML('afterbegin', errorHtml);
+}
+
 function togglePassword() {
     const input = document.getElementById('password');
     const open = document.getElementById('eye-open');

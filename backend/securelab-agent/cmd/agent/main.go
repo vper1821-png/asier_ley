@@ -1,5 +1,3 @@
-//go:build !windows
-
 package main
 
 import (
@@ -24,8 +22,6 @@ import (
 	"securelab-agent/internal/ws"
 	"securelab-agent/platform/unix"
 )
-
-var persistenceInstaller func(cfg *config.Config, log *logger.Logger)
 
 func main() {
 	// ── Subcommands ──
@@ -80,10 +76,16 @@ func runAgent(ctx context.Context) {
 	// ── 1. REGISTRAR (no fatal: reintentar en background) ──
 	agentID := getOrRegisterAgent(apiClient, log)
 	log.Info("Agent ID obtenido: %s", agentID)
+	log.Flush()
 
 	// ── 2. CREAR CLIENTE WS y asignar agentID ──
 	wsClient := ws.NewClient(cfg.WSURL, cfg.Token, log, queueInstance)
 	wsClient.SetAgentID(agentID)
+
+	// ── Iniciar telemetría inmediatamente ──
+	log.Info("Iniciando telemetría con intervalo: %d segundos", cfg.TelemetryInterval)
+	telemetry.Start(wsClient, time.Duration(cfg.TelemetryInterval)*time.Second)
+	defer telemetry.Stop()
 
 	// ── 3. CONECTAR WS ──
 	go wsClient.Connect()
@@ -114,13 +116,13 @@ func runAgent(ctx context.Context) {
 	go fileMon.Start()
 	defer fileMon.Stop()
 
-	hard := hardening.NewHardener(store, wsClient, log)
-	if err := hard.ApplyAll(); err != nil {
-		log.Warn("Hardening parcial: %v", err)
-	}
-
-	telemetry.Start(wsClient, time.Duration(cfg.TelemetryInterval)*time.Second)
-	defer telemetry.Stop()
+	// Ejecutar hardening en goroutine para no bloquear
+	go func() {
+		hard := hardening.NewHardener(store, wsClient, log)
+		if err := hard.ApplyAll(); err != nil {
+			log.Warn("Hardening parcial: %v", err)
+		}
+	}()
 
 	security.StartServices(log)
 

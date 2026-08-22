@@ -7,9 +7,15 @@ function create() {
     $tipo = $body['tipo'] ?? 'acceso';
     $descripcion = $body['descripcion'] ?? '';
     $companyId = $body['companyId'] ?? null;
+    $captchaToken = $body['captchaToken'] ?? '';
 
     if (empty($solicitante['nombre']) || empty($solicitante['rut']) || empty($solicitante['email'])) {
         json_error('datos del solicitante requeridos');
+    }
+
+    // Verify Turnstile captcha
+    if (!verify_turnstile($captchaToken)) {
+        json_error('verificación captcha fallida. Por favor, intenta nuevamente.');
     }
 
     $db = Database::getInstance();
@@ -52,6 +58,7 @@ function listRequests() {
     if (!empty($user['isAdmin']) || ($user['role'] ?? '') === 'admin' || ($user['role'] ?? '') === 'superadmin') {
         $items = $db->find('arco_requests', []);
     } else {
+        // Non-admins only see requests for their company
         $items = $db->find('arco_requests', ['companyId' => $user['_id']]);
     }
 
@@ -119,8 +126,17 @@ function downloadResponse() {
     $req = $db->findOne('arco_requests', ['requestId' => $requestId]);
     if (!$req) json_error('solicitud no encontrada', 404);
 
-    if (empty($user['isAdmin']) && ($user['role'] ?? '') !== 'admin' && ($user['role'] ?? '') !== 'superadmin' && $req['companyId'] !== $user['_id']) {
-        json_error('acceso denegado', 403);
+    // Allow access if: admin, superadmin, owner of the request, or request has no companyId (public request)
+    $hasAccess = !empty($user['isAdmin']) || ($user['role'] ?? '') === 'admin' || ($user['role'] ?? '') === 'superadmin';
+    if (!$hasAccess) {
+        // If request has no companyId, only admins can access
+        if (empty($req['companyId'])) {
+            json_error('solicitud pública - solo administradores pueden acceder', 403);
+        }
+        // Otherwise, check if user owns the company
+        if ($req['companyId'] !== $user['_id']) {
+            json_error('acceso denegado', 403);
+        }
     }
 
     $config = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
@@ -135,6 +151,8 @@ function downloadResponse() {
         'cancelacion' => 'Cancelación',
         'oposicion' => 'Oposición',
         'portabilidad' => 'Portabilidad',
+        'supresion' => 'Supresión',
+        'bloqueo' => 'Bloqueo',
     ];
     $typeLabel = $typeLabels[$type] ?? ucfirst($type);
 
@@ -172,6 +190,16 @@ function downloadResponse() {
             'De conformidad con el artículo 13 de la Ley 21.719, el titular tiene derecho a obtener una copia de sus datos personales en un formato estructurado, de uso común y lectura mecánica, para poder transmitirlos a otro responsable del tratamiento.',
             'El responsable del tratamiento entregará la información en el formato solicitado o en un formato interoperable de uso común, dentro del plazo legal de 30 días corridos. Los datos se transmitirán de manera segura y se acompañarán de la información necesaria para su comprensión.',
             'El derecho de portabilidad se limita a los datos personales proporcionados por el titular y no se extiende a datos inferidos o derivados del tratamiento.',
+        ],
+        'supresion' => [
+            'De conformidad con el artículo 7 de la Ley 21.719, el titular tiene derecho a obtener la supresión o eliminación de sus datos personales cuando los datos ya no sean necesarios para los fines para los que fueron recogidos, cuando el titular retire su consentimiento y no exista otra base legal, cuando se oponga al tratamiento y no prevalezcan motivos legítimos, o cuando los datos hayan sido tratados ilícitamente.',
+            'El responsable del tratamiento procederá a la supresión de los datos en un plazo máximo de 30 días corridos desde la recepción de la solicitud, salvo que exista una obligación legal de conservación que impida la eliminación. En tal caso, los datos se bloquearán y solo se conservarán para la atención de posibles responsabilidades derivadas del tratamiento.',
+            'La supresión será comunicada a terceros a quienes se hubieren transferido los datos, cuando ello sea posible y no resulte desproporcionado.',
+        ],
+        'bloqueo' => [
+            'De conformidad con el artículo 8 ter de la Ley 21.719, el titular tiene derecho a solicitar el bloqueo temporal de sus datos personales mientras se resuelva una solicitud de rectificación, supresión u oposición.',
+            'El bloqueo implica la identificación y reserva de los datos, impidiendo su tratamiento para cualquier finalidad distinta a la de atender la solicitud del titular. Los datos bloqueados no podrán ser utilizados, comunicados ni cedidos mientras dure el bloqueo.',
+            'El responsable del tratamiento deberá informar al titular de la procedencia del bloqueo y de su levantamiento una vez resuelta la solicitud principal.',
         ],
     ];
     $bodyText = $paragraphs[$type] ?? $paragraphs['acceso'];
@@ -234,5 +262,88 @@ function downloadResponse() {
     header('Content-Type: application/pdf');
     header('Content-Disposition: attachment; filename="respuesta_arco_' . $requestId . '.pdf"');
     echo $dompdf->output();
+    exit;
+}
+
+function exportPortabilidad() {
+    $user = Auth::requireAuth();
+    $requestId = $_GET['requestId'] ?? $_GET['id'] ?? '';
+    if (!$requestId) json_error('requestId requerido');
+
+    $db = Database::getInstance();
+    $req = $db->findOne('arco_requests', ['requestId' => $requestId]);
+    if (!$req) json_error('solicitud no encontrada', 404);
+
+    if (empty($user['isAdmin']) && ($user['role'] ?? '') !== 'admin' && ($user['role'] ?? '') !== 'superadmin' && $req['companyId'] !== $user['_id']) {
+        json_error('acceso denegado', 403);
+    }
+
+    $format = strtolower($_GET['format'] ?? 'json');
+
+    // Recolectar todos los datos del titular en el sistema
+    $uid = $req['companyId'] ?? $user['_id'];
+    $email = ($req['solicitante']['email'] ?? $req['email'] ?? '');
+    $rut = ($req['solicitante']['rut'] ?? $req['rut'] ?? '');
+    $name = ($req['solicitante']['nombre'] ?? $req['name'] ?? '');
+
+    $data = [
+        'solicitante' => [
+            'nombre' => $name,
+            'rut' => $rut,
+            'email' => $email,
+        ],
+        'consentimientos' => $db->find('compliance_consents', [
+            'userId' => $uid,
+            '$or' => [
+                ['email' => $email],
+                ['rut' => $rut],
+            ],
+        ]),
+        'arco_requests' => $db->find('arco_requests', [
+            'companyId' => $uid,
+            '$or' => [
+                ['solicitante.email' => $email],
+                ['solicitante.rut' => $rut],
+            ],
+        ]),
+        'inventario' => $db->find('compliance_inventory', [
+            'userId' => $uid,
+        ]),
+        'brechas' => $db->find('compliance_breaches', [
+            'userId' => $uid,
+            '$or' => [
+                ['affectedEmail' => $email],
+                ['affectedRut' => $rut],
+            ],
+        ]),
+        'capacitaciones' => $db->find('compliance_trainings', [
+            'userId' => $uid,
+            'employeeEmail' => $email,
+        ]),
+    ];
+
+    if ($format === 'csv') {
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="portabilidad_' . $requestId . '.csv"');
+        $out = fopen('php://output', 'w');
+        fputcsv($out, ['Colección', 'Campo', 'Valor']);
+        foreach ($data as $collection => $items) {
+            foreach ($items as $item) {
+                foreach ($item as $key => $value) {
+                    if (is_array($value) || is_object($value)) {
+                        $value = json_encode($value, JSON_UNESCAPED_UNICODE);
+                    }
+                    fputcsv($out, [$collection, $key, $value]);
+                }
+            }
+        }
+        fclose($out);
+        exit;
+    }
+
+    // JSON por defecto
+    header('Content-Type: application/json; charset=utf-8');
+    header('Content-Disposition: attachment; filename="portabilidad_' . $requestId . '.json"');
+    echo json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     exit;
 }

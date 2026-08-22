@@ -60,7 +60,33 @@ function stats() {
         ];
     }
     $nonCompliantDBs = count($databases) - $compliantDBs;
-    $complianceScore = count($databases) > 0 ? (int)round($compliantDBs / count($databases) * 100) : 0;
+    
+    // Calcular complianceScore basado en el checklist de Compliance (igual que la página Compliance)
+    $config = $db->findOne('compliance_config', ['userId' => $user['_id']]);
+    $inventory = $db->find('compliance_inventory', ['userId' => $user['_id']]);
+    $consents = $db->find('compliance_consents', ['userId' => $user['_id']]);
+    $breaches = $db->find('compliance_breaches', ['userId' => $user['_id']]);
+    $trainings = $db->find('compliance_trainings', ['userId' => $user['_id']]);
+    $pseudoRules = $db->find('compliance_pseudonymization', ['userId' => $user['_id']]);
+    
+    // Si config no existe, inicializar array vacío
+    if (!$config) $config = [];
+    
+    $checklist = [
+        !empty($config['dpdEmail']), // DPD Designado
+        !empty($config['apdpRegistered']), // Registro APDP
+        count($inventory) > 0, // Inventario de Datos
+        !empty($config['privacyPolicyUrl']), // Política de Privacidad
+        count($consents) > 0, // Consentimientos
+        count($breaches) > 0, // Protocolo de Brechas
+        true, // Portal ARCO (siempre)
+        count($pseudoRules) > 0, // Seudonimización
+        count(array_filter($breaches, fn($b) => ($b['status'] ?? '') === 'resolved')) > 0, // Plan de Respuesta a Incidentes
+        count($trainings) > 0, // Capacitación
+    ];
+    
+    $complianceChecklistDone = count(array_filter($checklist, fn($c) => $c));
+    $complianceScore = (int)round($complianceChecklistDone / count($checklist) * 100);
 
     $vulnerableUsersCount = count(array_filter($userMonitor, fn($u) => !empty($u['vulnerable']) || ($u['riskLevel'] ?? '') === 'high'));
 

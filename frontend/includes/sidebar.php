@@ -50,6 +50,10 @@ $ringColor = $complianceScore === 100 ? 'text-emerald-500' : ($complianceScore >
 $ringLabel = $complianceScore === 100 ? 'Todo en orden' : ($complianceScore >= 60 ? 'Queda por completar' : 'Atención requerida');
 $circ = 2 * M_PI * 18;
 $dashOffset = $circ * (1 - $complianceScore / 100);
+
+// Obtener checklist detallado de compliance
+$checklistRes = api_post_form('/api/invisia/checklist', ['token' => $_SESSION['token'] ?? '']);
+$checklistItems = $checklistRes['checklist'] ?? [];
 ?>
 <aside class="flex flex-col bg-bg-base border-r border-border-theme transition-all duration-300 flex-shrink-0 <?= $collapsed ? 'w-16' : 'w-56' ?> hidden md:flex">
     <!-- Logo -->
@@ -67,7 +71,7 @@ $dashOffset = $circ * (1 - $complianceScore / 100);
 
     <!-- Pending compliance ring -->
     <?php if (!$collapsed): ?>
-    <div class="px-4 py-3 border-b border-border-theme tour-pending-ring">
+    <div class="px-4 py-3 border-b border-border-theme tour-pending-ring relative group">
         <p class="text-[10px] font-medium text-text-subtle uppercase tracking-wider mb-2">Tareas pendientes</p>
         <div class="flex items-center gap-3">
             <div class="relative w-14 h-14 shrink-0 <?= $ringColor ?>">
@@ -78,6 +82,28 @@ $dashOffset = $circ * (1 - $complianceScore / 100);
                 <span class="absolute inset-0 flex items-center justify-center text-[11px] font-bold text-text-heading"><?= $complianceScore ?>%</span>
             </div>
             <p class="text-[11px] text-text-body leading-tight"><?= h($ringLabel) ?></p>
+        </div>
+        
+        <!-- Popup flotante con lista de tareas -->
+        <div class="absolute left-full top-0 ml-2 w-72 bg-bg-panel border border-border-theme rounded-xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 p-4">
+            <p class="text-[11px] font-semibold text-text-heading mb-3">Checklist de Cumplimiento</p>
+            <div class="space-y-2">
+                <?php foreach ($checklistItems as $task): ?>
+                <div class="flex items-center justify-between gap-2 p-2 rounded-lg <?= $task['done'] ? 'bg-emerald-500/5' : 'bg-bg-surface/30' ?>">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <span class="w-1.5 h-1.5 rounded-full <?= $task['done'] ? 'bg-emerald-400' : 'bg-yellow-400' ?> flex-shrink-0"></span>
+                        <span class="text-[10px] text-text-body truncate"><?= h($task['label']) ?></span>
+                    </div>
+                    <?php if (!$task['done']): ?>
+                    <a href="<?= h($task['link']) ?>" class="flex-shrink-0 px-2 py-1 rounded bg-primary-500/20 text-primary-300 text-[9px] font-medium hover:bg-primary-500/30 transition-colors">
+                        IR
+                    </a>
+                    <?php else: ?>
+                    <span class="text-[9px] text-emerald-400/60 flex-shrink-0">✓</span>
+                    <?php endif; ?>
+                </div>
+                <?php endforeach; ?>
+            </div>
         </div>
     </div>
     <?php endif; ?>

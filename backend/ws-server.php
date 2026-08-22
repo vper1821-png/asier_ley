@@ -25,6 +25,12 @@ class AgentWebSocket implements MessageComponentInterface {
         try {
             $this->db = Database::getInstance();
             echo "✅ Base de datos inicializada correctamente\n";
+            // Verificar si está usando MongoDB o archivos JSON
+            $reflection = new \ReflectionClass($this->db);
+            $property = $reflection->getProperty('useMongo');
+            $property->setAccessible(true);
+            $useMongo = $property->getValue($this->db);
+            echo "🔍 Database usando: " . ($useMongo ? "MongoDB" : "Archivos JSON") . "\n";
         } catch (\Exception $e) {
             echo "❌ Error al inicializar la base de datos: " . $e->getMessage() . "\n";
         }
@@ -253,6 +259,7 @@ class AgentWebSocket implements MessageComponentInterface {
         $this->agentSessions[$agentId] = $conn;
 
         // Actualizar/insertar estado en la base de datos
+        echo "🔍 Verificando db: " . ($this->db ? "DB inicializada" : "DB es NULL") . "\n";
         if ($this->db) {
             $existing = $this->db->findOne('agents', ['agentId' => $agentId]);
             if (!$existing) {
@@ -420,8 +427,11 @@ class AgentWebSocket implements MessageComponentInterface {
 
     private function handleTelemetry(ConnectionInterface $from, $data) {
         $agentId = $from->agentId ?? $data['agentId'] ?? '';
+        echo "📊 Telemetría recibida de agente: {$agentId}\n";
+        echo "📊 Datos: " . json_encode($data) . "\n";
+        
         if (!$agentId || !$this->db) {
-            echo "⚠️ telemetry ignorado\n";
+            echo "⚠️ telemetry ignorado (sin agentId o db)\n";
             return;
         }
         $diskFree = (float)($data['diskFree'] ?? 0);
@@ -455,6 +465,7 @@ class AgentWebSocket implements MessageComponentInterface {
         $existing = $this->db->findOne('host_monitor', ['agentId' => $agentId]);
         if ($existing) {
             $this->db->updateOne('host_monitor', ['_id' => $existing['_id']], $doc);
+            echo "📊 host_monitor actualizado para agente: {$agentId}\n";
         } else {
             $doc['createdAt'] = date('c');
             $this->db->insertOne('host_monitor', $doc);

@@ -7,7 +7,11 @@ function isSuperAdminUser($u) {
 
 function findAgentFor($user, $agentId) {
     $db = Database::getInstance();
-    $agent = $db->findOne('agents', ['agentId' => $agentId]);
+    // Buscar por agentId o _id (para compatibilidad)
+    $agent = $db->findOne('agents', ['$or' => [
+        ['agentId' => $agentId],
+        ['_id' => $agentId]
+    ]]);
     if (!$agent || (($agent['userId'] ?? '') !== $user['_id'] && !isSuperAdminUser($user))) {
         return null;
     }
@@ -218,16 +222,22 @@ function combined() {
 
 function deleteAgent() {
     $user = Auth::requireAuth();
-    $agentId = $_GET['id'] ?? '';
-    if (!$agentId) json_error('agentId requerido');
-
-    $agent = findAgentFor($user, $agentId);
-    if (!$agent) json_error('agente no encontrado', 404);
+    $id = $_GET['id'] ?? '';
+    if (!$id) json_error('agentId requerido');
 
     $db = Database::getInstance();
+    
+    // Buscar por agentId o _id
+    $agent = $db->findOne('agents', ['$or' => [
+        ['agentId' => $id],
+        ['_id' => $id]
+    ]]);
+    
+    if (!$agent) json_error('agente no encontrado', 404);
+
     $db->deleteOne('agents', ['_id' => $agent['_id']]);
-    $db->deleteOne('host_monitor', ['agentId' => $agentId]);
-    audit_log('agent_deleted', ['agentId' => $agentId, 'hostname' => $agent['hostname'] ?? ''], $agent['userId'] ?? null, $agentId);
+    $db->deleteOne('host_monitor', ['agentId' => $agent['agentId'] ?? $id]);
+    audit_log('agent_deleted', ['agentId' => $agent['agentId'] ?? $id, 'hostname' => $agent['hostname'] ?? ''], $agent['userId'] ?? null, $agent['agentId'] ?? $id);
     json_response(['success' => true]);
 }
 
@@ -254,9 +264,10 @@ function sendCommand() {
     $agentId = $_GET['id'] ?? '';
     $body = get_body();
     $command = $body['command'] ?? '';
-    $params = $body['params'] ?? [];
+    $params = $body['params'] ?? '';
 
-    if (!$agentId || !$command) json_error('agentId y command requeridos');
+    if (!$agentId) json_error('agentId requerido');
+    if (!$command) json_error('command requerido');
     if (is_string($command)) $command = json_decode($command, true) ?? $command;
     if (is_array($command)) {
         $params = $command['params'] ?? $command;
@@ -286,6 +297,31 @@ function sendCommand() {
     json_response(['success' => true, 'commandId' => $cmd['_id']]);
 }
 
+function requestData() {
+    $user = Auth::requireAuth();
+    $agentId = $_GET['id'] ?? '';
+    $body = get_body();
+    $type = $body['type'] ?? 'processes';
+
+    if (!$agentId) json_error('agentId requerido');
+    
+    $db = Database::getInstance();
+    $agent = findAgentFor($user, $agentId);
+    if (!$agent) json_error('agente no encontrado', 404);
+
+    // Crear comando de solicitud de datos
+    $cmd = $db->insertOne('agent_commands', [
+        'userId' => $agent['userId'] ?? $user['_id'],
+        'agentId' => $agentId,
+        'command' => 'request_data',
+        'params' => ['type' => $type],
+        'createdAt' => date('c'),
+        'executed' => false,
+    ]);
+
+    json_response(['success' => true, 'commandId' => $cmd['_id']]);
+}
+
 function downloadToken() {
     $user = Auth::requireAuth();
     $dlToken = Auth::createToken($user['_id'], ['email' => $user['email'] ?? '', 'purpose' => 'agent_download']);
@@ -309,28 +345,75 @@ function createDeploy() {
         'downloadCount' => 0,
     ];
     $deployId = $db->insertOne('agent_deploys', $deploy);
-    audit_log('agent_deploy_created', ['deployId' => $deployId, 'platform' => $platform], $user['_id']);
-    json_response(['success' => true, 'deployId' => $deployId]);
+    audit_log('agent_deploy_created', ['deployId' => (string)$deployId, 'platform' => $platform], $user['_id']);
+    json_response(['success' => true, 'deployId' => (string)$deployId]);
 }
 
-function requestData() {
-    $user = Auth::requireAuth();
+function autoRegister() {
     $body = get_body();
-    $agentId = $body['agentId'] ?? '';
-    $type = $body['type'] ?? '';
-    if (!$agentId || !in_array($type, ['processes', 'health', 'defender', 'screenshot'])) json_error('agentId y type requeridos');
+    $hostname = $body['hostname'] ?? 'unknown';
+    $platform = $body['platform'] ?? 'unknown';
+    $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    
     $db = Database::getInstance();
-    $agent = findAgentFor($user, $agentId);
-    if (!$agent) json_error('agente no encontrado', 404);
-    $db->insertOne('agent_commands', [
-        'userId' => $agent['userId'] ?? $user['_id'],
-        'agentId' => $agentId,
-        'command' => 'request_data',
-        'params' => ['type' => $type],
+    
+    // Buscar si ya existe un agente con este hostname
+    $existingAgent = $db->findOne('agents', ['hostname' => $hostname]);
+    
+    if ($existingAgent) {
+        // Si ya existe, generar un nuevo token
+        $token = Auth::createToken($existingAgent['userId'], [
+            'agentId' => $existingAgent['agentId'] ?? $existingAgent['_id'],
+            'hostname' => $hostname,
+            'platform' => $platform
+        ]);
+        
+        json_response([
+            'success' => true,
+            'token' => $token,
+            'agentId' => $existingAgent['agentId'] ?? $existingAgent['_id'],
+            'message' => 'Agente ya registrado, token actualizado'
+        ]);
+    }
+    
+    // Si no existe, crear un nuevo agente
+    $agent = [
+        'hostname' => $hostname,
+        'platform' => $platform,
+        'ip' => $ip,
+        'status' => 'pending',
+        'lastSeen' => date('c'),
         'createdAt' => date('c'),
-        'executed' => false,
+        'agentId' => generateAgentId(),
+        'version' => '2.0.0'
+    ];
+    
+    $agentId = $db->insertOne('agents', $agent);
+    
+    // Generar token para el nuevo agente
+    $token = Auth::createToken($agent['userId'] ?? null, [
+        'agentId' => (string)$agentId,
+        'hostname' => $hostname,
+        'platform' => $platform
     ]);
-    json_response(['success' => true]);
+    
+    audit_log('agent_auto_registered', [
+        'agentId' => (string)$agentId,
+        'hostname' => $hostname,
+        'platform' => $platform,
+        'ip' => $ip
+    ]);
+    
+    json_response([
+        'success' => true,
+        'token' => $token,
+        'agentId' => (string)$agentId,
+        'message' => 'Agente registrado exitosamente'
+    ]);
+}
+
+function generateAgentId() {
+    return 'agent_' . bin2hex(random_bytes(8));
 }
 
 function getAgentData() {
@@ -467,6 +550,33 @@ function download() {
         json_error('plataforma no válida');
     }
 
+    // Si se solicita el instalador (EXE con token)
+    if (isset($_GET['installer'])) {
+        $user = Auth::requireAuth();
+        
+        // Generar token para este agente
+        $agentToken = Auth::createToken($user['_id'], [
+            'email' => $user['email'] ?? '',
+            'purpose' => 'agent_installation',
+            'platform' => 'windows'
+        ]);
+        
+        // Usar el instalador NSIS pre-generado
+        $installerFile = '/tmp/installer/SecureLabAgent-Installer.exe';
+        
+        if (!file_exists($installerFile)) {
+            json_error('Instalador NSIS no encontrado en el contenedor', 503);
+        }
+        
+        // Enviar instalador
+        header('Content-Type: application/octet-stream');
+        header('Content-Disposition: attachment; filename="SecureLabAgent-Installer.exe"');
+        header('Content-Length: ' . filesize($installerFile));
+        readfile($installerFile);
+        
+        exit;
+    }
+
     // Optional deploy ID to track downloads
     $deployId = $_GET['deploy'] ?? '';
     if ($deployId) {
@@ -568,6 +678,66 @@ function download() {
         unlink($archivePath);
         exit;
     }
+
+    // ── Linux/macOS: devolver binario directamente con config en ZIP ──
+    $binaryMap = [
+        'linux-x64'  => 'securelab-agent-linux-x64',
+        'mac-x64'    => 'securelab-agent-mac-x64',
+        'mac-arm64'  => 'securelab-agent-mac-arm64',
+    ];
+    
+    if (isset($binaryMap[$platform])) {
+        $binaryName = $binaryMap[$platform];
+        $binDir = __DIR__ . '/../agent-bin';
+        $binaryPath = $binDir . '/' . $binaryName;
+
+        if (!file_exists($binaryPath) || filesize($binaryPath) < 1000000) {
+            json_error('Agente aún no compilado, intenta de nuevo en unos segundos', 503);
+        }
+
+        $tmpDir = sys_get_temp_dir() . '/agent-dl-' . uniqid();
+        mkdir($tmpDir, 0755, true);
+        copy($binaryPath, $tmpDir . '/' . $binaryName);
+
+        $baseUrl = API_BASE_URL !== '' ? API_BASE_URL : 'http://localhost:3838';
+        $wsBase  = preg_replace(['#^https://#', '#^http://#'], ['wss://', 'ws://'], rtrim($baseUrl, '/'));
+
+        $config = [
+            'api_base'           => rtrim($baseUrl, '/') . '/api/agents',
+            'ws_url'             => $wsBase . '/ws/',
+            'token'              => $token,
+            'heartbeat_interval' => 5,
+            'agent_version'      => '2.0.0',
+            'log_level'          => 'info',
+        ];
+
+        file_put_contents(
+            $tmpDir . '/config.json',
+            json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+        );
+
+        // ZIP con binario y config
+        $archiveName = 'securelab-agent-' . $platform . '.zip';
+        $archivePath = sys_get_temp_dir() . '/' . $archiveName;
+        $zip = new ZipArchive();
+        $zip->open($archivePath, ZipArchive::CREATE);
+        $zip->addFile($tmpDir . '/' . $binaryName, $binaryName);
+        $zip->addFile($tmpDir . '/config.json', 'config.json');
+        $zip->close();
+
+        $size = filesize($archivePath);
+        header('Content-Type: application/zip');
+        header('Content-Disposition: attachment; filename="' . $archiveName . '"');
+        header('Content-Length: ' . $size);
+        readfile($archivePath);
+
+        array_map('unlink', glob($tmpDir . '/*'));
+        rmdir($tmpDir);
+        unlink($archivePath);
+        exit;
+    }
+
+    json_error('Plataforma no soportada', 400);
 
     // ── Linux / macOS: tar.gz (sin cambios) ──
     $binaryMap = [

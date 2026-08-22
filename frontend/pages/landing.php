@@ -33,7 +33,6 @@ $sections = [
     ['id' => 'inicio', 'label' => 'Inicio'],
     ['id' => 'ley', 'label' => 'La Ley'],
     ['id' => 'servicios', 'label' => 'Servicios'],
-    ['id' => 'empresas', 'label' => 'Empresas'],
     ['id' => 'contacto', 'label' => 'Contacto'],
 ];
 
@@ -73,6 +72,7 @@ if ($search !== '') {
                     <?= $s['label'] ?>
                 </button>
             <?php endforeach; ?>
+            <a href='/arco-solicitud' class='px-3 py-1.5 text-[12px] text-cyan-400 hover:text-cyan-300 hover:bg-white/[0.06] rounded-lg transition-all duration-200'>Derechos ARCO</a>
         </nav>
 
         <div class='flex items-center gap-3'>
@@ -86,6 +86,7 @@ if ($search !== '') {
         <?php foreach ($sections as $s): ?>
             <button data-target='<?= $s['id'] ?>' class='scroll-link block w-full text-left px-3 py-2 text-[13px] text-text-muted hover:text-text-heading hover:bg-white/[0.06] rounded-lg'><?= $s['label'] ?></button>
         <?php endforeach; ?>
+        <a href='/arco-solicitud' class='block px-3 py-2 text-[13px] text-cyan-400 hover:text-cyan-300'>Derechos ARCO</a>
         <a href='/login' class='block px-3 py-2 text-[13px] text-text-body hover:text-text-heading'>Iniciar Sesión</a>
     </div>
 </header>
@@ -197,57 +198,6 @@ if ($search !== '') {
     </div>
 </section>
 
-<!-- Empresas Cumplidoras -->
-<section id='empresas' class='py-24 relative'>
-    <div class='absolute inset-0 bg-gradient-to-b from-transparent via-cyan-500/5 to-transparent'></div>
-    <div class='relative max-w-7xl mx-auto px-6'>
-        <div class='text-center mb-16'>
-            <span class='inline-block px-3 py-1 text-[10px] font-semibold uppercase tracking-widest rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 mb-4'>Portal de Datos</span>
-            <h2 class='text-3xl md:text-5xl font-bold text-white mb-4'>Ejerce tus Derechos ARCO</h2>
-            <p class='text-text-muted max-w-2xl mx-auto leading-relaxed'>
-                Busca la empresa que trata tus datos personales y accede a su portal de solicitudes para ejercer tus derechos.
-            </p>
-        </div>
-
-        <div class='max-w-xl mx-auto'>
-            <form method='GET' class='relative mb-8'>
-                <input type='text' name='search' value='<?= h($_GET['search'] ?? '') ?>'
-                       placeholder='Busca una empresa por nombre o RUT...'
-                       class='w-full bg-bg-panel border border-border-theme text-[14px] text-white rounded-xl pl-11 pr-4 py-4 focus:outline-none focus:border-cyan-500/50 placeholder-text-subtle transition-all'>
-                <span class='absolute left-4 top-1/2 -translate-y-1/2 text-text-muted'><?= getIcon('search') ?></span>
-            </form>
-
-            <?php if ($search !== '' && !empty($companies)): ?>
-            <div class='space-y-3'>
-                <?php foreach ($companies as $c): ?>
-                <?php $name = h($c['companyName'] ?? $c['name'] ?? 'Empresa'); $rut = h($c['rut'] ?? $c['email'] ?? ''); ?>
-                <div class='bg-bg-panel/60 border border-border-theme/50 rounded-xl p-4 flex items-center gap-4'>
-                    <div class='w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-500/20 to-emerald-500/20 border border-cyan-500/20 flex items-center justify-center text-cyan-400 font-bold text-lg flex-shrink-0'>
-                        <?= strtoupper(substr($name, 0, 1)) ?>
-                    </div>
-                    <div class='flex-1 min-w-0'>
-                        <h4 class='text-[14px] font-semibold text-text-heading truncate'><?= $name ?></h4>
-                        <p class='text-[11px] text-text-muted'>RUT: <?= $rut ?></p>
-                    </div>
-                    <a href='/arco-solicitud' class='px-3 py-2 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 hover:bg-cyan-500/20 transition-all text-[12px] font-medium flex items-center gap-1'>
-                        <?= getIcon('document') ?> ARCO
-                    </a>
-                </div>
-                <?php endforeach; ?>
-            </div>
-            <?php elseif ($search !== ''): ?>
-            <div class='text-center py-8 text-text-muted text-[13px]'>
-                No se encontraron empresas para "<?= h($search) ?>".
-            </div>
-            <?php else: ?>
-            <div class='text-center py-8 text-text-muted text-[13px]'>
-                Introduce un nombre o email para buscar empresas.
-            </div>
-            <?php endif; ?>
-        </div>
-    </div>
-</section>
-
 <!-- CTA -->
 <section class='py-24 relative overflow-hidden'>
     <div class='absolute inset-0 bg-gradient-to-r from-cyan-500/10 via-emerald-500/10 to-cyan-500/10'></div>
@@ -289,7 +239,6 @@ if ($search !== '') {
                 <div class='space-y-2'>
                     <a href='/login' class='block text-[12px] text-text-muted hover:text-text-body transition-colors'>Iniciar Sesión</a>
                     <a href='/register' class='block text-[12px] text-text-muted hover:text-text-body transition-colors'>Registrarse</a>
-                    <a href='/arco-solicitud' class='block text-[12px] text-text-muted hover:text-text-body transition-colors'>Derechos ARCO (Ley 21.719)</a>
                 </div>
             </div>
             <div>

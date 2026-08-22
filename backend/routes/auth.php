@@ -5,8 +5,14 @@ function login() {
     $body = get_body();
     $email = strtolower(trim($body['email'] ?? ''));
     $password = $body['password'] ?? '';
+    $captchaToken = $body['captchaToken'] ?? '';
 
     if (!$email || !$password) json_error('email y contraseña requeridos');
+
+    // Verify Turnstile captcha
+    if (!verify_turnstile($captchaToken)) {
+        json_error('verificación captcha fallida. Por favor, intenta nuevamente.');
+    }
 
     $db = Database::getInstance();
     $user = $db->findOne('users', ['email' => $email]);
@@ -45,8 +51,14 @@ function register() {
     $email = strtolower(trim($body['email'] ?? ''));
     $password = $body['password'] ?? '';
     $name = $body['name'] ?? '';
+    $captchaToken = $body['captchaToken'] ?? '';
 
     if (!$email || !$password) json_error('email y contraseña requeridos');
+
+    // Verify Turnstile captcha
+    if (!verify_turnstile($captchaToken)) {
+        json_error('verificación captcha fallida. Por favor, intenta nuevamente.');
+    }
     if (strlen($password) < 8) json_error('la contraseña debe tener al menos 8 caracteres');
 
     $db = Database::getInstance();
@@ -57,11 +69,9 @@ function register() {
         'email' => $email,
         'password' => Auth::hashPassword($password),
         'companyName' => $name ?: explode('@', $email)[0],
-        'isActive' => true,
+        'isActive' => false,
         'isAdmin' => false,
         'role' => 'user',
-        'planType' => 'free',
-        'paymentStatus' => 'active',
         'onboardingComplete' => false,
         'tokenVersion' => 1,
     ]);

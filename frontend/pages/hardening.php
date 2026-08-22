@@ -12,8 +12,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         api_post_form('/api/invisia/compliance/config', [
             'token' => $token,
             'dpdName' => $_POST['dpdName'] ?? '',
+            'dpdRut' => $_POST['dpdRut'] ?? '',
             'dpdEmail' => $_POST['dpdEmail'] ?? '',
             'dpdPhone' => $_POST['dpdPhone'] ?? '',
+            'dpdTitle' => $_POST['dpdTitle'] ?? '',
+            'companyName' => $_POST['companyName'] ?? '',
+            'companyRut' => $_POST['companyRut'] ?? '',
+            'dpdAddress' => $_POST['dpdAddress'] ?? '',
+            'dpdPublicUrl' => $_POST['dpdPublicUrl'] ?? '',
+            'apdpRegistered' => $_POST['apdpRegistered'] ?? '',
+            'apdpRegistrationNumber' => $_POST['apdpRegistrationNumber'] ?? '',
+            'apdpRegistrationDate' => $_POST['apdpRegistrationDate'] ?? '',
+            'complianceLevel' => $_POST['complianceLevel'] ?? '',
+            'preventionModelDate' => $_POST['preventionModelDate'] ?? '',
         ]);
         header('Location: /hardening?tab=dpd');
         exit;
@@ -61,6 +72,10 @@ $alertsRes = api_post_form('/api/alerts/list', ['token' => $token, 'limit' => '5
 $alerts = $alertsRes['alerts'] ?? [];
 $pseudoRules = api_get('/api/invisia/compliance/pseudonymization', ['token' => $token]);
 if (!is_array($pseudoRules) || isset($pseudoRules['error'])) $pseudoRules = [];
+$consents = api_get('/api/invisia/compliance/consents', ['token' => $token]);
+if (!is_array($consents) || isset($consents['error'])) $consents = [];
+$trainings = api_get('/api/invisia/compliance/trainings', ['token' => $token]);
+if (!is_array($trainings) || isset($trainings['error'])) $trainings = [];
 $hasWaf = false;
 if (!empty($user['domain'])) {
     $wafRes = api_get('/api/hardening/check-waf', ['domain' => $user['domain']]);
@@ -204,6 +219,26 @@ foreach ($HARDENING_DEFS as $def) {
 $doneCount = count(array_filter($measures, fn($m) => $m['done']));
 $total = count($measures);
 $pct = $total ? (int)round($doneCount / $total * 100) : 0;
+
+// Calcular complianceScore general basado en el checklist de Compliance (igual que dashboard)
+$complianceChecklist = [
+    !empty($config['dpdEmail']), // DPD Designado
+    !empty($config['apdpRegistered']), // Registro APDP
+    count($inventory) > 0, // Inventario de Datos
+    !empty($config['privacyPolicyUrl']), // Política de Privacidad
+    count($consents) > 0, // Consentimientos
+    count($breaches) > 0, // Protocolo de Brechas
+    true, // Portal ARCO (siempre)
+    count($pseudoRules) > 0, // Seudonimización
+    count(array_filter($breaches, fn($b) => ($b['status'] ?? '') === 'resolved')) > 0, // Plan de Respuesta a Incidentes
+    count($trainings) > 0, // Capacitación
+];
+$complianceChecklistDone = count(array_filter($complianceChecklist, fn($c) => $c));
+$compliancePct = (int)round($complianceChecklistDone / count($complianceChecklist) * 100);
+
+// Usar el porcentaje de cumplimiento general en lugar del de medidas técnicas
+$pct = $compliancePct;
+
 $riskLabel = $pct >= 70 ? 'Bajo' : ($pct >= 40 ? 'Medio' : 'Alto');
 $pctColor = $pct >= 70 ? 'text-emerald-400' : ($pct >= 40 ? 'text-yellow-400' : 'text-red-400');
 $barColor = $pct >= 70 ? 'bg-emerald-500' : ($pct >= 40 ? 'bg-yellow-500' : 'bg-red-500');
@@ -829,7 +864,7 @@ require_once __DIR__ . '/../includes/header.php';
                             </div>
                             <div>
                                 <label class="label-premium">RUT *</label>
-                                <input name="dpdRut" value="<?= h($config['dpdRut'] ?? '') ?>" required placeholder="12.345.678-9"
+                                <input name="dpdRut" id="dpdRut" value="<?= h($config['dpdRut'] ?? '') ?>" required placeholder="12.345.678-9"
                                     class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all placeholder-text-subtle" pattern="[0-9]{1,2}\.[0-9]{3}\.[0-9]{3}-[0-9kK]{1}">
                             </div>
                         </div>
@@ -869,7 +904,7 @@ require_once __DIR__ . '/../includes/header.php';
                             </div>
                             <div>
                                 <label class="label-premium">RUT Empresa</label>
-                                <input name="companyRut" value="<?= h($config['companyRut'] ?? '') ?>" placeholder="76.123.456-7"
+                                <input name="companyRut" id="companyRut" value="<?= h($config['companyRut'] ?? '') ?>" placeholder="76.123.456-7"
                                     class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all placeholder-text-subtle">
                             </div>
                         </div>
@@ -1139,6 +1174,35 @@ require_once __DIR__ . '/../includes/header.php';
             });
             document.getElementById('measure-modal').classList.remove('hidden');
         }
+
+        // Auto-formateo de RUT
+        function formatRUT(value) {
+            let rut = value.replace(/[^0-9kK]/g, '');
+            if (rut.length === 0) return '';
+            let dv = rut.slice(-1);
+            let cuerpo = rut.slice(0, -1);
+            if (cuerpo.length > 0) {
+                cuerpo = cuerpo.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+            }
+            return cuerpo + (cuerpo.length > 0 ? '-' : '') + dv;
+        }
+
+        ['dpdRut', 'companyRut'].forEach(id => {
+            const input = document.getElementById(id);
+            if (input) {
+                input.addEventListener('input', function(e) {
+                    const cursorPos = this.selectionStart;
+                    const oldLength = this.value.length;
+                    this.value = formatRUT(this.value);
+                    const newLength = this.value.length;
+                    const cursorOffset = newLength - oldLength;
+                    this.setSelectionRange(cursorPos + cursorOffset, cursorPos + cursorOffset);
+                });
+                input.addEventListener('blur', function() {
+                    this.value = formatRUT(this.value);
+                });
+            }
+        });
         </script>
     </main>
 </div>

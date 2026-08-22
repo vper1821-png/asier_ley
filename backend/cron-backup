@@ -1,0 +1,4 @@
+# SecureLab - Daily MongoDB Backup Cron
+# Runs at 02:00 AM daily
+
+0 2 * * * root /var/www/html/backup.sh >> /var/log/mongodb-backup.log 2>&1

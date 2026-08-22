@@ -9,36 +9,26 @@ if (is_logged_in()) {
 $error = '';
 $success = false;
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email = $_POST['email'] ?? '';
-    $password = $_POST['password'] ?? '';
-    $confirmPassword = $_POST['confirm_password'] ?? '';
-    $name = $_POST['name'] ?? '';
+// Handle session storage via POST
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['action']) && $_GET['action'] === 'session') {
+    header('Content-Type: application/json');
+    $body = json_decode(file_get_contents('php://input'), true);
+    $token = $body['token'] ?? '';
+    $user = $body['user'] ?? [];
 
-    if ($password !== $confirmPassword) {
-        $error = 'Las contraseñas no coinciden.';
-    } elseif (strlen($password) < 8) {
-        $error = 'La contraseña debe tener al menos 8 caracteres.';
+    if ($token && $user) {
+        $_SESSION['token'] = $token;
+        $_SESSION['user'] = $user;
+        echo json_encode(['success' => true]);
     } else {
-        $res = api_request('POST', '/api/auth/register', [
-            'email' => $email,
-            'password' => $password,
-            'name' => $name,
-        ]);
-
-        if (!empty($res['body']['token'])) {
-            $_SESSION['token'] = $res['body']['token'];
-            $_SESSION['user'] = $res['body']['user'] ?? ['email' => $email];
-            header('Location: /pending');
-            exit;
-        } else {
-            $error = $res['body']['error'] ?? 'Error al crear la cuenta.';
-        }
+        echo json_encode(['success' => false, 'error' => 'Invalid data']);
     }
+    exit;
 }
 
 $pageTitle = 'Crear cuenta';
 require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../includes/turnstile.php';
 ?>
 
 <div class="min-h-screen bg-bg-base text-[13px] text-text-body flex items-center justify-center px-4 py-12">
@@ -53,7 +43,8 @@ require_once __DIR__ . '/../includes/header.php';
             <p class="text-sm text-text-muted">Comienza a proteger los datos de tu organización</p>
         </div>
 
-        <form method="POST" class="space-y-4">
+        <form class="space-y-4" id="register-form">
+            <input type="hidden" name="captchaToken" id="captchaToken">
             <?php if ($error): ?>
             <div class="p-2.5 bg-red-500/10 border border-red-500/30 rounded-md text-red-400 text-xs text-center">
                 <?= h($error) ?>
@@ -122,6 +113,12 @@ require_once __DIR__ . '/../includes/header.php';
                 </div>
             </div>
 
+            <?php if (defined('TURNSTILE_SITE_KEY') && TURNSTILE_SITE_KEY): ?>
+            <div class="flex justify-center">
+                <div class="cf-turnstile" data-sitekey="<?= h(TURNSTILE_SITE_KEY) ?>"></div>
+            </div>
+            <?php endif; ?>
+
             <button type="submit" class="btn-primary w-full">
                 <span>Crear cuenta</span>
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
@@ -138,5 +135,80 @@ require_once __DIR__ . '/../includes/header.php';
         </div>
     </div>
 </div>
+
+<script>
+document.getElementById('register-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    <?php if (defined('TURNSTILE_SITE_KEY') && TURNSTILE_SITE_KEY && TURNSTILE_SITE_KEY !== ''): ?>
+    const turnstileResponse = document.querySelector('.cf-turnstile')?.querySelector('textarea')?.value;
+    if (turnstileResponse) {
+        document.getElementById('captchaToken').value = turnstileResponse;
+    }
+    <?php else: ?>
+    // Development: generate dummy token
+    document.getElementById('captchaToken').value = 'development-bypass';
+    <?php endif; ?>
+
+    const email = document.querySelector('input[name="email"]').value;
+    const password = document.querySelector('input[name="password"]').value;
+    const confirmPassword = document.querySelector('input[name="confirm_password"]').value;
+    const name = document.querySelector('input[name="name"]').value;
+    const captchaToken = document.getElementById('captchaToken').value;
+
+    if (password !== confirmPassword) {
+        showError('Las contraseñas no coinciden.');
+        return;
+    }
+
+    if (password.length < 8) {
+        showError('La contraseña debe tener al menos 8 caracteres.');
+        return;
+    }
+
+    const submitBtn = this.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span>Creando cuenta...</span>';
+
+    try {
+        const res = await fetch('<?= API_BASE_URL_BROWSER ?>/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password, name, captchaToken })
+        });
+        const data = await res.json();
+
+        if (data.token) {
+            // Store in session via PHP
+            await fetch('/register?action=session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: data.token, user: data.user })
+            });
+
+            window.location.href = '/pending';
+        } else {
+            showError(data.error || 'Error al crear la cuenta.');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        }
+    } catch (err) {
+        showError('Error de conexión. Intenta nuevamente.');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+    }
+});
+
+function showError(message) {
+    const errorDiv = document.querySelector('.bg-red-500\\/10');
+    if (errorDiv) {
+        errorDiv.remove();
+    }
+    const form = document.getElementById('register-form');
+    const errorHtml = `<div class="p-2.5 bg-red-500/10 border border-red-500/30 rounded-md text-red-400 text-xs text-center">${message}</div>`;
+    form.insertAdjacentHTML('afterbegin', errorHtml);
+}
+</script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

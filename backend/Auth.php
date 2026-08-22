@@ -9,10 +9,23 @@ class Auth {
         $payload['iat'] = time();
         $payload['exp'] = $payload['exp'] ?? (time() + (7 * 24 * 3600)); // 7 days default
         $payloadEncoded = self::base64url_encode(json_encode($payload));
+        $secret = self::getRotatedSecret();
         $signature = self::base64url_encode(
-            hash_hmac('sha256', "$header.$payloadEncoded", JWT_SECRET, true)
+            hash_hmac('sha256', "$header.$payloadEncoded", $secret, true)
         );
         return "$header.$payloadEncoded.$signature";
+    }
+
+    public static function getRotatedSecret() {
+        $base = JWT_SECRET ?? 'default_secret_change_me';
+        $rotation = intdiv(time(), 86400 * 30); // rotate every 30 days
+        return hash_hmac('sha256', $base . $rotation, 'rotation_salt', true);
+    }
+
+    public static function getRotatedSecretForVerification($rotationOffset = 0) {
+        $base = JWT_SECRET ?? 'default_secret_change_me';
+        $rotation = intdiv(time(), 86400 * 30) + $rotationOffset;
+        return hash_hmac('sha256', $base . $rotation, 'rotation_salt', true);
     }
 
     public static function verifyToken($token) {
@@ -20,15 +33,30 @@ class Auth {
         if (count($parts) !== 3) return null;
 
         [$header, $payload, $signature] = $parts;
-        $expectedSig = self::base64url_encode(
-            hash_hmac('sha256', "$header.$payload", JWT_SECRET, true)
-        );
 
-        if (!hash_equals($expectedSig, $signature)) return null;
+        // Check current and previous rotation period (for tokens near rotation boundary)
+        $valid = false;
+        for ($offset = 0; $offset >= -1; $offset--) {
+            $secret = self::getRotatedSecretForVerification($offset);
+            $expectedSig = self::base64url_encode(
+                hash_hmac('sha256', "$header.$payload", $secret, true)
+            );
+            if (hash_equals($expectedSig, $signature)) {
+                $valid = true;
+                break;
+            }
+        }
+        if (!$valid) return null;
 
         $data = json_decode(self::base64url_decode($payload), true);
         if (!$data) return null;
-        if (isset($data['exp']) && $data['exp'] < time()) return null;
+        
+        // No expiración para tokens de agentes
+        if (isset($data['purpose']) && $data['purpose'] === 'agent_installation') {
+            // Tokens de instalación no expiran
+        } elseif (isset($data['exp']) && $data['exp'] < time()) {
+            return null;
+        }
 
         return $data;
     }

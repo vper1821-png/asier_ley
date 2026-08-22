@@ -47,6 +47,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $agentsRes = api_post_form('/api/agents/list', ['token' => $token]);
 $agents = is_array($agentsRes) && empty($agentsRes['error']) ? ($agentsRes['agents'] ?? $agentsRes) : [];
 if (!is_array($agents)) $agents = [];
+
+// Filtrar solo agentes online
+$agents = array_filter($agents, fn($a) => ($a['status'] ?? '') === 'online');
+$agents = array_values($agents); // Reindexar array
+
 usort($agents, function($a, $b) {
     $ga = $a['group'] ?? '';
     $gb = $b['group'] ?? '';
@@ -71,7 +76,7 @@ usort($agents, function($a, $b) {
     $nb = $b['name'] ?? $b['hostname'] ?? '';
     return strcmp($na, $nb);
 });
-$online = count(array_filter($agents, fn($a) => ($a['status'] ?? '') === 'online'));
+$online = count($agents);
 
 $foldersRes = api_post_form('/api/folders/list', ['token' => $token]);
 $folders = is_array($foldersRes) && empty($foldersRes['error']) ? $foldersRes : [];
@@ -131,11 +136,18 @@ $platforms = [
                 <p class="text-[11px] text-text-subtle mb-4">Instala el agente de SecureLab en tus endpoints para monitorearlos y poder bloquearlos remotamente.</p>
                 <div class="flex flex-wrap gap-2">
                     <?php foreach ($platforms as $plat => $info): ?>
+                    <?php if ($plat === 'win-x64'): ?>
+                    <button onclick="downloadInstaller()" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-[11px] font-medium bg-bg-panel/80 border border-border-theme text-text-body hover:bg-bg-elevated hover:border-surface-600 transition-all">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4 4m4-4v4m0 0H4m4 4h16a2 2 0 002-2V6a2 2 0 00-2-2H4a2 2 0 00-2 2v4a2 2 0 002 2h16a2 2 0 002-2V6a2 2 0 00-2-2H4a2 2 0 00-2 2v4a2 2 0 002 2z"/></svg>
+                        <?= h($info['label']) ?> (Instalador)
+                    </button>
+                    <?php else: ?>
                     <button onclick="downloadAgent('<?= h($plat) ?>')"
                        class="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-[11px] font-medium bg-bg-panel/80 border border-border-theme text-text-body hover:bg-bg-elevated hover:border-surface-600 transition-all">
                         <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="<?= $info['icon'] ?>"/></svg>
                         <?= h($info['label']) ?>
                     </button>
+                    <?php endif; ?>
                     <?php endforeach; ?>
                 </div>
                 <p class="text-[10px] text-text-subtle mt-3">Al descargar se crea un <strong>deploy</strong> vinculado a tu cuenta. El agente se preconfigura con tu API URL y token.</p>
@@ -217,8 +229,13 @@ $platforms = [
                         </div>
                     </div>
                     <div class="flex items-center gap-3 flex-shrink-0">
-                        <?php if (isset($agent['cpu']) || isset($agent['ram'])): ?>
-                        <span class="text-[10px] text-text-muted">CPU <?= h($agent['cpu'] ?? '0') ?>% · RAM <?= h($agent['ram'] ?? '0') ?>%</span>
+                        <?php 
+                        $hostData = $hostsByAgent[$agent['agentId'] ?? $agent['_id'] ?? ''] ?? [];
+                        $cpu = $hostData['cpu'] ?? 0;
+                        $ram = $hostData['ram'] ?? 0;
+                        ?>
+                        <?php if ($cpu > 0 || $ram > 0): ?>
+                        <span class="text-[10px] text-text-muted">CPU <?= h($cpu) ?>% · RAM <?= h($ram) ?>%</span>
                         <?php endif; ?>
                         <span class="inline-flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full <?= $isOnline ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20' ?>">
                             <span class="w-1.5 h-1.5 rounded-full <?= $isOnline ? 'bg-emerald-400' : 'bg-red-400' ?>"></span>
@@ -228,7 +245,7 @@ $platforms = [
                             class="p-2 rounded-lg text-[11px] bg-bg-panel/80 border border-border-theme text-text-muted hover:text-indigo-400 hover:bg-bg-elevated transition-all">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                         </button>
-                        <button onclick="pinAgent(<?= $i ?>, '<?= h($agent['agentId'] ?? '') ?>', <?= !empty($agent['pinned']) ? 'true' : 'false' ?>)" title="<?= !empty($agent['pinned']) ? 'Desfijar' : 'Fijar' ?>"
+                        <button onclick="pinAgent(<?= $i ?>, '<?= h($agent['_id'] ?? '') ?>', <?= !empty($agent['pinned']) ? 'true' : 'false' ?>)" title="<?= !empty($agent['pinned']) ? 'Desfijar' : 'Fijar' ?>"
                             class="p-2 rounded-lg text-[11px] bg-bg-panel/80 border border-border-theme <?= !empty($agent['pinned']) ? 'text-amber-400 border-amber-500/30 hover:bg-amber-500/10' : 'text-text-muted hover:text-amber-400 hover:border-amber-500/30' ?> transition-all">
                             <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
                         </button>
@@ -236,7 +253,7 @@ $platforms = [
                             class="p-2 rounded-lg text-[11px] bg-bg-panel/80 border border-border-theme text-text-muted hover:text-primary-400 hover:bg-bg-elevated transition-all">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
                         </button>
-                        <button onclick="deleteAgent('<?= h($agent['agentId'] ?? '') ?>','<?= addslashes($agent['name'] ?? $agent['hostname'] ?? '') ?>')" title="Eliminar agente"
+                        <button onclick="deleteAgent('<?= h($agent['agentId'] ?? $agent['_id'] ?? '') ?>','<?= addslashes($agent['name'] ?? $agent['hostname'] ?? '') ?>')" title="Eliminar agente"
                             class="p-2 rounded-lg text-[11px] bg-bg-panel/80 border border-red-500/20 text-red-400 hover:bg-red-500/10 hover:border-red-500/30 transition-all">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                         </button>
@@ -293,6 +310,11 @@ let agentModalInterval = null;
 let editAgentIdx = null;
 let editAgentId = '';
 
+// Helper para obtener el ID del agente (agentId o _id)
+function getAgentId(agent) {
+    return agent.agentId || agent._id || '';
+}
+
 function closeAgentModal() {
     document.getElementById('agent-modal').classList.add('hidden');
     document.getElementById('agent-modal').classList.remove('flex');
@@ -305,7 +327,7 @@ function openEditModal(idx) {
     if (!d) return;
     const a = d.agent || {};
     editAgentIdx = idx;
-    editAgentId = a.agentId || '';
+    editAgentId = a.agentId || a._id || '';
     document.getElementById('edit-name').value = a.name || a.hostname || '';
     document.getElementById('edit-group').value = a.group || '';
     const m = document.getElementById('edit-agent-modal');
@@ -337,7 +359,7 @@ function createFolder() {
     const input = document.getElementById('new-folder');
     const name = input.value.trim();
     if (!name) return;
-    fetch('/api/folders/create', {
+    fetch('/api-proxy.php?path=/api/folders/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SL_TOKEN },
         body: JSON.stringify({ name: name, token: SL_TOKEN })
@@ -350,7 +372,7 @@ function deleteFolder(name) {
     if (!confirm('¿Borrar la carpeta "' + name + '"? Los agentes que estuvieran en ella volverán a "Sin sección".\n\nEscribe el nombre de la carpeta para confirmar:')) return;
     const check = prompt('Confirma escribiendo el nombre de la carpeta:');
     if (check !== name) { alert('No coincide'); return; }
-    fetch('/api/folders/delete', {
+    fetch('/api-proxy.php?path=/api/folders/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SL_TOKEN },
         body: JSON.stringify({ name: name, token: SL_TOKEN })
@@ -389,7 +411,7 @@ function showToast(msg, type = 'info') {
 }
 
 function agentAction(agentId, action, extra) {
-    const url = action === 'lockdown' ? '/api/agents/lockdown' : '/api/agents/' + encodeURIComponent(agentId) + '/command';
+    const url = action === 'lockdown' ? '/api-proxy.php?path=/api/agents/lockdown' : '/api-proxy.php?path=/api/agents/' + encodeURIComponent(agentId) + '/command';
     const payload = action === 'lockdown'
         ? { token: SL_TOKEN, agentId: agentId, action: extra.action, message: extra.message }
         : { token: SL_TOKEN, command: action, params: extra || {} };
@@ -492,18 +514,18 @@ function openAgentModal(idx) {
                         <p class="text-[11px] text-text-muted">Motivo: ${lockedInfo.message || lockedInfo.reason || 'Sin especificar'}</p>
                         <p class="text-[11px] text-text-muted">Por: ${lockedInfo.setBy || ''} · ${(lockedInfo.setAt || '').substring(0, 19)}</p>
                     </div>
-                    <button onclick="agentAction('${a.agentId}','lockdown',{action:'unlock',message:''})" class="w-full px-4 py-2.5 rounded-lg text-[12px] font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-all inline-flex items-center justify-center gap-2">
+                    <button onclick="agentAction('${getAgentId(a)}','lockdown',{action:'unlock',message:''})" class="w-full px-4 py-2.5 rounded-lg text-[12px] font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-all inline-flex items-center justify-center gap-2">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>
                         Desbloquear equipo
                     </button>` : `
                     <textarea id="lock-msg" rows="2" placeholder="Motivo / mensaje para mostrar y anunciar en el equipo (ej: uso indebido del equipo)..." class="w-full input-premium mb-2"></textarea>
-                    <button onclick="agentAction('${a.agentId}','lockdown',{action:'lock',message:document.getElementById('lock-msg').value})" class="w-full px-4 py-2.5 rounded-lg text-[12px] font-semibold bg-red-600 hover:bg-red-500 text-white transition-all inline-flex items-center justify-center gap-2">
+                    <button onclick="agentAction('${getAgentId(a)}','lockdown',{action:'lock',message:document.getElementById('lock-msg').value})" class="w-full px-4 py-2.5 rounded-lg text-[12px] font-semibold bg-red-600 hover:bg-red-500 text-white transition-all inline-flex items-center justify-center gap-2">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
                         Bloquear equipo
                     </button>`}
                     <div class="flex gap-2 mt-2">
                         <input id="lock-minutes" type="number" min="1" max="480" value="5" class="w-24 input-premium" />
-                        <button onclick="agentAction('${a.agentId}','lock_timed',{minutes:Number(document.getElementById('lock-minutes').value)||5})" class="flex-1 px-3 py-2 rounded-lg text-[11px] font-medium bg-red-600/20 border border-red-500/30 text-red-400 hover:bg-red-600/30 transition-all inline-flex items-center justify-center gap-1.5">
+                        <button onclick="agentAction('${getAgentId(a)}','lock_timed',{minutes:Number(document.getElementById('lock-minutes').value)||5})" class="flex-1 px-3 py-2 rounded-lg text-[11px] font-medium bg-red-600/20 border border-red-500/30 text-red-400 hover:bg-red-600/30 transition-all inline-flex items-center justify-center gap-1.5">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                             Bloquear (min)
                         </button>
@@ -514,9 +536,9 @@ function openAgentModal(idx) {
                 <div>
                     ${sectionTitle('#fbbf24', 'Energía remota')}
                     <div class="flex gap-2">
-                        <button onclick="confirmPower('${a.agentId}','power_restart','¿Reiniciar el equipo?')" class="flex-1 px-3 py-2 rounded-lg text-[11px] font-medium bg-amber-600/20 border border-amber-500/30 text-amber-400 hover:bg-amber-600/30 transition-all">Reiniciar</button>
-                        <button onclick="confirmPower('${a.agentId}','power_suspend','¿Suspender el equipo?')" class="flex-1 px-3 py-2 rounded-lg text-[11px] font-medium bg-blue-600/20 border border-blue-500/30 text-blue-400 hover:bg-blue-600/30 transition-all">Suspender</button>
-                        <button onclick="confirmPower('${a.agentId}','power_off','¿APAGAR el equipo?')" class="flex-1 px-3 py-2 rounded-lg text-[11px] font-medium bg-red-600/20 border border-red-500/30 text-red-400 hover:bg-red-600/30 transition-all">Apagar</button>
+                        <button onclick="confirmPower('${getAgentId(a)}','power_restart','¿Reiniciar el equipo?')" class="flex-1 px-3 py-2 rounded-lg text-[11px] font-medium bg-amber-600/20 border border-amber-500/30 text-amber-400 hover:bg-amber-600/30 transition-all">Reiniciar</button>
+                        <button onclick="confirmPower('${getAgentId(a)}','power_suspend','¿Suspender el equipo?')" class="flex-1 px-3 py-2 rounded-lg text-[11px] font-medium bg-blue-600/20 border border-blue-500/30 text-blue-400 hover:bg-blue-600/30 transition-all">Suspender</button>
+                        <button onclick="confirmPower('${getAgentId(a)}','power_off','¿APAGAR el equipo?')" class="flex-1 px-3 py-2 rounded-lg text-[11px] font-medium bg-red-600/20 border border-red-500/30 text-red-400 hover:bg-red-600/30 transition-all">Apagar</button>
                     </div>
                 </div>
             </div>
@@ -526,10 +548,10 @@ function openAgentModal(idx) {
         <div>
             ${sectionTitle('#22d3ee', 'Diagnóstico en vivo')}
             <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
-                <button onclick="agentRequestData('${a.agentId}','processes',renderProcesses,'procs-box')" class="px-3 py-2.5 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-cyan-500/40 transition-all inline-flex items-center gap-1.5 justify-center">Ver procesos</button>
-                <button onclick="agentRequestData('${a.agentId}','health',renderHealth,'health-box')" class="px-3 py-2.5 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-cyan-500/40 transition-all inline-flex items-center gap-1.5 justify-center">Snapshot de salud</button>
-                <button onclick="agentRequestData('${a.agentId}','defender',renderDefender,'def-box')" class="px-3 py-2.5 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-cyan-500/40 transition-all inline-flex items-center gap-1.5 justify-center">Estado de seguridad</button>
-                <button onclick="agentRequestData('${a.agentId}','screenshot',renderShot,'shot-box')" class="px-3 py-2.5 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-cyan-500/40 transition-all inline-flex items-center gap-1.5 justify-center">Capturar pantalla</button>
+                <button onclick="agentRequestData('${getAgentId(a)}','processes',renderProcesses,'procs-box')" class="px-3 py-2.5 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-cyan-500/40 transition-all inline-flex items-center gap-1.5 justify-center">Ver procesos</button>
+                <button onclick="agentRequestData('${getAgentId(a)}','health',renderHealth,'health-box')" class="px-3 py-2.5 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-cyan-500/40 transition-all inline-flex items-center gap-1.5 justify-center">Snapshot de salud</button>
+                <button onclick="agentRequestData('${getAgentId(a)}','defender',renderDefender,'def-box')" class="px-3 py-2.5 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-cyan-500/40 transition-all inline-flex items-center gap-1.5 justify-center">Estado de seguridad</button>
+                <button onclick="agentRequestData('${getAgentId(a)}','screenshot',renderShot,'shot-box')" class="px-3 py-2.5 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-cyan-500/40 transition-all inline-flex items-center gap-1.5 justify-center">Capturar pantalla</button>
             </div>
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <div id="procs-box" class="rounded-xl border border-border-theme/40 bg-bg-elevated/30 p-3 min-h-[60px]"></div>
@@ -544,7 +566,7 @@ function openAgentModal(idx) {
         <!-- Historial -->
         <div>
             ${sectionTitle('#94a3b8', 'Historial de comandos')}
-            <button onclick="loadCommandHistory('${a.agentId}','cmds-box')" class="px-3 py-2 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-surface-600 transition-all">Ver historial</button>
+            <button onclick="loadCommandHistory('${getAgentId(a)}','cmds-box')" class="px-3 py-2 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-surface-600 transition-all">Ver historial</button>
             <div id="cmds-box" class="mt-2"></div>
         </div>
 
@@ -552,9 +574,9 @@ function openAgentModal(idx) {
         <div>
             ${sectionTitle('#a78bfa', 'Forense')}
             <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
-                <button onclick="loadForensics('${a.agentId}','files','forense-box')" class="px-3 py-2.5 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-purple-500/40 transition-all inline-flex items-center gap-1.5 justify-center">Archivos recientes</button>
-                <button onclick="loadForensics('${a.agentId}','db','forense-box')" class="px-3 py-2.5 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-purple-500/40 transition-all inline-flex items-center gap-1.5 justify-center">Logs BBDD</button>
-                <button onclick="loadForensics('${a.agentId}','host','forense-box')" class="px-3 py-2.5 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-purple-500/40 transition-all inline-flex items-center gap-1.5 justify-center">Eventos del sistema</button>
+                <button onclick="loadForensics('${getAgentId(a)}','files','forense-box')" class="px-3 py-2.5 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-purple-500/40 transition-all inline-flex items-center gap-1.5 justify-center">Archivos recientes</button>
+                <button onclick="loadForensics('${getAgentId(a)}','db','forense-box')" class="px-3 py-2.5 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-purple-500/40 transition-all inline-flex items-center gap-1.5 justify-center">Logs BBDD</button>
+                <button onclick="loadForensics('${getAgentId(a)}','host','forense-box')" class="px-3 py-2.5 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-purple-500/40 transition-all inline-flex items-center gap-1.5 justify-center">Eventos del sistema</button>
             </div>
             <div id="forense-box" class="rounded-xl border border-border-theme/40 bg-bg-elevated/30 p-3 min-h-[60px]"></div>
         </div>
@@ -772,7 +794,7 @@ function loadForensics(agentId, type, boxId) {
     const box = document.getElementById(boxId);
     if (!box) return;
     box.innerHTML = '<p class="text-[10px] text-text-subtle animate-pulse">Cargando forense...</p>';
-    fetch('/api/agents/' + encodeURIComponent(agentId) + '/forensics?type=' + encodeURIComponent(type), {
+    fetch('/api-proxy.php?path=/api/agents/' + encodeURIComponent(agentId) + '/forensics&type=' + encodeURIComponent(type), {
         method: 'GET', headers: { 'Authorization': 'Bearer ' + SL_TOKEN }
     }).then(function (r) { return r.json(); }).then(function (res) {
         if (!res.success || !Array.isArray(res.events)) { box.innerHTML = '<p class="text-[10px] text-text-subtle">Sin datos forenses.</p>'; return; }
@@ -874,7 +896,7 @@ function promptGroup(idx, agentId, current) {
 
 function deleteAgent(agentId, hostname) {
     if (!confirm('¿Eliminar el agente "' + hostname + '" (' + agentId + ')?')) return;
-    fetch('/api/agents/' + encodeURIComponent(agentId) + '/delete', {
+    fetch('/api-proxy.php?path=/api/agents/' + encodeURIComponent(agentId) + '/delete', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + SL_TOKEN, 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: SL_TOKEN })
@@ -886,7 +908,7 @@ function deleteAgent(agentId, hostname) {
 async function downloadAgent(platform) {
     try {
         // 1. Crear deploy en el backend
-        const deployRes = await fetch('/api/agents/deploy', {
+        const deployRes = await fetch('/api-proxy.php?path=/api/agents/deploy', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SL_TOKEN },
             body: JSON.stringify({ platform, userAgent: navigator.userAgent })
@@ -897,15 +919,54 @@ async function downloadAgent(platform) {
             throw new Error(deployData.error || 'Error creando deploy');
         }
         
-        // 2. Descargar el archivo (pasar token para autenticación)
-        const downloadUrl = '/api/agents/download/' + platform + '?deploy=' + encodeURIComponent(deployData.deployId) + '&token=' + encodeURIComponent(SL_TOKEN);
-        window.location.href = downloadUrl;
+        // 2. Descargar el archivo usando proxy (parámetros separados)
+        const downloadUrl = '/api-proxy.php?path=/api/agents/download/' + platform + '&deploy=' + encodeURIComponent(deployData.deployId) + '&token=' + encodeURIComponent(SL_TOKEN);
+        
+        const res = await fetch(downloadUrl);
+        if (!res.ok) throw new Error('Error al descargar agente');
+        
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'securelab-agent-' + platform;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
         
         // 3. Mostrar toast
         if (typeof showToast === 'function') {
             showToast('Deploy creado: ' + deployData.deployId + '. Descarga iniciada...', 'success');
         } else {
             alert('Deploy creado: ' + deployData.deployId + '. Descarga iniciada...');
+        }
+    } catch (err) {
+        if (typeof showToast === 'function') {
+            showToast('Error: ' + err.message, 'error');
+        } else {
+            alert('Error: ' + err.message);
+        }
+    }
+}
+
+async function downloadInstaller() {
+    try {
+        const res = await fetch('/api-proxy.php?path=/api/agents/download/win-x64&installer=1');
+        if (!res.ok) throw new Error('Error al descargar instalador');
+        
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'SecureLabAgent-Installer.exe';
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        if (typeof showToast === 'function') {
+            showToast('Instalador descargado. El token ya está configurado dentro del instalador.', 'success');
         }
     } catch (err) {
         if (typeof showToast === 'function') {

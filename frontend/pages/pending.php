@@ -13,7 +13,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'token' => $token,
         'companyName' => $_POST['companyName'] ?? '',
         'domain' => $_POST['domain'] ?? '',
-        'planType' => $_POST['planType'] ?? 'free',
     ]);
     if (!empty($res['success'])) {
         $success = 'Datos guardados. Tu cuenta será revisada por un administrador.';
@@ -27,7 +26,6 @@ if (!is_array($onboarding)) $onboarding = [];
 
 $companyName = $_POST['companyName'] ?? ($onboarding['companyName'] ?? $user['companyName'] ?? '');
 $domain = $_POST['domain'] ?? ($onboarding['domain'] ?? $user['domain'] ?? '');
-$planType = $_POST['planType'] ?? ($onboarding['planType'] ?? $user['planType'] ?? 'free');
 
 require_once __DIR__ . '/../includes/header.php';
 ?>
@@ -65,14 +63,6 @@ require_once __DIR__ . '/../includes/header.php';
                 <label class="label-premium">Dominio / Sitio web</label>
                 <input type="text" name="domain" value="<?= h($domain) ?>"
                     class="input-premium w-full" placeholder="Ej: securelab.cl">
-            </div>
-            <div>
-                <label class="label-premium">Plan solicitado</label>
-                <select name="planType" class="input-premium w-full">
-                    <option value="free" <?= $planType === 'free' ? 'selected' : '' ?>>Free</option>
-                    <option value="Pro" <?= $planType === 'Pro' ? 'selected' : '' ?>>Pro</option>
-                    <option value="Enterprise" <?= $planType === 'Enterprise' ? 'selected' : '' ?>>Enterprise</option>
-                </select>
             </div>
             <button type="submit" class="btn-primary w-full">
                 Guardar y solicitar aprobación

@@ -2,10 +2,13 @@
 // SecureLab2v - PHP Frontend Configuration
 session_start();
 
-define('API_BASE_URL', getenv('API_BASE_URL') ?: 'http://backend-service:3838');
+// API Base URL: usar nombre del contenedor para Docker
+define('API_BASE_URL', getenv('API_BASE_URL') ?: 'http://invisia-backend-php:3838');
+define('API_BASE_URL_BROWSER', getenv('API_BASE_URL_BROWSER') ?: 'http://invisia-backend-php:3838');
 define('SITE_URL', getenv('SITE_URL') ?: 'https://leysecurelab.sytes.net');
 define('SITE_NAME', 'SecureLab');
 define('SITE_SUBTITLE', 'Cumplimiento ley 21.719');
+define('TURNSTILE_SITE_KEY', getenv('TURNSTILE_SITE_KEY') ?: '');
 
 // CSRF token
 if (empty($_SESSION['csrf_token'])) {

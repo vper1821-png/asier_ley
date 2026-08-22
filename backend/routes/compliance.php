@@ -1,5 +1,6 @@
 <?php
 // Compliance routes
+require_once __DIR__ . '/../Auth.php';
 
 function score() {
     $user = Auth::requireAuth();
@@ -38,6 +39,234 @@ function score() {
         'score' => round($score),
         'details' => $details,
     ]);
+}
+
+function detailedChecklist() {
+    $user = Auth::requireAuth();
+    $db = Database::getInstance();
+
+    $config = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
+    $inventory = $db->find('compliance_inventory', ['userId' => $user['_id']]);
+    $consents = $db->find('compliance_consents', ['userId' => $user['_id']]);
+    $trainings = $db->find('compliance_trainings', ['userId' => $user['_id']]);
+    $dpia = $db->find('compliance_dpia', ['userId' => $user['_id']]);
+    $arcoRequests = $db->find('compliance_arco_requests', ['userId' => $user['_id']]);
+    $breaches = $db->find('compliance_breaches', ['userId' => $user['_id']]);
+    $pseudoRules = $db->find('compliance_pseudonymization', ['userId' => $user['_id']]);
+    $processors = $db->find('compliance_processors', ['userId' => $user['_id']]);
+    $transfers = $db->find('compliance_transfers', ['userId' => $user['_id']]);
+
+    // Checklist completo basado en la Ley 21.719
+    $detailedChecklist = [
+        // Identificación y Registro
+        [
+            'id' => 'dpd',
+            'label' => 'DPD Designado',
+            'done' => !empty($config['dpdEmail']),
+            'link' => '/hardening?tab=dpd',
+            'severity' => 'gravisima',
+            'fine' => 'Hasta 20.000 UTM'
+        ],
+        [
+            'id' => 'apdp',
+            'label' => 'Registro APDP',
+            'done' => !empty($config['apdpRegistered']),
+            'link' => '/hardening?tab=dpd',
+            'severity' => 'gravisima',
+            'fine' => 'Hasta 20.000 UTM'
+        ],
+        // Política de Privacidad
+        [
+            'id' => 'privacy_policy',
+            'label' => 'Política de Privacidad publicada',
+            'done' => !empty($config['privacyPolicyUrl']),
+            'link' => '/compliance?tab=privacy',
+            'severity' => 'leve',
+            'fine' => 'Hasta 5.000 UTM'
+        ],
+        [
+            'id' => 'cookies_policy',
+            'label' => 'Política de cookies publicada',
+            'done' => !empty($config['cookiesPolicyUrl']),
+            'link' => '/compliance?tab=privacy',
+            'severity' => 'leve',
+            'fine' => 'Hasta 5.000 UTM'
+        ],
+        [
+            'id' => 'retention_policy',
+            'label' => 'Política de retención de datos definida',
+            'done' => !empty($config['dataRetentionPolicy']),
+            'link' => '/compliance?tab=privacy',
+            'severity' => 'leve',
+            'fine' => 'Hasta 5.000 UTM'
+        ],
+        // Base de Licitud y Consentimiento
+        [
+            'id' => 'consents',
+            'label' => 'Consentimientos registrados',
+            'done' => count($consents) > 0,
+            'link' => '/compliance?tab=consents',
+            'severity' => 'leve',
+            'fine' => 'Hasta 5.000 UTM'
+        ],
+        // Inventario de Tratamiento
+        [
+            'id' => 'inventory',
+            'label' => 'Inventario de datos registrado',
+            'done' => count($inventory) > 0,
+            'link' => '/compliance?tab=inventory',
+            'severity' => 'leve',
+            'fine' => 'Hasta 5.000 UTM'
+        ],
+        [
+            'id' => 'sensitive_legal_basis',
+            'label' => 'Datos sensibles con base legal',
+            'done' => count(array_filter($inventory, fn($i) => !empty($i['sensitive']) && !empty($i['legalBasis']))) === count(array_filter($inventory, fn($i) => !empty($i['sensitive']))),
+            'link' => '/compliance?tab=inventory',
+            'severity' => 'gravisima',
+            'fine' => 'Hasta 20.000 UTM'
+        ],
+        // Protocolo de Brechas
+        [
+            'id' => 'breaches_protocol',
+            'label' => 'Protocolo de notificación de brechas',
+            'done' => count($breaches) > 0,
+            'link' => '/compliance?tab=breaches',
+            'severity' => 'grave',
+            'fine' => 'Hasta 10.000 UTM'
+        ],
+        [
+            'id' => 'breaches_resolved',
+            'label' => 'Plan de respuesta a incidentes',
+            'done' => count(array_filter($breaches, fn($b) => ($b['status'] ?? '') === 'resolved')) > 0,
+            'link' => '/compliance?tab=breaches',
+            'severity' => 'grave',
+            'fine' => 'Hasta 10.000 UTM'
+        ],
+        // Evaluación de Impacto (DPIA)
+        [
+            'id' => 'dpia_approved',
+            'label' => 'DPIA aprobadas para datos sensibles',
+            'done' => count(array_filter($dpia, fn($d) => ($d['status'] ?? '') === 'approved')) > 0,
+            'link' => '/compliance?tab=dpia',
+            'severity' => 'grave',
+            'fine' => 'Hasta 10.000 UTM'
+        ],
+        // Seudonimización
+        [
+            'id' => 'pseudonymization',
+            'label' => 'Reglas de seudonimización definidas',
+            'done' => count($pseudoRules) > 0,
+            'link' => '/compliance?tab=pseudonymization',
+            'severity' => 'leve',
+            'fine' => 'Hasta 5.000 UTM'
+        ],
+        // Capacitación
+        [
+            'id' => 'training_signed',
+            'label' => 'Personal capacitado con firma',
+            'done' => count(array_filter($trainings, fn($t) => !empty($t['signature']) || !empty($t['inviteId']))) > 0,
+            'link' => '/compliance?tab=trainings',
+            'severity' => 'leve',
+            'fine' => 'Hasta 5.000 UTM'
+        ],
+        // Encargados (DPA)
+        [
+            'id' => 'processors',
+            'label' => 'Acuerdos con encargados (DPA)',
+            'done' => count($processors) > 0,
+            'link' => '/compliance?tab=processors',
+            'severity' => 'grave',
+            'fine' => 'Hasta 10.000 UTM'
+        ],
+        // Transferencias internacionales
+        [
+            'id' => 'transfers',
+            'label' => 'Transferencias internacionales registradas',
+            'done' => count($transfers) > 0,
+            'link' => '/compliance?tab=transfers',
+            'severity' => 'grave',
+            'fine' => 'Hasta 10.000 UTM'
+        ],
+        // Derechos ARCO
+        [
+            'id' => 'arco_requests',
+            'label' => 'Registro de solicitudes ARCO',
+            'done' => count($arcoRequests) > 0,
+            'link' => '/arco',
+            'severity' => 'leve',
+            'fine' => 'Hasta 5.000 UTM'
+        ],
+    ];
+
+    json_response(['checklist' => $detailedChecklist]);
+}
+
+function autoSignTraining() {
+    $user = Auth::requireAuth();
+    $db = Database::getInstance();
+    $body = get_body();
+    
+    $trainingId = $body['trainingId'] ?? '';
+    if (!$trainingId) json_error('trainingId requerido');
+    
+    $training = $db->findOne('compliance_trainings', ['_id' => $trainingId, 'userId' => $user['_id']]);
+    if (!$training) json_error('Capacitación no encontrada', 404);
+    
+    // Crear invitación de firma automáticamente (SIN firmar)
+    $inviteToken = bin2hex(random_bytes(16));
+    $invite = [
+        'userId' => $user['_id'],
+        'token' => $inviteToken,
+        'title' => $training['title'] ?? 'Capacitación: ' . ($training['title'] ?? ''),
+        'description' => 'Firma para capacitación: ' . ($training['title'] ?? ''),
+        'companyName' => $user['companyName'] ?? ($user['email'] ?? ''),
+        'signed' => false, // NO firmar automáticamente
+    ];
+    
+    $inviteId = $db->insertOne('compliance_invites', $invite);
+    
+    // Asignar la invitación a la capacitación (SIN firmar)
+    $db->updateOne('compliance_trainings', ['_id' => $trainingId], [
+        'inviteId' => $inviteId,
+        'inviteAssignedAt' => date('c'),
+    ]);
+    
+    json_response(['success' => true, 'message' => 'Invitación de firma creada exitosamente', 'token' => $inviteToken]);
+}
+
+function updateConfig() {
+    $user = Auth::requireAuth();
+    $db = Database::getInstance();
+    $body = get_body();
+    
+    $config = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
+    
+    $updates = [
+        'privacyPolicyUrl' => $body['privacyPolicyUrl'] ?? '',
+        'cookiesPolicyUrl' => $body['cookiesPolicyUrl'] ?? '',
+        'dataRetentionPolicy' => $body['dataRetentionPolicy'] ?? '',
+    ];
+    
+    if (empty($config)) {
+        $updates['userId'] = $user['_id'];
+        $updates['createdAt'] = date('c');
+        $db->insertOne('compliance_config', $updates);
+    } else {
+        $updates['updatedAt'] = date('c');
+        $db->updateOne('compliance_config', ['userId' => $user['_id']], $updates);
+    }
+    
+    json_response(['success' => true, 'message' => 'Configuración actualizada']);
+}
+
+function getConfig() {
+    $user = Auth::requireAuth();
+    $db = Database::getInstance();
+    
+    $config = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
+    
+    json_response($config);
 }
 
 function verifyInvite() {
@@ -117,6 +346,9 @@ function crud() {
     if ($resource === 'transfer-validation') {
         transferValidation($body);
     }
+    if ($resource === 'companies' && $id === 'search') {
+        searchCompaniesPublic($body, $db);
+    }
 
     $user = Auth::requireAuth();
 
@@ -158,7 +390,7 @@ function crud() {
         arcoCrud($user, $db, $method, $id, $action, $body);
     }
 
-    $allowedCollections = ['consents', 'inventory', 'breaches', 'templates', 'trainings', 'dpia', 'dpa', 'pseudonymization', 'invites'];
+    $allowedCollections = ['consents', 'inventory', 'breaches', 'templates', 'trainings', 'dpia', 'dpa', 'pseudonymization', 'invites', 'processors', 'transfers', 'public_policy'];
     if (!in_array($resource, $allowedCollections)) {
         json_error('recurso no soportado', 404);
     }
@@ -315,6 +547,22 @@ function crud() {
             case 'unsign': $actionUpdates = ['signed' => false, 'unsignedAt' => date('c')] + $actionUpdates; break;
             case 'execute': $actionUpdates = ['executed' => true, 'executedAt' => date('c')] + $actionUpdates; break;
             case 'revert': $actionUpdates = ['executed' => false, 'revertedAt' => date('c')] + $actionUpdates; break;
+            case 'notify_apdp':
+                $actionUpdates = [
+                    'notifiedAPDP' => true,
+                    'apdpNotifiedAt' => date('c'),
+                    'apdpNotificationMethod' => $body['method'] ?? 'portal',
+                    'apdpNotificationRef' => $body['ref'] ?? '',
+                ] + $actionUpdates;
+                break;
+            case 'notify_subjects':
+                $actionUpdates = [
+                    'notifiedSubjects' => true,
+                    'subjectsNotifiedAt' => date('c'),
+                    'notificationChannel' => $body['channel'] ?? 'email',
+                    'notificationRef' => $body['ref'] ?? '',
+                ] + $actionUpdates;
+                break;
             default: json_error('acción no soportada', 400);
         }
         $db->updateOne($collection, ['_id' => $id], $actionUpdates);
@@ -344,6 +592,8 @@ function overview($user, $db) {
         'dpia' => $db->count('compliance_dpia', ['userId' => $user['_id']]),
         'dpa' => $db->count('compliance_dpa', ['userId' => $user['_id']]),
         'pseudonymization' => $db->count('compliance_pseudonymization', ['userId' => $user['_id']]),
+        'processors' => $db->count('compliance_processors', ['userId' => $user['_id']]),
+        'transfers' => $db->count('compliance_transfers', ['userId' => $user['_id']]),
     ];
     json_response(['success' => true, 'overview' => $data]);
 }
@@ -421,7 +671,7 @@ function ropaExport($db) {
     header('Content-Disposition: attachment; filename="ropa-export.csv"');
     $out = fopen('php://output', 'w');
     fputcsv($out, ['Recurso', 'Registros']);
-    $collections = ['compliance_consents','compliance_inventory','compliance_breaches','compliance_templates','compliance_trainings','compliance_dpia','compliance_dpa','compliance_pseudonymization'];
+    $collections = ['compliance_consents','compliance_inventory','compliance_breaches','compliance_templates','compliance_trainings','compliance_dpia','compliance_dpa','compliance_pseudonymization','compliance_processors','compliance_transfers'];
     foreach ($collections as $c) {
         fputcsv($out, [$c, $db->count($c)]);
     }
@@ -472,4 +722,203 @@ function transferValidation($body) {
         'safeguards' => $adequate ? 'decisión de adecuación' : 'garantías adicionales necesarias',
         'message' => $adequate ? 'Transferencia permitida' : 'Se requieren garantías suplementarias para transferir datos',
     ]);
+}
+
+function generatePublicPolicy() {
+    $token = $_GET['token'] ?? '';
+    if (!$token) {
+        header('HTTP/1.1 401 Unauthorized');
+        echo 'Token requerido';
+        exit;
+    }
+
+    $decoded = Auth::verifyToken($token);
+    if (!$decoded) {
+        header('HTTP/1.1 401 Unauthorized');
+        echo 'Token inválido';
+        exit;
+    }
+
+    $db = Database::getInstance();
+    $user = $db->findOne('users', ['_id' => $decoded['userId']]);
+    if (!$user) {
+        header('HTTP/1.1 401 Unauthorized');
+        echo 'Usuario no encontrado';
+        exit;
+    }
+
+    $config = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
+    $companyName = $config['companyName'] ?? ($user['companyName'] ?? ($user['email'] ?? 'Empresa'));
+    $dpdName = $config['dpdName'] ?? '—';
+    $dpdEmail = $config['dpdEmail'] ?? '—';
+    $dpdPhone = $config['dpdPhone'] ?? '—';
+    $privacyPolicyUrl = $config['privacyPolicyUrl'] ?? '';
+    $cookiesPolicyUrl = $config['cookiesPolicyUrl'] ?? '';
+    $dataRetentionPolicy = $config['dataRetentionPolicy'] ?? '';
+
+    $inventory = $db->find('compliance_inventory', ['userId' => $user['_id']]);
+    $consents = $db->find('compliance_consents', ['userId' => $user['_id']]);
+    $breaches = $db->find('compliance_breaches', ['userId' => $user['_id']]);
+
+    $html = "<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>Política de Privacidad - {$companyName}</title>";
+    $html .= "<style>
+        body{font-family:'Inter',Arial,sans-serif;line-height:1.7;color:#1a1a1a;max-width:900px;margin:0 auto;padding:40px 20px;background:#fafafa}
+        .header{border-bottom:2px solid #1a1a1a;padding-bottom:20px;margin-bottom:40px}
+        .header h1{font-size:28px;font-weight:700;margin:0 0 10px}
+        .header p{color:#555;margin:0}
+        .meta{background:#f5f5f5;padding:15px 20px;border-radius:8px;margin-bottom:30px;font-size:14px}
+        .meta strong{color:#1a1a1a}
+        section{margin-bottom:40px}
+        h2{font-size:22px;font-weight:600;color:#1a1a1a;border-left:4px solid #2563eb;padding-left:15px;margin-bottom:15px}
+        h3{font-size:18px;font-weight:600;margin:20px 0 10px}
+        ul{padding-left:20px}
+        li{margin-bottom:8px}
+        .dpd-card{background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:20px;margin:20px 0}
+        .dpd-card h3{margin-top:0;color:#1e40af}
+        .footer{border-top:1px solid #ddd;padding-top:20px;margin-top:40px;color:#666;font-size:14px}
+        @media print{body{background:#fff;padding:0}.footer{display:none}}
+    </style></head><body>";
+
+    $html .= "<div class='header'><h1>Política de Privacidad</h1><p>{$companyName} · Ley 21.719 · Protección de Datos Personales</p></div>";
+
+    $html .= "<div class='meta'><strong>Versión:</strong> 1.0 | <strong>Fecha:</strong> " . date('d/m/Y') . " | <strong>Responsable:</strong> {$companyName}</div>";
+
+    $html .= "<section><h2>1. Identidad del Responsable</h2>";
+    $html .= "<p><strong>Nombre:</strong> {$companyName}</p>";
+    $html .= "<p><strong>Contacto DPD:</strong> {$dpdName} — {$dpdEmail} — {$dpdPhone}</p>";
+    $html .= "</section>";
+
+    $html .= "<section><h2>2. Finalidades y Base Legal del Tratamiento</h2>";
+    $html .= "<p>Tratamos sus datos personales para las siguientes finalidades, con la base legal correspondiente:</p>";
+    $html .= "<ul>";
+    foreach ($inventory as $inv) {
+        $purpose = $inv['purpose'] ?? $inv['name'] ?? '';
+        $basis = $inv['legalBasis'] ?? '';
+        $categories = $inv['dataCategories'] ?? '';
+        if (is_array($categories)) $categories = implode(', ', $categories);
+        $html .= "<li><strong>{$purpose}</strong> — Base legal: {$basis} — Categorías: {$categories}</li>";
+    }
+    $html .= "</ul>";
+    $html .= "</section>";
+
+    $html .= "<section><h2>3. Categorías de Datos Tratados</h2>";
+    $html .= "<p>Según el Art. 14.1.c de la Ley 21.719, las categorías principales son:</p>";
+    $html .= "<ul>";
+    $catMap = [];
+    foreach ($inventory as $inv) {
+        $cats = $inv['dataCategories'] ?? '';
+        if (is_array($cats)) {
+            foreach ($cats as $c) $catMap[$c] = true;
+        } else {
+            foreach (explode(';', $cats) as $c) $catMap[trim($c)] = true;
+        }
+    }
+    foreach (array_keys($catMap) as $cat) {
+        $html .= "<li>{$cat}</li>";
+    }
+    $html .= "</ul>";
+    $html .= "</section>";
+
+    $html .= "<section><h2>4. Derechos del Titular (Art. 4-13 Ley 21.719)</h2>";
+    $html .= "<p>Usted puede ejercer los siguientes derechos gratuitamente:</p>";
+    $html .= "<ul>";
+    $html .= "<li><strong>Acceso (Art. 8):</strong> Obtener confirmación y copia de sus datos.</li>";
+    $html .= "<li><strong>Rectificación (Art. 9):</strong> Corregir datos inexactos o incompletos.</li>";
+    $html .= "<li><strong>Supresión (Art. 10):</strong> Solicitar eliminación cuando ya no sean necesarios.</li>";
+    $html .= "<li><strong>Oposición (Art. 11):</strong> Oponerse al tratamiento en ciertos casos.</li>";
+    $html .= "<li><strong>Portabilidad (Art. 13):</strong> Recibir sus datos en formato estructurado.</li>";
+    $html .= "<li><strong>Bloqueo (Art. 8 ter):</strong> Suspender temporalmente el tratamiento.</li>";
+    $html .= "</ul>";
+    $html .= "<p>Para ejercer sus derechos, contacte al DPD en: {$dpdEmail}</p>";
+    $html .= "</section>";
+
+    $html .= "<section><h2>5. Consentimiento (Art. 12)</h2>";
+    $html .= "<p>Cuando el tratamiento se base en consentimiento, este es libre, informado, específico, previo e inequívoco. Puede revocarlo en cualquier momento contactando al DPD.</p>";
+    $html .= "<p>Total de consentimientos activos registrados: " . count(array_filter($consents, fn($c) => empty($c['revokedAt']))) . "</p>";
+    $html .= "</section>";
+
+    $html .= "<section><h2>6. Cesiones y Transferencias Internacionales (Art. 15, 21, 27)</h2>";
+    $html .= "<p>No cedemos datos a terceros salvo obligación legal, ejecución de contrato o consentimiento. Las transferencias internacionales se realizan con garantías adecuadas (decisión de adecuación, cláusulas tipo, BCR).</p>";
+    $html .= "</section>";
+
+    $html .= "<section><h2>7. Medidas de Seguridad (Art. 14 quinquies, 25, 26)</h2>";
+    $html .= "<p>Implementamos medidas técnicas y organizativas: cifrado, control de acceso, registro de accesos, evaluación de impacto (DPIA), plan de respuesta a incidentes.</p>";
+    $html .= "<p>Incidentes de seguridad registrados: " . count($breaches) . " (resueltos: " . count(array_filter($breaches, fn($b) => ($b['status'] ?? '') === 'resolved')) . ")</p>";
+    $html .= "</section>";
+
+    $html .= "<section><h2>8. Retención de Datos (Art. 14)</h2>";
+    $html .= "<p>Los datos se conservan solo el tiempo necesario para la finalidad del tratamiento o mientras exista obligación legal.</p>";
+    $html .= "</section>";
+
+    $html .= "<section><h2>9. Delegado de Protección de Datos (Art. 28)</h2>";
+    $html .= "<div class='dpd-card'><h3>Contacto DPD</h3>";
+    $html .= "<p><strong>Nombre:</strong> {$dpdName}</p>";
+    $html .= "<p><strong>Email:</strong> {$dpdEmail}</p>";
+    $html .= "<p><strong>Teléfono:</strong> {$dpdPhone}</p>";
+    $html .= "</div>";
+    $html .= "</section>";
+
+    $html .= "<section><h2>10. Reclamaciones ante la APDP</h2>";
+    $html .= "<p>Si considera que sus derechos no han sido respetados, puede presentar reclamación ante la Agencia de Protección de Datos Personales (APDP) en www.apdp.cl</p>";
+    $html .= "</section>";
+
+    $html .= "<div class='footer'>";
+    $html .= "<p>Política de Privacidad generada automáticamente por SecureLab — Ley 21.719 — Protección de Datos Personales — Chile</p>";
+    $html .= "<p>Fecha de última actualización: " . date('d/m/Y') . "</p>";
+    $html .= "</div>";
+
+    $html .= "</body></html>";
+
+    header('Content-Type: text/html; charset=utf-8');
+    echo $html;
+    exit;
+}
+
+function searchCompaniesPublic($body, $db) {
+    $query = strtolower(trim($body['q'] ?? ''));
+    if (strlen($query) < 2) {
+        json_response(['companies' => []]);
+    }
+
+    // Buscar en compliance_config (empresas registradas)
+    $configs = $db->find('compliance_config', []);
+    $results = [];
+
+    foreach ($configs as $cfg) {
+        $name = strtolower($cfg['companyName'] ?? '');
+        if (str_contains($name, $query)) {
+            $results[] = [
+                '_id' => $cfg['userId'] ?? '',
+                'name' => $cfg['companyName'] ?? '',
+                'email' => $cfg['dpdEmail'] ?? '',
+                'city' => $cfg['city'] ?? '',
+            ];
+        }
+    }
+
+    // También buscar en users (empresas registradas)
+    $users = $db->find('users', []);
+    foreach ($users as $u) {
+        $name = strtolower($u['companyName'] ?? '');
+        if (str_contains($name, $query)) {
+            // Evitar duplicados
+            $exists = false;
+            foreach ($results as $r) {
+                if ($r['_id'] === ($u['_id'] ?? '')) {
+                    $exists = true;
+                    break;
+                }
+            }
+            if (!$exists) {
+                $results[] = [
+                    '_id' => $u['_id'] ?? '',
+                    'name' => $u['companyName'] ?? '',
+                    'email' => $u['email'] ?? '',
+                    'city' => $u['city'] ?? '',
+                ];
+            }
+        }
+    }
+
+    json_response(['companies' => array_slice($results, 0, 10)]);
 }

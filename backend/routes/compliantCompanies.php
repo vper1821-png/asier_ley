@@ -13,7 +13,8 @@ function search() {
             continue;
         }
         $results[] = [
-            'userId' => $c['_id'],
+            '_id' => $c['_id'],
+            'name' => $c['companyName'] ?? '',
             'companyName' => $c['companyName'] ?? '',
             'email' => $c['email'] ?? '',
             'domain' => $c['domain'] ?? '',

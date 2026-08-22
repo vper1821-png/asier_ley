@@ -30,10 +30,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'dpdEmail' => $_POST['dpdEmail'] ?? '',
             'dpdPhone' => $_POST['dpdPhone'] ?? '',
             'privacyPolicyUrl' => $_POST['privacyPolicyUrl'] ?? '',
+            'cookiesPolicyUrl' => $_POST['cookiesPolicyUrl'] ?? '',
+            'dataRetentionPolicy' => $_POST['dataRetentionPolicy'] ?? '',
             'apdpRegistered' => !empty($_POST['apdpRegistered']) ? '1' : '',
             'complianceLevel' => $_POST['complianceLevel'] ?? 'basic',
         ]);
         $msg = 'Configuración guardada.';
+    } elseif (isset($_POST['update_config'])) {
+        api_post_form('/api/invisia/compliance/config', [
+            'token' => $token,
+            'privacyPolicyUrl' => $_POST['privacyPolicyUrl'] ?? '',
+            'cookiesPolicyUrl' => $_POST['cookiesPolicyUrl'] ?? '',
+            'dataRetentionPolicy' => $_POST['dataRetentionPolicy'] ?? '',
+        ]);
+        $msg = 'Políticas de privacidad actualizadas.';
     } elseif (isset($_POST['assign_training'])) {
         $res = api_post_form('/api/compliance/invites/' . urlencode($_POST['invite_id'] ?? '') . '/assign-training', [
             'token' => $token,
@@ -134,12 +144,15 @@ $tabs = [
     ['id' => 'overview', 'label' => 'Resumen', 'icon' => 'shield'],
     ['id' => 'inventory', 'label' => 'Inventario', 'icon' => 'database'],
     ['id' => 'consents', 'label' => 'Consentimientos', 'icon' => 'check'],
+    ['id' => 'privacy', 'label' => 'Política Privacidad', 'icon' => 'fileText'],
     ['id' => 'breaches', 'label' => 'Brechas', 'icon' => 'alert'],
     ['id' => 'violations', 'label' => 'Violaciones', 'icon' => 'alert'],
     ['id' => 'dpia', 'label' => 'Eval. Impacto', 'icon' => 'shield'],
     ['id' => 'pseudonymization', 'label' => 'Seudonimización', 'icon' => 'search'],
     ['id' => 'trainings', 'label' => 'Capacitaciones', 'icon' => 'info'],
     ['id' => 'invites', 'label' => 'Firmas', 'icon' => 'pen'],
+    ['id' => 'processors', 'label' => 'Encargados', 'icon' => 'users'],
+    ['id' => 'transfers', 'label' => 'Transferencias', 'icon' => 'globe'],
     ['id' => 'files', 'label' => 'Archivos', 'icon' => 'fileText'],
     ['id' => 'file-audit', 'label' => 'Auditoría Archivos', 'icon' => 'fileText'],
 ];
@@ -281,6 +294,18 @@ require_once __DIR__ . '/../includes/header.php';
                 </div>
                 <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5">
                     <div class="flex items-center gap-3 mb-4">
+                        <div class="w-10 h-10 rounded-lg bg-primary-500/10 text-accent flex items-center justify-center"><?= cIcon('fileText') ?></div>
+                        <h4 class="text-[11px] font-bold text-text-muted uppercase tracking-wider">Política Pública (Art. 14 ter)</h4>
+                    </div>
+                    <p class="text-[11px] text-text-muted mb-3">Genera la política de privacidad pública obligatoria según Art. 14 ter Ley 21.719.</p>
+                    <a href="<?= API_BASE_URL_BROWSER ?>/api/compliance/public-policy?token=<?= h($token) ?>" target="_blank"
+                        class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-[11px] font-medium bg-gradient-to-r from-primary-600 to-indigo-600 hover:from-primary-500 hover:to-indigo-500 text-white transition-all">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                        Ver / Descargar Política
+                    </a>
+                </div>
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5">
+                    <div class="flex items-center gap-3 mb-4">
                         <div class="w-10 h-10 rounded-lg flex items-center justify-center <?= count($trainings) ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400' ?>">
                             <?= cIcon(count($trainings) ? 'check' : 'alert') ?>
                         </div>
@@ -418,7 +443,7 @@ require_once __DIR__ . '/../includes/header.php';
                             </div>
                             <div>
                                 <label class="label-premium">RUT *</label>
-                                <input type="text" name="fields[rut]" required class="input-premium w-full" placeholder="12.345.678-9" pattern="[0-9]{1,2}\.[0-9]{3}\.[0-9]{3}-[0-9kK]{1}">
+                                <input type="text" id="rut-consent" name="fields[rut]" required class="input-premium w-full" placeholder="12.345.678-9" pattern="[0-9]{1,2}\.[0-9]{3}\.[0-9]{3}-[0-9kK]{1}">
                             </div>
                             <div>
                                 <label class="label-premium">Email *</label>
@@ -477,7 +502,7 @@ require_once __DIR__ . '/../includes/header.php';
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
                             <div>
                                 <label class="label-premium">Categorías de datos *</label>
-                                <select name="fields[dataCategories]" multiple required class="input-premium w-full" size="4">
+                                <select name="fields[dataCategories]" multiple class="input-premium w-full" size="4">
                                     <option value="identificacion">Identificación (nombre, RUT, dirección)</option>
                                     <option value="contacto">Contacto (email, teléfono)</option>
                                     <option value="financieros">Financieros (cuentas, tarjetas, ingresos)</option>
@@ -497,6 +522,83 @@ require_once __DIR__ . '/../includes/header.php';
                                     <option value="no">No</option>
                                     <option value="si">Sí - Requiere consentimiento explícito reforzado</option>
                                 </select>
+                            </div>
+                            <div>
+                                <label class="label-premium">¿Incluye datos de niños/niñas/adolescentes? (Art. 17)</label>
+                                <select name="fields[childrenData]" class="input-premium w-full">
+                                    <option value="no">No</option>
+                                    <option value="si">Sí - Requiere consentimiento representante legal</option>
+                                </select>
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- Consentimiento explícito reforzado para datos sensibles (Art. 16) -->
+                    <fieldset class="rounded-lg border border-red-500/20 bg-red-500/[0.02] p-4" id="sensitive-consent-fieldset" style="display: none;">
+                        <legend class="text-[11px] font-medium text-red-300 px-2">Consentimiento Explícito Reforzado - Datos Sensibles (Art. 16 Ley 21.719)</legend>
+                        <div class="bg-red-500/[0.05] border border-red-500/20 rounded-lg p-3 mb-3 text-[10px] text-text-body">
+                            <p class="font-semibold text-red-300 mb-1">Art. 16: Tratamiento de datos sensibles requiere consentimiento EXPLÍCITO, LIBRE, INFORMADO, ESPECÍFICO e INEQUÍVOCO.</p>
+                            <p>Categorías sensibles: origen racial/étnico, opiniones políticas, convicciones religiosas/filosóficas, afiliación sindical, datos genéticos, biométricos, salud, vida sexual.</p>
+                        </div>
+                        <div class="space-y-2">
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" name="fields[sensitiveExplicit]" id="sensitiveExplicit" value="1" class="w-4 h-4 rounded border-border-theme text-primary-600 focus:ring-primary-500">
+                                <label for="sensitiveExplicit" class="text-[11px] text-text-body">El titular ha dado consentimiento <strong>explícito y por escrito</strong> para cada categoría de dato sensible</label>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" name="fields[sensitiveInformed]" id="sensitiveInformed" value="1" class="w-4 h-4 rounded border-border-theme text-primary-600 focus:ring-primary-500">
+                                <label for="sensitiveInformed" class="text-[11px] text-text-body">El titular ha sido informado de la <strong>naturaleza de los datos sensibles</strong>, los <strong>riesgos específicos</strong> y el <strong>derecho a revocar en cualquier momento</strong></label>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" name="fields[sensitiveSeparate]" id="sensitiveSeparate" value="1" class="w-4 h-4 rounded border-border-theme text-primary-600 focus:ring-primary-500">
+                                <label for="sensitiveSeparate" class="text-[11px] text-text-body">El consentimiento sensible se obtuvo <strong>de forma separada</strong> de otros consentimientos (no bundled)</label>
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- Consentimiento parental para datos de niños (Art. 17) -->
+                    <fieldset class="rounded-lg border border-pink-500/20 bg-pink-500/[0.02] p-4" id="children-consent-fieldset" style="display: none;">
+                        <legend class="text-[11px] font-medium text-pink-300 px-2">Consentimiento de Representante Legal - Datos de Niños (Art. 17 Ley 21.719)</legend>
+                        <div class="bg-pink-500/[0.05] border border-pink-500/20 rounded-lg p-3 mb-3 text-[10px] text-text-body">
+                            <p class="font-semibold text-pink-300 mb-1">Art. 17: Tratamiento de datos de niños/niñas/adolescentes requiere consentimiento del TITULAR DE LA PATRIA POTESTAD o representante legal.</p>
+                            <p>Debe respetarse el interés superior del niño y su autonomía progresiva.</p>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="label-premium">Nombre del representante legal *</label>
+                                <input type="text" name="fields[parentName]" class="input-premium w-full" placeholder="Nombre completo del padre/madre/tutor">
+                            </div>
+                            <div>
+                                <label class="label-premium">RUT del representante legal *</label>
+                                <input type="text" id="rut-parent" name="fields[parentRut]" class="input-premium w-full" placeholder="12.345.678-9">
+                            </div>
+                            <div>
+                                <label class="label-premium">Email del representante legal *</label>
+                                <input type="email" name="fields[parentEmail]" class="input-premium w-full" placeholder="padre@ejemplo.cl">
+                            </div>
+                            <div>
+                                <label class="label-premium">Relación con el niño *</label>
+                                <select name="fields[parentRelation]" class="input-premium w-full">
+                                    <option value="">Seleccionar</option>
+                                    <option value="padre">Padre</option>
+                                    <option value="madre">Madre</option>
+                                    <option value="tutor">Tutor legal</option>
+                                    <option value="otro">Otro representante legal</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="space-y-2 mt-3">
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" name="fields[parentExplicit]" id="parentExplicit" value="1" class="w-4 h-4 rounded border-border-theme text-primary-600 focus:ring-primary-500">
+                                <label for="parentExplicit" class="text-[11px] text-text-body">El representante legal ha dado consentimiento <strong>explícito e informado</strong> para el tratamiento de datos del niño</label>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" name="fields[parentBestInterest]" id="parentBestInterest" value="1" class="w-4 h-4 rounded border-border-theme text-primary-600 focus:ring-primary-500">
+                                <label for="parentBestInterest" class="text-[11px] text-text-body">Se ha considerado el <strong>interés superior del niño</strong> y su <strong>autonomía progresiva</strong> según edad y madurez</label>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" name="fields[parentInformed]" id="parentInformed" value="1" class="w-4 h-4 rounded border-border-theme text-primary-600 focus:ring-primary-500">
+                                <label for="parentInformed" class="text-[11px] text-text-body">El representante ha sido informado de los <strong>derechos ARCO del niño</strong> y del <strong>derecho a revocar en cualquier momento</strong></label>
                             </div>
                         </div>
                     </fieldset>
@@ -881,7 +983,7 @@ require_once __DIR__ . '/../includes/header.php';
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                             <div class="md:col-span-2">
                                 <label class="label-premium">Categorías de datos personales *</label>
-                                <select name="dataCategories[]" multiple required class="input-premium w-full" size="6">
+                                <select name="dataCategories[]" multiple class="input-premium w-full" size="6">
                                     <option value="identificacion">Identificación: nombre, RUT, dirección, nacionalidad</option>
                                     <option value="contacto">Contacto: email, teléfono, redes sociales</option>
                                     <option value="financieros">Financieros: cuentas bancarias, tarjetas, ingresos, historial crediticio</option>
@@ -899,7 +1001,7 @@ require_once __DIR__ . '/../includes/header.php';
                             </div>
                             <div>
                                 <label class="label-premium">Categorías de titulares *</label>
-                                <select name="subjectCategories[]" multiple required class="input-premium w-full" size="6">
+                                <select name="subjectCategories[]" multiple class="input-premium w-full" size="6">
                                     <option value="clientes">Clientes / Usuarios</option>
                                     <option value="empleados">Empleados / Colaboradores</option>
                                     <option value="proveedores">Proveedores / Contratistas</option>
@@ -1679,6 +1781,39 @@ require_once __DIR__ . '/../includes/header.php';
             }
             </script>
 
+            <?php elseif ($tab === 'privacy'): ?>
+            <div class="mb-4">
+                <h3 class="text-[14px] md:text-[15px] font-semibold text-text-heading">Política de Privacidad</h3>
+                <p class="text-[11px] md:text-[12px] text-text-muted mt-1">Configuración de políticas de privacidad</p>
+            </div>
+            
+            <div class="rounded-xl border border-blue-500/20 bg-blue-500/[0.02] p-5 mb-5">
+                <h4 class="text-[12px] font-bold text-white mb-4">Configuración de Políticas</h4>
+                
+                <form method="POST" class="space-y-4">
+                    <input type="hidden" name="update_config" value="1">
+                    
+                    <div>
+                        <label class="block text-[10px] font-medium text-text-body mb-1">URL Política de Privacidad</label>
+                        <input type="url" name="privacyPolicyUrl" class="w-full px-3 py-2 rounded-lg bg-bg-surface border border-border-theme text-text-body text-[11px]" value="" placeholder="https://empresa.cl/privacidad">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-[10px] font-medium text-text-body mb-1">URL Política de Cookies</label>
+                        <input type="url" name="cookiesPolicyUrl" class="w-full px-3 py-2 rounded-lg bg-bg-surface border border-border-theme text-text-body text-[11px]" value="" placeholder="https://empresa.cl/cookies">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-[10px] font-medium text-text-body mb-1">Política de Retención de Datos</label>
+                        <textarea name="dataRetentionPolicy" rows="4" class="w-full px-3 py-2 rounded-lg bg-bg-surface border border-border-theme text-text-body text-[11px]" placeholder="Describa los plazos de retención..."></textarea>
+                    </div>
+                    
+                    <button type="submit" class="px-4 py-2 rounded-lg text-[11px] font-semibold bg-blue-600 text-white">
+                        Guardar Políticas
+                    </button>
+                </form>
+            </div>
+
             <?php elseif ($tab === 'breaches'): ?>
             <?php
             $bOpen = count(array_filter($items, fn($it) => ($it['status'] ?? '') !== 'resolved'));
@@ -1783,7 +1918,7 @@ require_once __DIR__ . '/../includes/header.php';
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                             <div>
                                 <label class="label-premium">Categorías de datos afectados *</label>
-                                <select name="fields[affectedCategories][]" multiple required class="input-premium w-full" size="5">
+                                <select name="fields[affectedCategories][]" multiple class="input-premium w-full" size="5">
                                     <option value="identificacion">Identificación (nombre, RUT, dirección)</option>
                                     <option value="contacto">Contacto (email, teléfono)</option>
                                     <option value="financieros">Financieros (cuentas, tarjetas)</option>
@@ -1966,6 +2101,28 @@ require_once __DIR__ . '/../includes/header.php';
                     </div>
                     <div class="flex items-center gap-2 flex-shrink-0">
                         <?php if (!$resolved) renderActionBtn('breaches', $it['_id'] ?? '', 'resolve', 'Resolver'); ?>
+                        <?php if (empty($it['notifiedAPDP'])): ?>
+                        <form method="POST" class="inline">
+                            <input type="hidden" name="collection" value="breaches">
+                            <input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>">
+                            <input type="hidden" name="item_action" value="notify_apdp">
+                            <button type="submit" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 transition-all" title="Notificar a APDP (Art. 26.1)">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                                APDP
+                            </button>
+                        </form>
+                        <?php endif; ?>
+                        <?php if (empty($it['notifiedSubjects']) && !empty($it['fields']['sensitiveInvolved']) && $it['fields']['sensitiveInvolved'] === 'si'): ?>
+                        <form method="POST" class="inline">
+                            <input type="hidden" name="collection" value="breaches">
+                            <input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>">
+                            <input type="hidden" name="item_action" value="notify_subjects">
+                            <button type="submit" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 transition-all" title="Notificar a titulares (Art. 26.4)">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                                Titulares
+                            </button>
+                        </form>
+                        <?php endif; ?>
                         <form method="POST" class="inline">
                             <input type="hidden" name="collection" value="breaches">
                             <input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>">
@@ -2036,6 +2193,311 @@ require_once __DIR__ . '/../includes/header.php';
                             <input type="hidden" name="collection" value="dpia">
                             <input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>">
                             <button type="submit" name="delete_item" value="1" onclick="return confirm('¿Eliminar esta evaluación?')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all">Eliminar</button>
+                        </form>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+
+            <?php elseif ($tab === 'processors'): ?>
+            <?php
+            $procItems = $fetchList('processors');
+            if (!is_array($procItems)) $procItems = [];
+            $procTotal = count($procItems);
+            $procWithContract = count(array_filter($procItems, fn($p) => !empty($p['hasContract'])));
+            $procIntl = count(array_filter($procItems, fn($p) => !empty($p['internationalTransfer'])));
+            ?>
+            <?php renderSectionHeader('Encargados del Tratamiento / Procesadores', 'Registro de terceros que tratan datos por cuenta del responsable — Art. 15 bis Ley 21.719'); ?>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <?php renderComplianceStat('Total encargados', $procTotal, 'text-white', cIcon('users')); ?>
+                <?php renderComplianceStat('Con contrato DPA', $procWithContract, 'text-emerald-400', cIcon('check')); ?>
+                <?php renderComplianceStat('Transferencias intl.', $procIntl, $procIntl ? 'text-amber-400' : 'text-emerald-400', cIcon('globe')); ?>
+            </div>
+
+            <!-- Formulario de Encargado (Art. 15 bis Ley 21.719) -->
+            <div class="rounded-xl border border-cyan-500/20 bg-cyan-500/[0.02] p-5 mb-5">
+                <div class="flex items-center justify-between mb-4">
+                    <p class="text-[12px] font-semibold text-white flex items-center gap-2">
+                        <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                        Nuevo encargado de tratamiento
+                    </p>
+                    <?php renderImportBtn('processors'); ?>
+                </div>
+                <form method="POST" class="space-y-4">
+                    <input type="hidden" name="collection" value="processors">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                            <label class="label-premium">Nombre del encargado *</label>
+                            <input type="text" name="fields[name]" required class="input-premium w-full" placeholder="Ej: AWS, Google Cloud, Proveedor SaaS, Contabilidad externa">
+                        </div>
+                        <div>
+                            <label class="label-premium">Tipo de servicio</label>
+                            <select name="fields[serviceType]" class="input-premium w-full">
+                                <option value="">Seleccionar</option>
+                                <option value="cloud">Cloud / Hosting</option>
+                                <option value="saas">SaaS / Software</option>
+                                <option value="contabilidad">Contabilidad / Fiscal</option>
+                                <option value="marketing">Marketing / Email</option>
+                                <option value="seguridad">Seguridad / Monitoreo</option>
+                                <option value="soporte">Soporte técnico</option>
+                                <option value="recursos_humanos">RRHH / Nómina</option>
+                                <option value="legal">Asesoría legal</option>
+                                <option value="otro">Otro</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="label-premium">País de establecimiento</label>
+                            <input type="text" name="fields[country]" class="input-premium w-full" placeholder="Ej: Chile, EE.UE., UE">
+                        </div>
+                        <div>
+                            <label class="label-premium">¿Transferencia internacional? (Art. 21/27)</label>
+                            <select name="fields[internationalTransfer]" class="input-premium w-full">
+                                <option value="no">No</option>
+                                <option value="si_adecuado">Sí - País con nivel adecuado (Decisión APDP)</option>
+                                <option value="si_clausulas">Sí - Cláusulas contractuales tipo</option>
+                                <option value="si_bcr">Sí - Normas corporativas vinculantes (BCR)</option>
+                                <option value="si_excepcion">Sí - Excepción Art. 27 (consentimiento, contrato, etc.)</option>
+                            </select>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="label-premium">Finalidad del tratamiento</label>
+                            <textarea name="fields[purpose]" rows="2" class="input-premium w-full" placeholder="Describe qué datos trata el encargado y para qué finalidad..."></textarea>
+                        </div>
+                        <div>
+                            <label class="label-premium">Categorías de datos tratados</label>
+                            <input type="text" name="fields[dataCategories]" class="input-premium w-full" placeholder="Ej: Datos de contacto, datos financieros, datos de empleados">
+                        </div>
+                        <div>
+                            <label class="label-premium">Categorías de titulares</label>
+                            <input type="text" name="fields[subjectCategories]" class="input-premium w-full" placeholder="Ej: Clientes, empleados, proveedores">
+                        </div>
+                        <div>
+                            <label class="label-premium">¿Contrato DPA firmado? (Art. 15 bis)</label>
+                            <select name="fields[hasContract]" class="input-premium w-full">
+                                <option value="no">No</option>
+                                <option value="si">Sí - Incluye cláusulas Art. 15 bis</option>
+                                <option value="en_proceso">En proceso</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="label-premium">Fecha contrato DPA</label>
+                            <input type="date" name="fields[contractDate]" class="input-premium w-full">
+                        </div>
+                        <div>
+                            <label class="label-premium">URL del contrato / evidencia</label>
+                            <input type="url" name="fields[contractUrl]" class="input-premium w-full" placeholder="https://intranet.empresa.cl/dpa-aws.pdf">
+                        </div>
+                        <div>
+                            <label class="label-premium">Sub-encargados autorizados</label>
+                            <textarea name="fields[subProcessors]" rows="2" class="input-premium w-full" placeholder="Lista de sub-encargados autorizados por escrito..."></textarea>
+                        </div>
+                        <div>
+                            <label class="label-premium">Medidas de seguridad del encargado</label>
+                            <textarea name="fields[securityMeasures]" rows="2" class="input-premium w-full" placeholder="Certificaciones (ISO 27001, SOC 2), cifrado, controles de acceso..."></textarea>
+                        </div>
+                        <div>
+                            <label class="label-premium">Derecho de auditoría / inspección</label>
+                            <select name="fields[auditRights]" class="input-premium w-full">
+                                <option value="si">Sí - Incluido en contrato</option>
+                                <option value="no">No</option>
+                                <option value="parcial">Parcial / Solo certificación</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="label-premium">Fecha fin de relación</label>
+                            <input type="date" name="fields[endDate]" class="input-premium w-full">
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 pt-2 border-t border-border-theme">
+                        <button type="submit" name="create_item" value="1" class="px-5 py-2.5 rounded-lg text-[12px] font-semibold bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white transition-all flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                            Registrar encargado (Art. 15 bis)
+                        </button>
+                        <span class="text-[10px] text-text-muted">Obligatorio contrato con cláusulas Art. 15 bis. Si transferencia intl. → cláusulas tipo / BCR / decisión adecuación.</span>
+                    </div>
+                </form>
+            </div>
+            <?php if (empty($procItems)): ?>
+            <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-10 text-center">
+                <p class="text-[11px] text-text-subtle">Sin encargados registrados. Añade uno o usa «Importar masivo».</p>
+            </div>
+            <?php else: ?>
+            <div class="space-y-2">
+                <?php foreach ($procItems as $p): ?>
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm hover:border-border-theme/60 transition-colors p-4 flex flex-col md:flex-row md:items-center gap-3">
+                    <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-cyan-500/10 text-cyan-400">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <p class="text-[12px] font-medium text-text-heading truncate"><?= h($p['name'] ?? 'Encargado') ?></p>
+                            <?php if (!empty($p['internationalTransfer']) && $p['internationalTransfer'] !== 'no'): ?>
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-semibold rounded-md border bg-amber-500/10 text-amber-400 border-amber-500/20">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c0 1.657-1.343 3-3 3"/></svg>
+                                Intl.
+                            </span>
+                            <?php endif; ?>
+                            <?php if (!empty($p['hasContract']) && $p['hasContract'] === 'si'): ?>
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-semibold rounded-md border bg-emerald-500/10 text-emerald-400 border-emerald-500/20">DPA ✓</span>
+                            <?php endif; ?>
+                        </div>
+                        <p class="text-[10px] text-text-subtle mt-0.5"><?= h($p['serviceType'] ?? '') ?> · <?= h($p['purpose'] ?? '') ?> · <?= h(substr($p['createdAt'] ?? '', 0, 10)) ?></p>
+                    </div>
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <form method="POST" class="inline">
+                            <input type="hidden" name="collection" value="processors">
+                            <input type="hidden" name="item_id" value="<?= h($p['_id'] ?? '') ?>">
+                            <button type="submit" name="delete_item" value="1" onclick="return confirm('¿Eliminar este encargado?')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all">Eliminar</button>
+                        </form>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+
+            <?php elseif ($tab === 'transfers'): ?>
+            <?php
+            $transItems = $fetchList('transfers');
+            if (!is_array($transItems)) $transItems = [];
+            $transTotal = count($transItems);
+            $transAdequate = count(array_filter($transItems, fn($t) => in_array($t['mechanism'] ?? '', ['adequacy', 'adequate'])));
+            $transSCCs = count(array_filter($transItems, fn($t) => in_array($t['mechanism'] ?? '', ['scc', 'clauses'])));
+            $transBCR = count(array_filter($transItems, fn($t) => in_array($t['mechanism'] ?? '', ['bcr', 'binding_corporate_rules'])));
+            ?>
+            <?php renderSectionHeader('Transferencias Internacionales de Datos', 'Registro de transferencias a terceros países — Art. 21 y 27 Ley 21.719'); ?>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <?php renderComplianceStat('Total transferencias', $transTotal, 'text-white', cIcon('globe')); ?>
+                <?php renderComplianceStat('Decisión adecuación', $transAdequate, 'text-emerald-400', cIcon('check')); ?>
+                <?php renderComplianceStat('Cláusulas tipo (SCC)', $transSCCs, 'text-blue-400', cIcon('fileText')); ?>
+                <?php renderComplianceStat('BCR / Normas vinculantes', $transBCR, 'text-indigo-400', cIcon('shield')); ?>
+            </div>
+
+            <!-- Formulario de Transferencia Internacional (Art. 21/27 Ley 21.719) -->
+            <div class="rounded-xl border border-amber-500/20 bg-amber-500/[0.02] p-5 mb-5">
+                <div class="flex items-center justify-between mb-4">
+                    <p class="text-[12px] font-semibold text-white flex items-center gap-2">
+                        <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c0 1.657-1.343 3-3 3"/></svg>
+                        Nueva transferencia internacional
+                    </p>
+                    <?php renderImportBtn('transfers'); ?>
+                </div>
+                <form method="POST" class="space-y-4">
+                    <input type="hidden" name="collection" value="transfers">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                            <label class="label-premium">País destino *</label>
+                            <input type="text" name="fields[destinationCountry]" required class="input-premium w-full" placeholder="Ej: Estados Unidos, Colombia, España">
+                        </div>
+                        <div>
+                            <label class="label-premium">Mecanismo de transferencia * (Art. 21/27)</label>
+                            <select name="fields[mechanism]" required class="input-premium w-full">
+                                <option value="">Seleccionar mecanismo</option>
+                                <optgroup label="Decisión de adecuación (Art. 21.1)">
+                                    <option value="adequacy">Decisión de adecuación APDP</option>
+                                </optgroup>
+                                <optgroup label="Garantías adecuadas (Art. 21.2)">
+                                    <option value="scc">Cláusulas contractuales tipo (SCC)</option>
+                                    <option value="bcr">Normas corporativas vinculantes (BCR)</option>
+                                    <option value="codes">Códigos de conducta + compromiso</option>
+                                    <option value="certification">Mecanismos de certificación</option>
+                                </optgroup>
+                                <optgroup label="Excepciones (Art. 27)">
+                                    <option value="consent">Consentimiento explícito informado</option>
+                                    <option value="contract">Ejecución de contrato</option>
+                                    <option value="public_interest">Interés público importante</option>
+                                    <option value="legal_claim">Reclamaciones legales</option>
+                                    <option value="vital_interest">Interés vital del titular</option>
+                                </optgroup>
+                            </select>
+                            <p class="text-[8px] text-text-subtle mt-0.5">Art. 21: transferencia solo si país adecuado, garantías o excepción.</p>
+                        </div>
+                        <div>
+                            <label class="label-premium">Destinatario / Encargado</label>
+                            <input type="text" name="fields[recipient]" class="input-premium w-full" placeholder="Ej: AWS (EE.UE.), Proveedor SaaS (Colombia)">
+                        </div>
+                        <div>
+                            <label class="label-premium">Fecha inicio transferencia</label>
+                            <input type="date" name="fields[startDate]" class="input-premium w-full">
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="label-premium">Categorías de datos transferidos</label>
+                            <input type="text" name="fields[dataCategories]" class="input-premium w-full" placeholder="Ej: Datos de contacto, datos financieros, datos de empleados">
+                        </div>
+                        <div>
+                            <label class="label-premium">Categorías de titulares</label>
+                            <input type="text" name="fields[subjectCategories]" class="input-premium w-full" placeholder="Ej: Clientes, empleados, proveedores">
+                        </div>
+                        <div>
+                            <label class="label-premium">¿Incluye datos sensibles? (Art. 16)</label>
+                            <select name="fields[sensitiveData]" class="input-premium w-full">
+                                <option value="no">No</option>
+                                <option value="si">Sí - Requiere garantías reforzadas</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="label-premium">¿Incluye datos de niños? (Art. 17)</label>
+                            <select name="fields[childrenData]" class="input-premium w-full">
+                                <option value="no">No</option>
+                                <option value="si">Sí - Protección reforzada</option>
+                            </select>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="label-premium">Descripción de la garantía / cláusulas</label>
+                            <textarea name="fields[guaranteeDescription]" rows="3" class="input-premium w-full" placeholder="Detalla las cláusulas contractuales, BCR, código de conducta o mecanismo de certificación utilizado..."></textarea>
+                            <p class="text-[8px] text-text-subtle mt-0.5">Art. 21.2: documento que acredite garantías adecuadas.</p>
+                        </div>
+                        <div>
+                            <label class="label-premium">URL evidencia (SCC firmadas, BCR, decisión APDP)</label>
+                            <input type="url" name="fields[evidenceUrl]" class="input-premium w-full" placeholder="https://intranet.empresa.cl/scc-aws.pdf">
+                        </div>
+                        <div>
+                            <label class="label-premium">Responsable de la transferencia</label>
+                            <input type="text" name="fields[transferManager]" class="input-premium w-full" placeholder="DPD / CISO / Legal">
+                        </div>
+                        <div>
+                            <label class="label-premium">Fecha revisión / vencimiento</label>
+                            <input type="date" name="fields[reviewDate]" class="input-premium w-full">
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 pt-2 border-t border-border-theme">
+                        <button type="submit" name="create_item" value="1" class="px-5 py-2.5 rounded-lg text-[12px] font-semibold bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white transition-all flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c0 1.657-1.343 3-3 3"/></svg>
+                            Registrar transferencia (Art. 21/27)
+                        </button>
+                        <span class="text-[10px] text-text-muted">Si no hay decisión de adecuación → SCC o BCR obligatorias. Excepciones Art. 27 limitadas.</span>
+                    </div>
+                </form>
+            </div>
+            <?php if (empty($transItems)): ?>
+            <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-10 text-center">
+                <p class="text-[11px] text-text-subtle">Sin transferencias registradas. Añade una o usa «Importar masivo».</p>
+            </div>
+            <?php else: ?>
+            <div class="space-y-2">
+                <?php foreach ($transItems as $t): ?>
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm hover:border-border-theme/60 transition-colors p-4 flex flex-col md:flex-row md:items-center gap-3">
+                    <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-amber-500/10 text-amber-400">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c0 1.657-1.343 3-3 3"/></svg>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <p class="text-[12px] font-medium text-text-heading truncate"><?= h($t['destinationCountry'] ?? 'Transferencia') ?></p>
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-semibold rounded-md border bg-blue-500/10 text-blue-400 border-blue-500/20"><?= h($t['mechanism'] ?? '—') ?></span>
+                            <?php if (!empty($t['sensitiveData']) && $t['sensitiveData'] === 'si'): ?>
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-semibold rounded-md border bg-red-500/10 text-red-400 border-red-500/20">Sensibles</span>
+                            <?php endif; ?>
+                            <?php if (!empty($t['childrenData']) && $t['childrenData'] === 'si'): ?>
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-semibold rounded-md border bg-pink-500/10 text-pink-400 border-pink-500/20">Niños</span>
+                            <?php endif; ?>
+                        </div>
+                        <p class="text-[10px] text-text-subtle mt-0.5"><?= h($t['recipient'] ?? '') ?> · <?= h($t['dataCategories'] ?? '') ?> · <?= h(substr($t['createdAt'] ?? '', 0, 10)) ?></p>
+                    </div>
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <form method="POST" class="inline">
+                            <input type="hidden" name="collection" value="transfers">
+                            <input type="hidden" name="item_id" value="<?= h($t['_id'] ?? '') ?>">
+                            <button type="submit" name="delete_item" value="1" onclick="return confirm('¿Eliminar esta transferencia?')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all">Eliminar</button>
                         </form>
                     </div>
                 </div>
@@ -2467,16 +2929,40 @@ require_once __DIR__ . '/../includes/header.php';
                         <p class="text-[10px] text-text-subtle mt-0.5"><?= h($it['attendee'] ?? '') ?> · <?= h($it['date'] ?? substr($it['createdAt'] ?? '', 0, 10)) ?></p>
                     </div>
                     <div class="flex items-center gap-2 flex-shrink-0">
+                        <?php if (!$done): ?>
+                        <button onclick="createTrainingInvite('<?= h($it['_id'] ?? '') ?>')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-gradient-to-r from-primary-600 to-cyan-600 hover:from-primary-500 hover:to-cyan-500 text-white border border-primary-500/30 transition-all flex items-center gap-1.5">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                            Crear firma
+                        </button>
+                        <?php endif; ?>
                         <?php if (!empty($it['inviteId'])): ?>
+                        <?php 
+                        $invite = null;
+                        foreach ($allInvites as $inv) {
+                            if (($inv['_id'] ?? '') === $it['inviteId']) {
+                                $invite = $inv;
+                                break;
+                            }
+                        }
+                        $inviteToken = $invite['token'] ?? '';
+                        $signUrl = $inviteToken ? 'http://localhost:8090/firmar/' . $inviteToken : '#';
+                        ?>
+                        <?php if ($inviteToken): ?>
+                        <a href="<?= h($signUrl) ?>" target="_blank" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 transition-all flex items-center gap-1.5">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                            Abrir
+                        </a>
+                        <?php endif; ?>
                         <form method="POST" class="inline">
-                            <input type="hidden" name="invite_id" value="<?= h($it['inviteId']) ?>">
-                            <button type="submit" name="unassign_invite" value="1" onclick="return confirm('¿Quitar la firma de esta capacitación?')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-red-900/10 border border-red-800/20 text-red-400 hover:bg-red-900/20 transition-all">Quitar firma</button>
+                            <input type="hidden" name="invite_id" value="<?= h(is_string($it['inviteId'] ?? '') ? $it['inviteId'] : '') ?>">
+                            <button type="submit" name="unassign_invite" value="1" onclick="return confirm('¿Quitar la firma de esta capacitación?')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-red-900/10 border border-red-800/20 text-red-400 hover:bg-red-900/20 transition-all">Quitar</button>
                         </form>
                         <?php endif; ?>
                         <form method="POST" class="inline">
                             <input type="hidden" name="collection" value="trainings">
                             <input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>">
-                            <button type="submit" name="delete_item" value="1" onclick="return confirm('¿Eliminar esta capacitación?')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all">Eliminar</button>
+                            <input type="hidden" name="delete_item" value="1">
+                            <button type="submit" onclick="return confirm('¿Eliminar esta capacitación?')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all">Eliminar</button>
                         </form>
                     </div>
                 </div>
@@ -2517,7 +3003,7 @@ require_once __DIR__ . '/../includes/header.php';
             <div class="space-y-2">
                 <?php foreach ($items as $it):
                     $signed = !empty($it['signed']);
-                    $signUrl = $scheme . '://' . $baseHost . '/firmar/' . ($it['token'] ?? '');
+                    $signUrl = 'http://localhost:8090/firmar/' . ($it['token'] ?? '');
                     $urlId = 'invurl-' . substr((string)($it['_id'] ?? ''), 0, 8);
                 ?>
                 <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm hover:border-border-theme/60 transition-colors p-4">
@@ -3217,6 +3703,210 @@ function copyInviteUrl(id, btn) {
     if (navigator.clipboard) navigator.clipboard.writeText(el.value).catch(() => {});
     const s = btn.querySelector('span');
     if (s) { const old = s.textContent; s.textContent = 'Copiado'; setTimeout(() => { s.textContent = old; }, 1500); }
+}
+
+// Mostrar/ocultar fieldsets de consentimiento sensible y niños
+document.addEventListener('DOMContentLoaded', function() {
+    const sensitiveSelect = document.querySelector('select[name="fields[sensitive]"]');
+    const childrenSelect = document.querySelector('select[name="fields[childrenData]"]');
+    const sensitiveFieldset = document.getElementById('sensitive-consent-fieldset');
+    const childrenFieldset = document.getElementById('children-consent-fieldset');
+
+    function toggleSensitive() {
+        if (sensitiveSelect && sensitiveFieldset) {
+            sensitiveFieldset.style.display = sensitiveSelect.value === 'si' ? 'block' : 'none';
+        }
+    }
+    function toggleChildren() {
+        if (childrenSelect && childrenFieldset) {
+            childrenFieldset.style.display = childrenSelect.value === 'si' ? 'block' : 'none';
+        }
+    }
+
+    if (sensitiveSelect) sensitiveSelect.addEventListener('change', toggleSensitive);
+    if (childrenSelect) childrenSelect.addEventListener('change', toggleChildren);
+
+    // Inicializar
+    toggleSensitive();
+    toggleChildren();
+
+    // Auto-formateo de RUT
+    function formatRUT(value) {
+        // Eliminar todos los caracteres no numéricos excepto K/k
+        let rut = value.replace(/[^0-9kK]/g, '');
+
+        if (rut.length === 0) return '';
+
+        // Separar el dígito verificador
+        let dv = rut.slice(-1);
+        let cuerpo = rut.slice(0, -1);
+
+        // Formatear el cuerpo con puntos
+        if (cuerpo.length > 0) {
+            cuerpo = cuerpo.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+        }
+
+        // Unir cuerpo y dígito verificador
+        return cuerpo + (cuerpo.length > 0 ? '-' : '') + dv;
+    }
+
+    // Aplicar auto-formateo a todos los campos de RUT
+    const rutInputs = document.querySelectorAll('input[type="text"][pattern*="RUT"], input[id*="rut"], input[name*="rut"]');
+    rutInputs.forEach(input => {
+        input.addEventListener('input', function(e) {
+            const cursorPos = this.selectionStart;
+            const oldLength = this.value.length;
+
+            this.value = formatRUT(this.value);
+
+            // Ajustar la posición del cursor
+            const newLength = this.value.length;
+            const cursorOffset = newLength - oldLength;
+            this.setSelectionRange(cursorPos + cursorOffset, cursorPos + cursorOffset);
+        });
+
+        // Formatear al perder el foco
+        input.addEventListener('blur', function() {
+            this.value = formatRUT(this.value);
+        });
+    });
+
+    // Validar select multiple de categorías de datos
+    const consentForm = document.querySelector('form input[name="collection"][value="consents"]')?.closest('form');
+    if (consentForm) {
+        consentForm.addEventListener('submit', function(e) {
+            const dataCategoriesSelect = this.querySelector('select[name="fields[dataCategories]"]');
+            if (dataCategoriesSelect) {
+                const selectedOptions = Array.from(dataCategoriesSelect.selectedOptions).filter(opt => opt.selected);
+                if (selectedOptions.length === 0) {
+                    e.preventDefault();
+                    alert('Por favor, selecciona al menos una categoría de datos (usa Ctrl+Click para seleccionar múltiples)');
+                    dataCategoriesSelect.focus();
+                    return;
+                }
+            }
+
+            // Validar checkboxes de datos sensibles si el fieldset está visible
+            const sensitiveSelect = this.querySelector('select[name="fields[sensitive]"]');
+            const sensitiveFieldset = document.getElementById('sensitive-consent-fieldset');
+            if (sensitiveSelect && sensitiveFieldset && sensitiveSelect.value === 'si') {
+                const sensitiveExplicit = document.getElementById('sensitiveExplicit');
+                const sensitiveInformed = document.getElementById('sensitiveInformed');
+                const sensitiveSeparate = document.getElementById('sensitiveSeparate');
+
+                if (!sensitiveExplicit.checked || !sensitiveInformed.checked || !sensitiveSeparate.checked) {
+                    e.preventDefault();
+                    alert('Para datos sensibles, debes marcar todas las confirmaciones del consentimiento (Art. 16)');
+                    return;
+                }
+            }
+
+            // Validar checkboxes de datos de niños si el fieldset está visible
+            const childrenSelect = this.querySelector('select[name="fields[childrenData]"]');
+            const childrenFieldset = document.getElementById('children-consent-fieldset');
+            if (childrenSelect && childrenFieldset && childrenSelect.value === 'si') {
+                const parentExplicit = document.getElementById('parentExplicit');
+                const parentBestInterest = document.getElementById('parentBestInterest');
+                const parentInformed = document.getElementById('parentInformed');
+
+                if (!parentExplicit.checked || !parentBestInterest.checked || !parentInformed.checked) {
+                    e.preventDefault();
+                    alert('Para datos de niños/niñas/adolescentes, debes marcar todas las confirmaciones del consentimiento del representante legal (Art. 17)');
+                    return;
+                }
+            }
+        });
+    }
+
+    // Validar select multiple del formulario de inventario (RAT)
+    const inventoryForm = document.querySelector('form input[name="collection"][value="inventory"]')?.closest('form');
+    if (inventoryForm) {
+        inventoryForm.addEventListener('submit', function(e) {
+            const dataCategoriesSelect = this.querySelector('select[name="dataCategories[]"]');
+            const subjectCategoriesSelect = this.querySelector('select[name="subjectCategories[]"]');
+
+            if (dataCategoriesSelect) {
+                const selectedOptions = Array.from(dataCategoriesSelect.selectedOptions).filter(opt => opt.selected);
+                if (selectedOptions.length === 0) {
+                    e.preventDefault();
+                    alert('Por favor, selecciona al menos una categoría de datos (usa Ctrl+Click para seleccionar múltiples)');
+                    dataCategoriesSelect.focus();
+                    return;
+                }
+            }
+
+            if (subjectCategoriesSelect) {
+                const selectedOptions = Array.from(subjectCategoriesSelect.selectedOptions).filter(opt => opt.selected);
+                if (selectedOptions.length === 0) {
+                    e.preventDefault();
+                    alert('Por favor, selecciona al menos una categoría de titulares (usa Ctrl+Click para seleccionar múltiples)');
+                    subjectCategoriesSelect.focus();
+                    return;
+                }
+            }
+        });
+    }
+
+    // Validar select multiple del formulario de brechas
+    const breachForm = document.querySelector('form input[name="collection"][value="breaches"]')?.closest('form');
+    if (breachForm) {
+        breachForm.addEventListener('submit', function(e) {
+            const affectedCategoriesSelect = this.querySelector('select[name="fields[affectedCategories][]"]');
+            if (affectedCategoriesSelect) {
+                const selectedOptions = Array.from(affectedCategoriesSelect.selectedOptions).filter(opt => opt.selected);
+                if (selectedOptions.length === 0) {
+                    e.preventDefault();
+                    alert('Por favor, selecciona al menos una categoría de datos afectados (usa Ctrl+Click para seleccionar múltiples)');
+                    affectedCategoriesSelect.focus();
+                }
+            }
+        });
+    }
+});
+
+async function createTrainingInvite(trainingId) {
+    if (!confirm('¿Crear invitación de firma para esta capacitación? Esto generará un enlace para firmar manualmente.')) return;
+    
+    try {
+        const res = await fetch('/api-proxy.php?path=/api/invisia/auto-sign-training', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ trainingId: trainingId })
+        });
+        
+        const data = await res.json();
+        
+        if (data.success) {
+            alert('Invitación de firma creada. Usa el botón "Abrir" para firmar manualmente.');
+            location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'No se pudo crear la invitación'));
+        }
+    } catch (e) {
+        alert('Error al crear la invitación: ' + e.message);
+    }
+}
+
+async function deleteTraining(trainingId) {
+    if (!confirm('¿Eliminar esta capacitación? Esta acción no se puede deshacer.')) return;
+    
+    try {
+        const res = await fetch('/api-proxy.php?path=/api/compliance/trainings/' + encodeURIComponent(trainingId), {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await res.json();
+        
+        if (data.success) {
+            alert('Capacitación eliminada exitosamente');
+            location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'No se pudo eliminar la capacitación'));
+        }
+    } catch (e) {
+        alert('Error al eliminar: ' + e.message);
+    }
 }
 </script>
 
