@@ -99,10 +99,10 @@ RUN mkdir -p /var/www/html/data /var/www/html/uploads /var/www/html/reports /var
     && chown -R www-data:www-data /var/www/html
 
 # Copiar backup script y cron
-COPY backend/backup.sh /var/www/html/backup.sh
-COPY backend/cron-backup /etc/cron.d/mongodb-backup
-COPY backend/retention-cleanup.php /var/www/html/retention-cleanup.php
-COPY backend/cron-retention /etc/cron.d/retention-cleanup
+COPY backup.sh /var/www/html/backup.sh
+COPY cron-backup /etc/cron.d/mongodb-backup
+COPY retention-cleanup.php /var/www/html/retention-cleanup.php
+COPY cron-retention /etc/cron.d/retention-cleanup
 RUN chmod +x /var/www/html/backup.sh /var/www/html/retention-cleanup.php /etc/cron.d/mongodb-backup /etc/cron.d/retention-cleanup \
     && chmod 644 /etc/cron.d/mongodb-backup /etc/cron.d/retention-cleanup
 
