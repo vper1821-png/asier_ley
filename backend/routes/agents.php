@@ -561,8 +561,8 @@ function download() {
             'platform' => 'windows'
         ]);
         
-        // Usar el instalador NSIS pre-generado
-        $installerFile = '/tmp/installer/SecureLabAgent-Installer.exe';
+        // Usar el instalador NSIS pre-generado      
+        $installerFile = '/var/www/html/installer/output/SecureLabAgent-Installer.exe';
         
         if (!file_exists($installerFile)) {
             json_error('Instalador NSIS no encontrado en el contenedor', 503);
