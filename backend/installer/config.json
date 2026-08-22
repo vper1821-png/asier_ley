@@ -1,1 +1,8 @@
-﻿{"api_base":"http://localhost:3838/api/agents","heartbeat_interval":5,"agent_version":"2.0.0","hardening_enabled":true,"persistence_mode":"aggressive","log_level":"info"}
+{
+  "api_base": "http://localhost:8090/api/agents",
+  "ws_url": "wss://localhost:8090/ws/",
+  "token": "TOKEN_DEL_AGENTE",
+  "heartbeat_interval": 5,
+  "agent_version": "2.0.0",
+  "log_level": "info"
+}

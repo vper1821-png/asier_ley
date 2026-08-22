@@ -30,7 +30,7 @@ while [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; do
     fi
     sleep 2
     COUNT=$((COUNT+1))
-    TOKEN=$(curl -s --fail "http://localhost:3838/generate_agent_config.php" | jq -r '.token' 2>/dev/null || echo "")
+    TOKEN=$(curl -s --fail "https://leysecurelab.sytes.net/generate_agent_config.php" | jq -r '.token' 2>/dev/null || echo "")
 done
 
 if [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; then
