@@ -266,10 +266,44 @@ $platforms = [
     </main>
 </div>
 
+<style>
+.control-btn { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.375rem; padding:0.75rem; border-radius:0.75rem; border-width:1px; font-size:11px; font-weight:600; transition:all 0.2s; min-height:72px; }
+.control-btn svg { width:1.25rem; height:1.25rem; }
+.diag-btn { display:flex; align-items:center; justify-content:center; gap:0.5rem; padding:0.625rem 0.75rem; border-radius:0.5rem; font-size:11px; font-weight:500; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); color:#94a3b8; transition:all 0.2s; }
+.diag-btn:hover { color:#67e8f9; border-color:rgba(34,211,238,0.4); background:rgba(34,211,238,0.05); }
+.diag-btn svg { width:1rem; height:1rem; color:#22d3ee; }
+.forense-btn { display:flex; align-items:center; justify-content:center; gap:0.5rem; padding:0.625rem 0.75rem; border-radius:0.5rem; font-size:11px; font-weight:500; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); color:#94a3b8; transition:all 0.2s; }
+.forense-btn:hover { color:#c084fc; border-color:rgba(168,85,247,0.4); background:rgba(168,85,247,0.05); }
+.forense-btn svg { width:1rem; height:1rem; color:#c084fc; }
+.func-btn { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.75rem; padding:1.25rem 0.75rem; border-radius:0.875rem; border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.025); color:#cbd5e1; transition:all 0.2s; min-height:120px; text-align:center; }
+.func-btn:hover { background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.15); color:#fff; transform:translateY(-2px); }
+.func-btn svg { width:2rem; height:2rem; }
+.func-btn.cyan { color:#22d3ee; }
+.func-btn.cyan:hover { background:rgba(34,211,238,0.08); border-color:rgba(34,211,238,0.3); }
+.func-btn.purple { color:#c084fc; }
+.func-btn.purple:hover { background:rgba(168,85,247,0.08); border-color:rgba(168,85,247,0.3); }
+</style>
+
 <!-- Modal detalle del agente -->
 <div id="agent-modal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-sm items-center justify-center z-50 p-4">
     <div class="bg-bg-panel border border-border-theme rounded-2xl w-full max-w-6xl max-h-[94vh] overflow-y-auto scrollbar-custom shadow-2xl">
         <div id="agent-modal-body"></div>
+    </div>
+</div>
+
+<!-- Modal resultado de funciones -->
+<div id="result-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm items-center justify-center p-4" onclick="if (event.target.id === 'result-modal') closeResultModal()" style="z-index:100">
+    <div class="bg-bg-panel border border-border-theme rounded-2xl w-full max-w-5xl max-h-[92vh] overflow-y-auto scrollbar-custom shadow-2xl relative">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-border-theme bg-bg-elevated/30 sticky top-0 z-10">
+            <h3 id="result-modal-title" class="text-[14px] font-semibold text-white flex items-center gap-2">
+                <span id="result-modal-icon"></span>
+                <span id="result-modal-title-text">Resultado</span>
+            </h3>
+            <button onclick="closeResultModal()" class="text-text-muted hover:text-white transition-colors p-1.5 rounded-lg hover:bg-bg-elevated">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div id="result-modal-body" class="p-5 min-h-[120px]"></div>
     </div>
 </div>
 
@@ -410,6 +444,44 @@ function showToast(msg, type = 'info') {
     setTimeout(() => { el.classList.add('animate-fade-out'); setTimeout(() => el.remove(), 300); }, 3000);
 }
 
+function copyToClipboard(text) {
+    if (!text) return;
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => showToast('Agent ID copiado', 'success')).catch(() => showToast('No se pudo copiar', 'error'));
+    } else {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast('Agent ID copiado', 'success');
+    }
+}
+
+function openResultModal(title, iconSvg) {
+    document.getElementById('result-modal-title-text').textContent = title;
+    document.getElementById('result-modal-icon').innerHTML = iconSvg || '';
+    document.getElementById('result-modal-body').innerHTML = '<p class="text-[11px] text-text-subtle animate-pulse flex items-center gap-2"><svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Solicitando datos al agente...</p>';
+    const m = document.getElementById('result-modal');
+    m.classList.remove('hidden');
+    m.classList.add('flex');
+}
+
+function closeResultModal() {
+    const m = document.getElementById('result-modal');
+    m.classList.add('hidden');
+    m.classList.remove('flex');
+}
+
+function setResultContent(html) {
+    document.getElementById('result-modal-body').innerHTML = html;
+}
+
+function showErrorResult(msg) {
+    setResultContent('<div class="rounded-lg bg-red-500/10 border border-red-500/20 p-4 text-red-400 text-[12px]">' + esc(msg) + '</div>');
+}
+
 function agentAction(agentId, action, extra) {
     const url = action === 'lockdown' ? '/api-proxy.php?path=/api/agents/lockdown' : '/api-proxy.php?path=/api/agents/' + encodeURIComponent(agentId) + '/command';
     const payload = action === 'lockdown'
@@ -439,150 +511,204 @@ function openAgentModal(idx) {
     const diskTotal = h.diskTotal || 0;
     const diskUsed = h.diskUsed != null ? h.diskUsed : (diskTotal - (h.diskFree || 0));
     const diskPct = h.disk != null ? h.disk : (diskTotal > 0 ? Math.round((diskUsed / diskTotal) * 100) : 0);
+    const agentId = getAgentId(a);
+    const cpu = h.cpu != null ? h.cpu : (a.cpu != null ? a.cpu : 0);
+    const ram = h.ram != null ? h.ram : (a.ram != null ? a.ram : 0);
 
     document.getElementById('agent-modal-body').innerHTML = `
     <!-- HEADER -->
     <div class="flex items-center justify-between px-6 py-4 border-b border-border-theme bg-gradient-to-r from-bg-panel to-bg-elevated/40">
         <div class="flex items-center gap-4 min-w-0">
-            <div class="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg ${isOnline ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+            <div class="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg ring-2 ring-offset-2 ring-offset-bg-panel ${isOnline ? 'bg-emerald-500/15 text-emerald-400 ring-emerald-500/30' : 'bg-red-500/15 text-red-400 ring-red-500/30'}">
+                <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
             </div>
             <div class="min-w-0">
-                <div class="flex items-center gap-2 flex-wrap">
-                    <h3 id="agent-modal-title" class="text-[18px] font-bold text-white truncate">${displayName}</h3>
-                    <button onclick="openEditModal(currentAgentIdx)" title="Editar nombre y carpeta" class="p-1.5 rounded-lg text-text-muted hover:text-primary-400 hover:bg-bg-elevated transition-all">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
-                    </button>
-                    <span class="inline-flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full ${isOnline ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}">
-                        <span class="w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-400' : 'bg-red-400'}"></span>${isOnline ? 'Online' : 'Offline'}
+                <div class="flex items-center gap-2.5 flex-wrap">
+                    <h3 id="agent-modal-title" class="text-[20px] font-bold text-white tracking-tight truncate">${displayName}</h3>
+                    <span class="inline-flex items-center gap-1.5 text-[10px] px-2.5 py-0.5 rounded-full font-medium ${isOnline ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}">
+                        <span class="w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}"></span>${isOnline ? 'Online' : 'Offline'}
                     </span>
-                    ${isLocked ? '<span class="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/30"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg> BLOQUEADO</span>' : ''}
+                    ${isLocked ? '<span class="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/30 font-medium"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg> BLOQUEADO</span>' : ''}
                 </div>
-                <p class="text-[11px] text-text-subtle mt-0.5">${a.platform || h.platform || ''} ${a.arch || h.arch || ''}${h.os ? ' · ' + h.os : ''} · Agent ${(a.agentId || '').substring(0, 20)}</p>
+                <p class="text-[11px] text-text-subtle mt-1">${a.platform || h.platform || ''} ${a.arch || h.arch || ''}${h.os ? ' · ' + h.os : ''} · <span class="font-mono text-text-muted">${(a.agentId || '').substring(0, 24)}</span></p>
             </div>
         </div>
-        <button onclick="closeAgentModal()" class="text-text-muted hover:text-white transition-colors p-2 rounded-lg hover:bg-bg-elevated">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-        </button>
+        <div class="flex items-center gap-1.5">
+            <button onclick="copyToClipboard('${agentId}')" title="Copiar Agent ID" class="p-2 rounded-lg text-text-muted hover:text-white hover:bg-bg-elevated transition-all">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+            </button>
+            <a href="/host-privacy?agentId=${encodeURIComponent(agentId)}" title="Panel de privacidad" class="p-2 rounded-lg text-text-muted hover:text-purple-400 hover:bg-purple-500/10 transition-all">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+            </a>
+            <button onclick="openEditModal(currentAgentIdx)" title="Editar nombre y carpeta" class="p-2 rounded-lg text-text-muted hover:text-primary-400 hover:bg-bg-elevated transition-all">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+            </button>
+            <button onclick="closeAgentModal()" class="text-text-muted hover:text-white transition-colors p-2 rounded-lg hover:bg-bg-elevated ml-1">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
     </div>
 
     <div id="agent-action-msg"></div>
 
-    <div class="p-6 space-y-7">
+    <div class="p-6 space-y-6">
+        <!-- Centro de control -->
+        <div class="rounded-2xl border border-red-500/20 bg-gradient-to-br from-red-950/20 via-bg-panel/60 to-amber-950/10 p-5 shadow-lg">
+            <div class="flex items-center gap-2.5 mb-4">
+                <div class="w-8 h-8 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                </div>
+                <div>
+                    <h4 class="text-[15px] font-bold text-white">Centro de control del equipo</h4>
+                    <p class="text-[11px] text-text-subtle">Acciones de seguridad, energía y comunicación remota</p>
+                </div>
+            </div>
+
+            ${isLocked ? `
+            <div class="rounded-xl border border-red-500/30 bg-red-500/[0.08] p-4 mb-4 flex items-start gap-3">
+                <svg class="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                <div>
+                    <p class="text-[13px] font-semibold text-red-400">Equipo bloqueado</p>
+                    <p class="text-[11px] text-text-muted">Motivo: ${lockedInfo.message || lockedInfo.reason || 'Sin especificar'} · Por: ${lockedInfo.setBy || 'Sistema'} · ${(lockedInfo.setAt || '').substring(0, 19)}</p>
+                </div>
+            </div>
+            ` : ''}
+
+            <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+                ${isLocked ? `
+                <button onclick="agentAction('${agentId}','lockdown',{action:'unlock',message:''})" class="col-span-2 sm:col-span-2 control-btn bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500/30">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>
+                    <span>Desbloquear</span>
+                </button>
+                ` : `
+                <button onclick="agentAction('${agentId}','lockdown',{action:'lock',message:document.getElementById('lock-msg').value})" class="col-span-2 sm:col-span-2 control-btn bg-red-600 hover:bg-red-500 text-white border-red-500/30">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                    <span>Bloquear ahora</span>
+                </button>
+                `}
+
+                <div class="col-span-2 sm:col-span-2 flex gap-2">
+                    <input id="lock-minutes" type="number" min="1" max="480" value="5" class="w-16 input-premium text-center text-[12px]" title="Minutos" />
+                    <button onclick="agentAction('${agentId}','lock_timed',{minutes:Number(document.getElementById('lock-minutes').value)||5})" class="flex-1 control-btn bg-red-500/15 hover:bg-red-500/25 text-red-300 border-red-500/30">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <span>Bloqueo temporal</span>
+                    </button>
+                </div>
+
+                <button onclick="confirmPower('${agentId}','power_restart','¿Reiniciar el equipo?')" class="control-btn bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/30">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    <span>Reiniciar</span>
+                </button>
+
+                <button onclick="confirmPower('${agentId}','power_suspend','¿Suspender el equipo?')" class="control-btn bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 border-blue-500/30">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+                    <span>Suspender</span>
+                </button>
+
+                <button onclick="confirmPower('${agentId}','power_off','¿APAGAR el equipo?')" class="control-btn bg-slate-500/15 hover:bg-slate-500/25 text-slate-300 border-slate-500/30">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    <span>Apagar</span>
+                </button>
+            </div>
+
+            <div class="mt-3">
+                ${!isLocked ? `<textarea id="lock-msg" rows="2" placeholder="Motivo / mensaje para mostrar y anunciar en el equipo (ej: uso indebido del equipo)..." class="w-full input-premium text-[11px]"></textarea>` : ''}
+            </div>
+        </div>
+
         <!-- KPI row -->
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            ${kpi('CPU', (h.cpu != null ? h.cpu : a.cpu) + '%', '#818cf8', 'sh')}
-            ${kpi('RAM', (h.ram != null ? h.ram : a.ram) + '%', '#34d399', 'wa')}
-            ${kpi('Disco', diskPct + '%', '#fbbf24', 'hd')}
+            ${kpi('CPU', (h.cpu != null ? h.cpu : a.cpu) + '%', cpu > 80 ? '#ef4444' : '#818cf8', 'sh')}
+            ${kpi('RAM', (h.ram != null ? h.ram : a.ram) + '%', ram > 80 ? '#ef4444' : '#34d399', 'wa')}
+            ${kpi('Disco', diskPct + '%', diskPct > 80 ? '#ef4444' : '#fbbf24', 'hd')}
             ${kpi('Uptime', fmtUptime(h.uptime), '#38bdf8', 'up')}
             ${kpi('Procesos', h.processes != null ? h.processes : 'N/A', '#a78bfa', 'pr')}
             ${kpi('Conexiones', h.connections != null ? h.connections : 'N/A', '#f472b6', 'cn')}
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
-            <!-- LEFT: info + rendimiento -->
-            <div class="lg:col-span-3 space-y-6">
-                <div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Información y rendimiento -->
+            <div class="space-y-6">
+                <div class="rounded-xl border border-border-theme/60 bg-bg-panel/40 p-5">
                     ${sectionTitle('#818cf8', 'Información del equipo')}
                     <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
                         ${detailBox('IP', a.ip || h.ip || 'N/A')}
                         ${detailBox('Usuario', a.user || h.user || 'N/A')}
-                        ${detailBox('Versión agente', a.version || '2.0.0')}
+                        ${detailBox('Versión', a.version || '2.0.0')}
                         ${detailBox('Último latido', (a.lastSeen || h.lastSeen || 'N/A').substring(0, 19))}
                         ${detailBox('Agent ID', (a.agentId || 'N/A').substring(0, 24))}
                         ${detailBox('Sistema', (a.platform || h.platform || '') + ' ' + (a.arch || ''))}
                     </div>
                 </div>
 
-                <div>
+                <div class="rounded-xl border border-border-theme/60 bg-bg-panel/40 p-5">
                     ${sectionTitle('#34d399', 'Rendimiento en tiempo real')}
-                    <div class="space-y-4">
-                        ${bigMeter('CPU', h.cpu, a.cpu, '#818cf8')}
-                        ${bigMeter('RAM', h.ram, a.ram, '#34d399')}
-                        ${bigMeter('Disco', diskPct, null, '#fbbf24', diskTotal ? fmtBytes(diskUsed) + ' usado · ' + fmtBytes(diskTotal) + ' total' : null)}
+                    <div class="space-y-5">
+                        ${bigMeter('CPU', h.cpu, a.cpu, cpu > 80 ? '#ef4444' : '#818cf8')}
+                        ${bigMeter('RAM', h.ram, a.ram, ram > 80 ? '#ef4444' : '#34d399')}
+                        ${bigMeter('Disco', diskPct, null, diskPct > 80 ? '#ef4444' : '#fbbf24', diskTotal ? fmtBytes(diskUsed) + ' usado · ' + fmtBytes(diskTotal) + ' total' : null)}
                     </div>
                 </div>
             </div>
 
-            <!-- RIGHT: acciones -->
-            <div class="lg:col-span-2 space-y-6">
-                <div>
-                    ${sectionTitle('#f87171', 'Seguridad del equipo (DPO)')}
-                    ${isLocked ? `
-                    <div class="rounded-xl border border-red-500/30 bg-red-500/[0.06] p-4 mb-3">
-                        <p class="text-[12px] font-semibold text-red-400 mb-1">Equipo bloqueado por seguridad</p>
-                        <p class="text-[11px] text-text-muted">Motivo: ${lockedInfo.message || lockedInfo.reason || 'Sin especificar'}</p>
-                        <p class="text-[11px] text-text-muted">Por: ${lockedInfo.setBy || ''} · ${(lockedInfo.setAt || '').substring(0, 19)}</p>
-                    </div>
-                    <button onclick="agentAction('${getAgentId(a)}','lockdown',{action:'unlock',message:''})" class="w-full px-4 py-2.5 rounded-lg text-[12px] font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-all inline-flex items-center justify-center gap-2">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>
-                        Desbloquear equipo
-                    </button>` : `
-                    <textarea id="lock-msg" rows="2" placeholder="Motivo / mensaje para mostrar y anunciar en el equipo (ej: uso indebido del equipo)..." class="w-full input-premium mb-2"></textarea>
-                    <button onclick="agentAction('${getAgentId(a)}','lockdown',{action:'lock',message:document.getElementById('lock-msg').value})" class="w-full px-4 py-2.5 rounded-lg text-[12px] font-semibold bg-red-600 hover:bg-red-500 text-white transition-all inline-flex items-center justify-center gap-2">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-                        Bloquear equipo
-                    </button>`}
-                    <div class="flex gap-2 mt-2">
-                        <input id="lock-minutes" type="number" min="1" max="480" value="5" class="w-24 input-premium" />
-                        <button onclick="agentAction('${getAgentId(a)}','lock_timed',{minutes:Number(document.getElementById('lock-minutes').value)||5})" class="flex-1 px-3 py-2 rounded-lg text-[11px] font-medium bg-red-600/20 border border-red-500/30 text-red-400 hover:bg-red-600/30 transition-all inline-flex items-center justify-center gap-1.5">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                            Bloquear (min)
+            <!-- Diagnóstico en vivo -->
+            <div class="space-y-6">
+                <div class="rounded-xl border border-border-theme/60 bg-bg-panel/40 p-5">
+                    ${sectionTitle('#22d3ee', 'Diagnóstico en vivo')}
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <button onclick="showProcesses('${agentId}')" class="func-btn cyan">
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                            <span class="text-[12px] font-semibold">Procesos</span>
+                            <span class="text-[9px] text-text-subtle font-normal leading-tight">Ver procesos activos</span>
+                        </button>
+                        <button onclick="showHealth('${agentId}')" class="func-btn cyan">
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            <span class="text-[12px] font-semibold">Salud</span>
+                            <span class="text-[9px] text-text-subtle font-normal leading-tight">Snapshot del sistema</span>
+                        </button>
+                        <button onclick="showDefender('${agentId}')" class="func-btn cyan">
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                            <span class="text-[12px] font-semibold">Seguridad</span>
+                            <span class="text-[9px] text-text-subtle font-normal leading-tight">Estado de seguridad</span>
+                        </button>
+                        <button onclick="showScreenshot('${agentId}')" class="func-btn cyan">
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                            <span class="text-[12px] font-semibold">Captura</span>
+                            <span class="text-[9px] text-text-subtle font-normal leading-tight">Capturar pantalla</span>
                         </button>
                     </div>
                 </div>
 
-
-                <div>
-                    ${sectionTitle('#fbbf24', 'Energía remota')}
-                    <div class="flex gap-2">
-                        <button onclick="confirmPower('${getAgentId(a)}','power_restart','¿Reiniciar el equipo?')" class="flex-1 px-3 py-2 rounded-lg text-[11px] font-medium bg-amber-600/20 border border-amber-500/30 text-amber-400 hover:bg-amber-600/30 transition-all">Reiniciar</button>
-                        <button onclick="confirmPower('${getAgentId(a)}','power_suspend','¿Suspender el equipo?')" class="flex-1 px-3 py-2 rounded-lg text-[11px] font-medium bg-blue-600/20 border border-blue-500/30 text-blue-400 hover:bg-blue-600/30 transition-all">Suspender</button>
-                        <button onclick="confirmPower('${getAgentId(a)}','power_off','¿APAGAR el equipo?')" class="flex-1 px-3 py-2 rounded-lg text-[11px] font-medium bg-red-600/20 border border-red-500/30 text-red-400 hover:bg-red-600/30 transition-all">Apagar</button>
+                <!-- Forense e historial -->
+                <div class="rounded-xl border border-border-theme/60 bg-bg-panel/40 p-5">
+                    ${sectionTitle('#a78bfa', 'Forense e historial')}
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <button onclick="showForensicsFiles('${agentId}')" class="func-btn purple">
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 13h6m-3-3v6m-3 9h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                            <span class="text-[12px] font-semibold">Archivos</span>
+                            <span class="text-[9px] text-text-subtle font-normal leading-tight">Archivos recientes</span>
+                        </button>
+                        <button onclick="showForensicsDB('${agentId}')" class="func-btn purple">
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>
+                            <span class="text-[12px] font-semibold">BBDD</span>
+                            <span class="text-[9px] text-text-subtle font-normal leading-tight">Logs de base de datos</span>
+                        </button>
+                        <button onclick="showForensicsHost('${agentId}')" class="func-btn purple">
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                            <span class="text-[12px] font-semibold">Sistema</span>
+                            <span class="text-[9px] text-text-subtle font-normal leading-tight">Eventos del sistema</span>
+                        </button>
+                        <button onclick="showCommandHistory('${agentId}')" class="func-btn purple">
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            <span class="text-[12px] font-semibold">Historial</span>
+                            <span class="text-[9px] text-text-subtle font-normal leading-tight">Comandos ejecutados</span>
+                        </button>
                     </div>
                 </div>
             </div>
         </div>
-
-        <!-- Diagnóstico full width -->
-        <div>
-            ${sectionTitle('#22d3ee', 'Diagnóstico en vivo')}
-            <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
-                <button onclick="agentRequestData('${getAgentId(a)}','processes',renderProcesses,'procs-box')" class="px-3 py-2.5 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-cyan-500/40 transition-all inline-flex items-center gap-1.5 justify-center">Ver procesos</button>
-                <button onclick="agentRequestData('${getAgentId(a)}','health',renderHealth,'health-box')" class="px-3 py-2.5 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-cyan-500/40 transition-all inline-flex items-center gap-1.5 justify-center">Snapshot de salud</button>
-                <button onclick="agentRequestData('${getAgentId(a)}','defender',renderDefender,'def-box')" class="px-3 py-2.5 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-cyan-500/40 transition-all inline-flex items-center gap-1.5 justify-center">Estado de seguridad</button>
-                <button onclick="agentRequestData('${getAgentId(a)}','screenshot',renderShot,'shot-box')" class="px-3 py-2.5 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-cyan-500/40 transition-all inline-flex items-center gap-1.5 justify-center">Capturar pantalla</button>
-            </div>
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div id="procs-box" class="rounded-xl border border-border-theme/40 bg-bg-elevated/30 p-3 min-h-[60px]"></div>
-                <div id="health-box" class="rounded-xl border border-border-theme/40 bg-bg-elevated/30 p-3 min-h-[60px]"></div>
-            </div>
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-                <div id="def-box" class="rounded-xl border border-border-theme/40 bg-bg-elevated/30 p-3 min-h-[60px]"></div>
-                <div id="shot-box" class="rounded-xl border border-border-theme/40 bg-bg-elevated/30 p-3 min-h-[60px]"></div>
-            </div>
-        </div>
-
-        <!-- Historial -->
-        <div>
-            ${sectionTitle('#94a3b8', 'Historial de comandos')}
-            <button onclick="loadCommandHistory('${getAgentId(a)}','cmds-box')" class="px-3 py-2 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-surface-600 transition-all">Ver historial</button>
-            <div id="cmds-box" class="mt-2"></div>
-        </div>
-
-        <!-- Forense -->
-        <div>
-            ${sectionTitle('#a78bfa', 'Forense')}
-            <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
-                <button onclick="loadForensics('${getAgentId(a)}','files','forense-box')" class="px-3 py-2.5 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-purple-500/40 transition-all inline-flex items-center gap-1.5 justify-center">Archivos recientes</button>
-                <button onclick="loadForensics('${getAgentId(a)}','db','forense-box')" class="px-3 py-2.5 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-purple-500/40 transition-all inline-flex items-center gap-1.5 justify-center">Logs BBDD</button>
-                <button onclick="loadForensics('${getAgentId(a)}','host','forense-box')" class="px-3 py-2.5 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-muted hover:text-white hover:border-purple-500/40 transition-all inline-flex items-center gap-1.5 justify-center">Eventos del sistema</button>
-            </div>
-            <div id="forense-box" class="rounded-xl border border-border-theme/40 bg-bg-elevated/30 p-3 min-h-[60px]"></div>
-        </div>
     </div>
     `;
-
 
     currentAgentIdx = idx;
     const m = document.getElementById('agent-modal');
@@ -668,6 +794,26 @@ function confirmPower(agentId, cmd, msg) {
     agentAction(agentId, cmd, {});
 }
 
+const ICONS = {
+    process: '<svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>',
+    health: '<svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+    defender: '<svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>',
+    screenshot: '<svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>',
+    files: '<svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m-3 9h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>',
+    db: '<svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>',
+    host: '<svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>',
+    history: '<svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+};
+
+function showProcesses(agentId) { openResultModal('Procesos activos', ICONS.process); agentRequestData(agentId, 'processes', renderProcesses, 'result-modal-body'); }
+function showHealth(agentId) { openResultModal('Salud del sistema', ICONS.health); agentRequestData(agentId, 'health', renderHealth, 'result-modal-body'); }
+function showDefender(agentId) { openResultModal('Estado de seguridad', ICONS.defender); agentRequestData(agentId, 'defender', renderDefender, 'result-modal-body'); }
+function showScreenshot(agentId) { openResultModal('Captura de pantalla', ICONS.screenshot); agentRequestData(agentId, 'screenshot', renderShot, 'result-modal-body'); }
+function showForensicsFiles(agentId) { openResultModal('Archivos recientes', ICONS.files); loadForensics(agentId, 'files', 'result-modal-body'); }
+function showForensicsDB(agentId) { openResultModal('Logs de base de datos', ICONS.db); loadForensics(agentId, 'db', 'result-modal-body'); }
+function showForensicsHost(agentId) { openResultModal('Eventos del sistema', ICONS.host); loadForensics(agentId, 'host', 'result-modal-body'); }
+function showCommandHistory(agentId) { openResultModal('Historial de comandos', ICONS.history); loadCommandHistory(agentId, 'result-modal-body'); }
+
 function agentRequestData(agentId, type, renderFn, boxId) {
     const box = document.getElementById(boxId);
     if (box) box.innerHTML = '<p class="text-[10px] text-text-subtle animate-pulse">Solicitando datos al agente...</p>';
@@ -732,7 +878,7 @@ function hStat(k, v) {
 function renderHealth(data, boxId) {
     const box = document.getElementById(boxId);
     if (!box) return;
-    if (!data) { box.innerHTML = ''; return; }
+    if (!data) { box.innerHTML = '<p class="text-[12px] text-text-subtle text-center py-8">Sin datos de salud.</p>'; return; }
     const used = (data.diskTotal || 0) - (data.diskFree || 0);
     const diskPct = data.diskTotal ? Math.round(used / data.diskTotal * 100) : 0;
     box.innerHTML = '<div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1">' +
@@ -754,7 +900,7 @@ function sevBadge(ok) {
 function renderDefender(data, boxId) {
     const box = document.getElementById(boxId);
     if (!box) return;
-    if (!data) { box.innerHTML = ''; return; }
+    if (!data) { box.innerHTML = '<p class="text-[12px] text-text-subtle text-center py-8">Sin datos de seguridad.</p>'; return; }
     box.innerHTML = '<div class="grid grid-cols-2 gap-2 mt-1">' +
         '<div class="rounded-lg border border-border-theme bg-bg-elevated/40 px-2 py-1.5"><p class="text-[8px] text-text-subtle uppercase tracking-widest mb-1">Antivirus</p>' + sevBadge(data.antivirusEnabled) + '</div>' +
         '<div class="rounded-lg border border-border-theme bg-bg-elevated/40 px-2 py-1.5"><p class="text-[8px] text-text-subtle uppercase tracking-widest mb-1">Protección en tiempo real</p>' + sevBadge(data.realTimeProtection) + '</div>' +
@@ -768,8 +914,8 @@ function renderDefender(data, boxId) {
 function renderShot(data, boxId) {
     const box = document.getElementById(boxId);
     if (!box) return;
-    if (!data || !data.image) { box.innerHTML = ''; return; }
-    box.innerHTML = '<img src="' + data.image + '" class="w-full rounded-lg border border-border-theme mt-1" alt="Captura de pantalla">';
+    if (!data || !data.image) { box.innerHTML = '<p class="text-[12px] text-text-subtle text-center py-8">Sin captura disponible.</p>'; return; }
+    box.innerHTML = '<img src="' + data.image + '" class="w-full rounded-lg border border-border-theme" alt="Captura de pantalla">';
 }
 
 function loadCommandHistory(agentId, boxId) {
@@ -929,7 +1075,7 @@ async function downloadAgent(platform) {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'securelab-agent-' + platform;
+        a.download = platform === 'win-x64' ? 'SecureLabAgent-Installer.exe' : ('securelab-agent-' + platform);
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
@@ -952,7 +1098,7 @@ async function downloadAgent(platform) {
 
 async function downloadInstaller() {
     try {
-        const res = await fetch('/api-proxy.php?path=/api/agents/download/win-x64&installer=1');
+        const res = await fetch('/api-proxy.php?path=/api/agents/download/win-x64&installer=1&token=' + encodeURIComponent(SL_TOKEN));
         if (!res.ok) throw new Error('Error al descargar instalador');
         
         const blob = await res.blob();

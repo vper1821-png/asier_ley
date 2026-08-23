@@ -2,10 +2,10 @@
 // SecureLab2v - PHP Frontend Configuration
 session_start();
 
-// API Base URL: usar nombre del contenedor para Docker
-define('API_BASE_URL', getenv('API_BASE_URL') ?: 'https://leysecurelab.sytes.net');
-define('API_BASE_URL_BROWSER', getenv('API_BASE_URL_BROWSER') ?: 'https://leysecurelab.sytes.net');
-define('SITE_URL', getenv('SITE_URL') ?: 'https://leysecurelab.sytes.net');
+// API Base URL: backend local interno para llamadas PHP cURL rápidas
+define('API_BASE_URL', getenv('API_BASE_URL') ?: 'http://127.0.0.1:8080');
+define('API_BASE_URL_BROWSER', getenv('API_BASE_URL_BROWSER') ?: 'https://169.58.144.242');
+define('SITE_URL', getenv('SITE_URL') ?: 'https://169.58.144.242');
 define('SITE_NAME', 'SecureLab');
 define('SITE_SUBTITLE', 'Cumplimiento ley 21.719');
 define('TURNSTILE_SITE_KEY', getenv('TURNSTILE_SITE_KEY') ?: '');
@@ -20,6 +20,8 @@ function api_request($method, $path, $data = null) {
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
     curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
 
     if ($method === 'POST') {
@@ -39,6 +41,8 @@ function api_post_form($path, $data = []) {
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
     curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/x-www-form-urlencoded']);
@@ -55,6 +59,8 @@ function api_get($path, $params = []) {
     $ch = curl_init(API_BASE_URL . $path);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
     $response = curl_exec($ch);
     curl_close($ch);
     return json_decode($response, true);
@@ -67,6 +73,8 @@ function api_delete($path, $params = []) {
     $ch = curl_init(API_BASE_URL . $path);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
     $response = curl_exec($ch);
     curl_close($ch);
@@ -107,6 +115,8 @@ function api_put($path, $data = []) {
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
     curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
     curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);

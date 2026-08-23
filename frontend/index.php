@@ -29,6 +29,7 @@ $routes = [
     '/dpo'                 => 'pages/dpo.php',
     '/admin'               => 'pages/admin.php',
     '/host-monitor'        => 'pages/host-monitor.php',
+    '/host-privacy'        => 'pages/host-privacy.php',
     '/settings'            => 'pages/settings.php',
 ];
 

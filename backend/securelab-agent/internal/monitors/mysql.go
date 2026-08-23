@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -127,18 +126,13 @@ func (m *MySQLMonitor) checkActivity() {
 		if err := rows.Scan(&id, &user, &host, &dbName, &command, &state, &info); err != nil {
 			continue
 		}
-		if user.String == "" || strings.Contains(user.String, "root") {
+		// Loguear todas las consultas activas, incluidas las del usuario root,
+		// siempre que tengan contenido SQL visible.
+		if user.String == "" {
 			continue
 		}
 		if info.String != "" && command.String == "Query" {
 			query := info.String
-			piiDetected := m.piiScanner.AnalyzeQuery(query)
-			if len(piiDetected) > 0 {
-				m.log.Warn("PII detectada en consulta de %s: %s", user.String, query)
-				m.wsClient.SendEvent("PII Detectada",
-					fmt.Sprintf("Usuario %s ejecutó consulta con datos personales: %s", user.String, query),
-					"db_activity", "high")
-			}
 			entry := audit.DBQueryEntry{
 				Timestamp: time.Now(),
 				Engine:    "mysql",
@@ -146,10 +140,9 @@ func (m *MySQLMonitor) checkActivity() {
 				User:      user.String,
 				Host:      host.String,
 				Query:     query,
-				Operation: "SELECT",
-				RiskScore: float64(len(piiDetected)),
+				Operation: "", // se clasifica en reportDBQuery
 			}
-			m.store.SaveDBQuery(entry)
+			reportDBQuery(m.store, m.wsClient, m.piiScanner, m.log, entry)
 		}
 	}
 	// Verificar errores después del bucle

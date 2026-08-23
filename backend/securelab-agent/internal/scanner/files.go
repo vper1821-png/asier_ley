@@ -45,17 +45,19 @@ func scanExcel(path string) (map[string][]string, error) {
 	result := make(map[string][]string)
 
 	for colIdx, header := range headers {
-		if ok, cat := DetectPersonalData(header); ok {
+		cats := DetectPersonalData(header)
+		for cat := range cats {
 			result[header] = append(result[header], cat)
 		}
 		for _, row := range rows[1:minInt(len(rows), 10)] {
 			if colIdx < len(row) {
-				if ok, cat := DetectPersonalData(row[colIdx]); ok {
+				cats := DetectPersonalData(row[colIdx])
+				for cat := range cats {
 					if !stringInSlice(cat, result[header]) {
 						result[header] = append(result[header], cat)
 					}
-					break
 				}
+				break
 			}
 		}
 	}
@@ -77,7 +79,8 @@ func scanCSV(path string) (map[string][]string, error) {
 	result := make(map[string][]string)
 
 	for _, header := range headers {
-		if ok, cat := DetectPersonalData(header); ok {
+		cats := DetectPersonalData(header)
+		for cat := range cats {
 			result[header] = append(result[header], cat)
 		}
 	}
@@ -94,7 +97,8 @@ func scanCSV(path string) (map[string][]string, error) {
 			continue
 		}
 		for colIdx, val := range row {
-			if ok, cat := DetectPersonalData(val); ok {
+			cats := DetectPersonalData(val)
+			for cat := range cats {
 				if colIdx < len(headers) {
 					header := headers[colIdx]
 					if !stringInSlice(cat, result[header]) {
@@ -119,7 +123,8 @@ func scanTXT(path string) (map[string][]string, error) {
 	lineNum := 0
 	for scanner.Scan() && lineNum < 100 {
 		line := scanner.Text()
-		if ok, cat := DetectPersonalData(line); ok {
+		cats := DetectPersonalData(line)
+		for cat := range cats {
 			key := fmt.Sprintf("line_%d", lineNum)
 			if !stringInSlice(cat, result[key]) {
 				result[key] = append(result[key], cat)

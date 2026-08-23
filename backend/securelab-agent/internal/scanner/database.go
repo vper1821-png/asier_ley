@@ -18,14 +18,10 @@ func NewPIIScanner(store *audit.Store, log *logger.Logger) *PIIScanner {
 
 // AnalyzeQuery analiza una consulta SQL en busca de PII
 func (s *PIIScanner) AnalyzeQuery(query string) []string {
-	var categories []string
-	for cat, regexes := range compiledPatterns {
-		for _, re := range regexes {
-			if re.MatchString(query) {
-				categories = append(categories, cat)
-				break
-			}
-		}
+	cats := DetectPersonalData(query)
+	categories := make([]string, 0, len(cats))
+	for cat := range cats {
+		categories = append(categories, cat)
 	}
 	return categories
 }

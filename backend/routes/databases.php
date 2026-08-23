@@ -119,6 +119,94 @@ function delete() {
     json_response(['success' => true]);
 }
 
+function getOnlineAgentForUser($userId) {
+    $db = Database::getInstance();
+    // Considerar agentes online con actividad en los últimos 30 minutos
+    $recent = date('c', strtotime('-30 minutes'));
+    $agents = $db->find('agents', [
+        'userId' => $userId,
+        'status' => 'online',
+        'lastSeen' => ['$gte' => $recent]
+    ], ['sort' => ['lastSeen' => -1], 'limit' => 1]);
+    return $agents[0] ?? null;
+}
+
+function sendAgentCommand($userId, $agentId, $command, $params) {
+    $db = Database::getInstance();
+    $cmdId = $db->insertOne('agent_commands', [
+        'userId' => $userId,
+        'agentId' => $agentId,
+        'command' => $command,
+        'params' => $params,
+        'executed' => false,
+        'createdAt' => date('c'),
+    ]);
+    if (isset($cmdId['_id'])) $cmdId = $cmdId['_id'];
+    return (string)$cmdId;
+}
+
+function waitForAgentCommand($commandId, $timeoutSeconds = 30) {
+    $db = Database::getInstance();
+    $start = microtime(true);
+    while ((microtime(true) - $start) < $timeoutSeconds) {
+        $cmd = $db->findOne('agent_commands', ['_id' => $commandId]);
+        if (!empty($cmd['executed'])) {
+            return $cmd;
+        }
+        usleep(500000); // 0.5s
+    }
+    return null;
+}
+
+function executeDBCommandViaAgent($userId, $command, $record) {
+    $agent = getOnlineAgentForUser($userId);
+    if (!$agent) {
+        json_error('no hay agente online para ejecutar el comando');
+    }
+
+    $params = [
+        'type' => $record['type'],
+        'host' => $record['host'],
+        'port' => (int)($record['port'] ?? 0),
+        'database' => $record['database'],
+        'user' => $record['user'],
+        'password' => $record['password'] ?? '',
+        'ssl' => filter_var($record['ssl'] ?? false, FILTER_VALIDATE_BOOLEAN),
+    ];
+
+    $commandId = sendAgentCommand($userId, $agent['agentId'], $command, $params);
+    $result = waitForAgentCommand($commandId, 45);
+    if (!$result) {
+        json_error('timeout esperando respuesta del agente');
+    }
+
+    $res = toArrayRec($result['result'] ?? []);
+    if (is_string($res)) {
+        $res = json_decode($res, true) ?: [];
+    }
+    if (is_array($res)) {
+        return $res;
+    }
+
+    json_error('respuesta del agente inválida');
+    return null;
+}
+
+// Convertir documentos BSON (MongoDB\Model\BSONDocument/Array) a arrays PHP recursivamente
+function toArrayRec($data) {
+    if (is_object($data) && ($data instanceof MongoDB\Model\BSONDocument || $data instanceof MongoDB\Model\BSONArray)) {
+        $data = $data->getArrayCopy();
+    }
+    if (is_array($data) || (is_object($data) && $data instanceof Traversable)) {
+        $arr = [];
+        foreach ($data as $k => $v) {
+            $arr[$k] = toArrayRec($v);
+        }
+        return $arr;
+    }
+    return $data;
+}
+
 // ✅ MODIFICADO: Soporte para MongoDB en getDsn()
 function getDsn($record) {
     $type = $record['type'] ?? '';
@@ -143,7 +231,7 @@ function getDsn($record) {
             return $pdo;
         }
         if ($type === 'mssql') {
-            $dsn = "sqlsrv:Server=$host,$port;Database=$database";
+            $dsn = "sqlsrv:Server=$host,$port;Database=$database;Encrypt=no;TrustServerCertificate=yes";
             $pdo = new PDO($dsn, $user, $password, [PDO::SQLSRV_ATTR_QUERY_TIMEOUT => 5, PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
             return $pdo;
         }
@@ -191,27 +279,24 @@ function testConnection() {
     $record = $db->findOne('databases', ['_id' => $id, 'userId' => $user['_id']]);
     if (!$record) json_error('base de datos no encontrada', 404);
 
-    $start = microtime(true);
-    $conn = getDsn($record);
-    $latency = round((microtime(true) - $start) * 1000);
-
-    // Para MongoDB, verificar conexión con ping
-    if ($record['type'] === 'mongodb') {
-        try {
-            $conn->selectDatabase($record['database'])->command(['ping' => 1]);
-        } catch (Exception $e) {
-            json_error('conexión fallida: ' . $e->getMessage());
-        }
-    } else {
-        $stmt = $conn->query('SELECT 1');
-        $stmt->fetch();
+    $res = executeDBCommandViaAgent($user['_id'], 'test_db', $record);
+    if (empty($res['success'])) {
+        $msg = $res['error'] ?? $res['Error'] ?? 'conexión fallida';
+        json_error('conexión fallida: ' . $msg);
     }
 
-    $db->updateOne('databases', ['_id' => $id], ['lastTest' => date('c'), 'status' => 'connected', 'latency' => $latency]);
-    json_response(['success' => true, 'latency' => $latency, 'status' => 'connected']);
+    $latency = (int)($res['latency'] ?? $res['Latency'] ?? 0);
+    $status = $res['status'] ?? $res['Status'] ?? 'connected';
+
+    $db->updateOne('databases', ['_id' => $id], [
+        'lastTest' => date('c'),
+        'status' => $status,
+        'latency' => $latency
+    ]);
+    json_response(['success' => true, 'latency' => $latency, 'status' => $status]);
 }
 
-// ✅ MODIFICADO: Soporte para MongoDB en scan()
+// ✅ MODIFICADO: Escaneo ahora se realiza a través del agente
 function scan() {
     $user = Auth::requireAuth();
     $id = getDbId();
@@ -221,57 +306,22 @@ function scan() {
     $record = $db->findOne('databases', ['_id' => $id, 'userId' => $user['_id']]);
     if (!$record) json_error('base de datos no encontrada', 404);
 
-    $conn = getDsn($record);
-    $type = $record['type'] ?? '';
-    $tables = [];
-    $totalRows = 0;
-
-    try {
-        if (in_array($type, ['mysql', 'mariadb'])) {
-            $stmt = $conn->query('SHOW TABLES');
-            while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
-                $tableName = $row[0];
-                $cntStmt = $conn->query("SELECT COUNT(*) AS cnt FROM `$tableName`");
-                $cntRow = $cntStmt->fetch(PDO::FETCH_ASSOC);
-                $cnt = (int)($cntRow['cnt'] ?? 0);
-                $tables[] = ['name' => $tableName, 'rows' => $cnt];
-                $totalRows += $cnt;
-            }
-        } elseif (in_array($type, ['postgres', 'postgresql'])) {
-            $stmt = $conn->query("SELECT relname AS table_name, n_live_tup AS row_count FROM pg_stat_user_tables");
-            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                $tables[] = ['name' => $row['table_name'], 'rows' => (int)($row['row_count'] ?? 0)];
-                $totalRows += (int)($row['row_count'] ?? 0);
-            }
-        } elseif ($type === 'sqlite') {
-            $stmt = $conn->query("SELECT name FROM sqlite_master WHERE type='table'");
-            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                $tables[] = ['name' => $row['name'], 'rows' => 0];
-            }
-        } elseif ($type === 'mongodb') {
-            // ✅ NUEVO: Escaneo para MongoDB
-            $database = $conn->selectDatabase($record['database']);
-            $collections = $database->listCollections();
-            
-            foreach ($collections as $collection) {
-                $name = $collection->getName();
-                $count = $database->selectCollection($name)->countDocuments();
-                $tables[] = ['name' => $name, 'rows' => $count];
-                $totalRows += $count;
-            }
-        }
-    } catch (PDOException $e) {
-        json_error('escaneo fallido: ' . $e->getMessage());
-    } catch (Exception $e) {
-        json_error('escaneo fallido: ' . $e->getMessage());
+    $res = executeDBCommandViaAgent($user['_id'], 'scan_db', $record);
+    if (empty($res['success'])) {
+        $msg = $res['error'] ?? $res['Error'] ?? 'escaneo fallido';
+        json_error('escaneo fallido: ' . $msg);
     }
 
+    $tables = $res['tableList'] ?? $res['TableList'] ?? [];
+    $totalRows = (int)($res['records'] ?? $res['Records'] ?? 0);
+    $tablesCount = (int)($res['tables'] ?? $res['Tables'] ?? count($tables));
+
     $db->updateOne('databases', ['_id' => $id], [
-        'tables' => count($tables), 
-        'totalRows' => $totalRows, 
-        'records' => $totalRows, 
-        'recordCount' => $totalRows, 
-        'status' => 'connected', 
+        'tables' => $tablesCount,
+        'totalRows' => $totalRows,
+        'records' => $totalRows,
+        'recordCount' => $totalRows,
+        'status' => 'connected',
         'lastScan' => date('c')
     ]);
 
@@ -443,18 +493,37 @@ function logStats() {
     $logs = $db->find('database_logs', $filter);
     $bySeverity = [];
     $recentErrors = [];
+    $selects = 0;
+    $writes = 0;
+    $suspicious = 0;
     foreach ($logs as $log) {
         $sev = $log['severity'] ?? 'info';
         $bySeverity[$sev] = ($bySeverity[$sev] ?? 0) + 1;
         if (in_array($sev, ['critical', 'high']) && count($recentErrors) < 10) {
             $recentErrors[] = $log;
         }
+        $op = strtoupper($log['operation'] ?? '');
+        if ($op === 'SELECT') {
+            $selects++;
+        } elseif (in_array($op, ['INSERT', 'UPDATE', 'DELETE'])) {
+            $writes++;
+        }
+        if (!empty($log['riskScore']) && $log['riskScore'] > 0) {
+            $suspicious++;
+        }
     }
     $bySeverityArray = [];
     foreach ($bySeverity as $k => $v) {
         $bySeverityArray[] = ['_id' => $k, 'count' => $v];
     }
-    json_response(['total' => count($logs), 'bySeverity' => $bySeverityArray, 'recentErrors' => $recentErrors]);
+    json_response([
+        'total' => count($logs),
+        'selects' => $selects,
+        'writes' => $writes,
+        'suspicious' => $suspicious,
+        'bySeverity' => $bySeverityArray,
+        'recentErrors' => $recentErrors,
+    ]);
 }
 
 function skipQuery() {

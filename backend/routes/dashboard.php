@@ -47,7 +47,9 @@ function stats() {
         $records = (int)($d['recordCount'] ?? $d['records'] ?? 0);
         $totalTables += $tables;
         $totalRecords += $records;
-        $compliant = !empty($d['compliant']) || $openBreaches === 0;
+        // Una base de datos solo cumple si está conectada y sin brechas abiertas
+        $isConnected = ($d['status'] ?? '') === 'connected';
+        $compliant = $isConnected && ($openBreaches === 0 || !empty($d['compliant']));
         if ($compliant) $compliantDBs++;
         $dbCompliance[] = [
             'id' => $d['_id'],
@@ -56,6 +58,7 @@ function stats() {
             'tables' => $tables,
             'records' => $records,
             'compliant' => $compliant,
+            'status' => $d['status'] ?? 'configured',
             'breaches' => 0,
         ];
     }

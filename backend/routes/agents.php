@@ -222,7 +222,8 @@ function combined() {
 
 function deleteAgent() {
     $user = Auth::requireAuth();
-    $id = $_GET['id'] ?? '';
+    $body = get_body();
+    $id = $_GET['id'] ?? $_GET['agentId'] ?? $body['agentId'] ?? $body['id'] ?? $_POST['id'] ?? $_POST['agentId'] ?? '';
     if (!$id) json_error('agentId requerido');
 
     $db = Database::getInstance();
@@ -243,11 +244,11 @@ function deleteAgent() {
 
 function updateAgent() {
     $user = Auth::requireAuth();
-    $agentId = $_GET['id'] ?? '';
+    $body = get_body();
+    $agentId = $_GET['id'] ?? $_GET['agentId'] ?? $body['agentId'] ?? $body['id'] ?? $_POST['id'] ?? $_POST['agentId'] ?? '';
     if (!$agentId) json_error('agentId requerido');
     $agent = findAgentFor($user, $agentId);
     if (!$agent) json_error('agente no encontrado', 404);
-    $body = get_body();
     $db = Database::getInstance();
     $updates = [];
     if (array_key_exists('name', $body)) $updates['name'] = trim($body['name']);
@@ -261,8 +262,8 @@ function updateAgent() {
 
 function sendCommand() {
     $user = Auth::requireAuth();
-    $agentId = $_GET['id'] ?? '';
     $body = get_body();
+    $agentId = $_GET['id'] ?? $_GET['agentId'] ?? $body['agentId'] ?? $body['id'] ?? $_POST['id'] ?? $_POST['agentId'] ?? '';
     $command = $body['command'] ?? '';
     $params = $body['params'] ?? '';
 
@@ -291,17 +292,14 @@ function sendCommand() {
     ]);
     audit_log('agent_command', ['agentId' => $agentId, 'hostname' => $agent['hostname'] ?? '', 'command' => $command, 'params' => $params], $agent['userId'] ?? null, $agentId);
 
-    // El WS server ahora pollea MongoDB directamente cada 1s para agentes conectados
-    // No se necesita archivo trigger
-
     json_response(['success' => true, 'commandId' => $cmd['_id']]);
 }
 
 function requestData() {
     $user = Auth::requireAuth();
-    $agentId = $_GET['id'] ?? '';
     $body = get_body();
-    $type = $body['type'] ?? 'processes';
+    $agentId = $_GET['id'] ?? $_GET['agentId'] ?? $body['agentId'] ?? $body['id'] ?? $_POST['agentId'] ?? $_POST['id'] ?? '';
+    $type = $_GET['type'] ?? $body['type'] ?? 'processes';
 
     if (!$agentId) json_error('agentId requerido');
     
@@ -432,9 +430,61 @@ function getAgentData() {
     json_response(['success' => true, 'data' => $latest['data'] ?? null, 'ts' => $latest['ts'] ?? 0]);
 }
 
+function getAgent() {
+    $user = Auth::requireAuth();
+    $body = get_body();
+    $agentId = $_GET['id'] ?? $_GET['agentId'] ?? $body['agentId'] ?? $body['id'] ?? $_POST['agentId'] ?? $_POST['id'] ?? '';
+    if (!$agentId) json_error('agentId requerido');
+    $db = Database::getInstance();
+    $agent = findAgentFor($user, $agentId);
+    if (!$agent) json_error('agente no encontrado', 404);
+    json_response(['success' => true, 'agent' => $agent]);
+}
+
+function getAgentLogs() {
+    $user = Auth::requireAuth();
+    $body = get_body();
+    $agentId = $_GET['id'] ?? $_GET['agentId'] ?? $body['agentId'] ?? '';
+    $lines = (int)($_GET['lines'] ?? $body['lines'] ?? 100);
+    if (!$agentId) json_error('agentId requerido');
+    $agent = findAgentFor($user, $agentId);
+    if (!$agent) json_error('agente no encontrado', 404);
+    
+    // Try to read log file from agent's perspective
+    $logPaths = [
+        '/var/www/asier_ley-main/backend/installer/agent.log',
+        '/var/www/asier_ley-main/backend/securelab-agent/agent.log',
+        '/var/log/securelab-agent/agent.log',
+        '/opt/securelab-agent/logs/agent.log',
+        'C:\Program Files\SecureLab Agent\logs\agent.log',
+        'C:\Program Files (x86)\SecureLab\SecureLab Agent\logs\agent.log',
+    ];
+    
+    $logContent = '';
+    foreach ($logPaths as $path) {
+        if (file_exists($path)) {
+            $content = file_get_contents($path);
+            if ($content) {
+                $logContent = $content;
+                break;
+            }
+        }
+    }
+    
+    if (!$logContent) {
+        json_response(['success' => true, 'logs' => 'No log file found', 'agentId' => $agentId]);
+        return;
+    }
+    
+    $logLines = explode("\n", $logContent);
+    $logLines = array_slice($logLines, -$lines);
+    json_response(['success' => true, 'logs' => implode("\n", $logLines), 'agentId' => $agentId, 'totalLines' => count($logLines)]);
+}
+
 function listCommands() {
     $user = Auth::requireAuth();
-    $agentId = $_GET['id'] ?? ($_POST['agentId'] ?? '');
+    $body = get_body();
+    $agentId = $_GET['id'] ?? $_GET['agentId'] ?? $body['agentId'] ?? $body['id'] ?? $_POST['agentId'] ?? $_POST['id'] ?? '';
     if (!$agentId) json_error('agentId requerido');
     $db = Database::getInstance();
     $agent = findAgentFor($user, $agentId);
@@ -446,17 +496,175 @@ function listCommands() {
 
 function forensics() {
     $user = Auth::requireAuth();
-    $agentId = $_GET['id'] ?? '';
+    $body = get_body();
+    $agentId = $_GET['id'] ?? $_GET['agentId'] ?? $body['agentId'] ?? $body['id'] ?? $_POST['agentId'] ?? $_POST['id'] ?? '';
     if (!$agentId) json_error('agentId requerido');
     $agent = findAgentFor($user, $agentId);
     if (!$agent) json_error('agente no encontrado', 404);
     $db = Database::getInstance();
-    $type = $_GET['type'] ?? 'files';
-    $limit = (int)($_GET['limit'] ?? 50);
+    $type = $_GET['type'] ?? $body['type'] ?? 'files';
+    $limit = (int)($_GET['limit'] ?? $body['limit'] ?? 50);
     $collection = in_array($type, ['files', 'db', 'host']) ? ($type === 'files' ? 'file_events' : ($type === 'db' ? 'database_logs' : 'host_events')) : 'file_events';
     $events = $db->find($collection, ['agentId' => $agentId, 'userId' => $user['_id']]);
     usort($events, fn($a, $b) => strcmp($b['createdAt'] ?? '', $a['createdAt'] ?? ''));
     json_response(['success' => true, 'type' => $type, 'events' => array_slice($events, 0, $limit)]);
+}
+
+function sensitiveInventory() {
+    $user = Auth::requireAuth();
+    $body = get_body();
+    $agentId = $_GET['agentId'] ?? $body['agentId'] ?? '';
+    $status = $_GET['status'] ?? $body['status'] ?? '';
+    $limit = (int)($_GET['limit'] ?? $body['limit'] ?? 100);
+
+    $db = Database::getInstance();
+
+    // Si es superadmin, puede ver todo; si no, solo de sus agentes
+    $companyId = $user['companyId'] ?? $user['_id'];
+
+    // Usar el método del store para buscar inventario
+    // Como el store no expone directamente este método, hacemos query directa a MongoDB
+    $mongo = new MongoDB\Client(MONGODB_URI);
+    $coll = $mongo->selectDatabase('invisia')->selectCollection('sensitive_inventory');
+
+    $filter = ['company_id' => $companyId];
+    if ($agentId) {
+        $filter['agent_id'] = $agentId;
+    }
+    if ($status) {
+        $filter['status'] = $status;
+    }
+
+    $cursor = $coll->find($filter, [
+        'sort' => ['last_scanned' => -1],
+        'limit' => $limit
+    ]);
+
+    $items = [];
+    foreach ($cursor as $doc) {
+        $doc = (array)$doc;
+        if (isset($doc['_id'])) $doc['_id'] = (string)$doc['_id'];
+        $items[] = $doc;
+    }
+
+    json_response(['success' => true, 'items' => $items, 'total' => count($items)]);
+}
+
+function dbConnectionList() {
+    $user = Auth::requireAuth();
+    $body = get_body();
+    $agentId = $_GET['agentId'] ?? $_GET['id'] ?? $body['agentId'] ?? '';
+    if (!$agentId) json_error('agentId requerido');
+    $agent = findAgentFor($user, $agentId);
+    if (!$agent) json_error('agente no encontrado', 404);
+    
+    $db = Database::getInstance();
+    $conns = $db->find('agent_db_connections', ['agentId' => $agentId]);
+    json_response(['success' => true, 'connections' => $conns]);
+}
+
+function dbConnectionCreate() {
+    $user = Auth::requireAuth();
+    $body = get_body();
+    $agentId = $body['agentId'] ?? $_GET['id'] ?? '';
+    if (!$agentId) json_error('agentId requerido');
+    $agent = findAgentFor($user, $agentId);
+    if (!$agent) json_error('agente no encontrado', 404);
+    
+    $conn = [
+        'agentId'  => $agentId,
+        'engine'   => $body['engine'] ?? '',
+        'host'     => $body['host'] ?? '',
+        'port'     => (int)($body['port'] ?? 0),
+        'database' => $body['database'] ?? '',
+        'username' => $body['username'] ?? '',
+        'password' => $body['password'] ?? '',
+        'ssl'      => (bool)($body['ssl'] ?? false),
+        'enabled'  => true,
+        'createdAt' => date('c'),
+    ];
+    
+    if (!$conn['engine'] || !$conn['host'] || !$conn['port'] || !$conn['database'] || !$conn['username']) {
+        json_error('Todos los campos son requeridos: engine, host, port, database, username');
+    }
+    
+    $validEngines = ['mssql', 'postgres', 'mysql', 'mongodb', 'redis', 'sqlite'];
+    if (!in_array($conn['engine'], $validEngines)) {
+        json_error('Engine no soportado. Validos: ' . implode(', ', $validEngines));
+    }
+    
+    $db = Database::getInstance();
+    $connId = $db->insertOne('agent_db_connections', $conn);
+    
+    // Enviar al agente via WebSocket
+    $token = Auth::createToken($agent['userId'], [
+        'agentId' => $agentId,
+        'purpose' => 'agent_command'
+    ]);
+    
+    json_response(['success' => true, 'connectionId' => $connId, 'connection' => $conn]);
+}
+
+function dbConnectionDelete() {
+    $user = Auth::requireAuth();
+    $body = get_body();
+    $agentId = $body['agentId'] ?? $_GET['id'] ?? '';
+    $connId = $body['connectionId'] ?? '';
+    if (!$agentId || !$connId) json_error('agentId y connectionId requeridos');
+    
+    $db = Database::getInstance();
+    $db->deleteOne('agent_db_connections', ['_id' => $connId, 'agentId' => $agentId]);
+    
+    json_response(['success' => true]);
+}
+
+function dbConnectionTest() {
+    $user = Auth::requireAuth();
+    $body = get_body();
+    $connId = $body['connectionId'] ?? '';
+    $agentId = $body['agentId'] ?? $_GET['id'] ?? '';
+    if (!$connId || !$agentId) json_error('connectionId y agentId requeridos');
+    
+    $db = Database::getInstance();
+    $conn = $db->findOne('agent_db_connections', ['_id' => $connId]);
+    if (!$conn) json_error('conexión no encontrada', 404);
+    
+    // Test connection by trying to connect
+    $testResult = testDBConnection($conn);
+    json_response(['success' => $testResult['success'], 'message' => $testResult['message']]);
+}
+
+function testDBConnection($conn) {
+    try {
+        switch ($conn['engine']) {
+            case 'mssql':
+                $dsn = sprintf("sqlserver://%s:%s@%s:%d?database=%s&connection+timeout=5",
+                    $conn['username'], $conn['password'], $conn['host'], $conn['port'], $conn['database']);
+                $pdo = new PDO($dsn);
+                break;
+            case 'postgres':
+                $dsn = sprintf("pgsql:host=%s;port=%d;dbname=%s",
+                    $conn['host'], $conn['port'], $conn['database']);
+                $pdo = new PDO($dsn, $conn['username'], $conn['password']);
+                break;
+            case 'mysql':
+                $dsn = sprintf("mysql:host=%s;port=%d;dbname=%s",
+                    $conn['host'], $conn['port'], $conn['database']);
+                $pdo = new PDO($dsn, $conn['username'], $conn['password']);
+                break;
+            case 'mongodb':
+                $mongo = new MongoDB\Client(sprintf("mongodb://%s:%s@%s:%d",
+                    $conn['username'], $conn['password'], $conn['host'], $conn['port']));
+                $mongo->selectDatabase($conn['database'])->command(['ping' => 1]);
+                return ['success' => true, 'message' => 'Conexión exitosa'];
+            default:
+                return ['success' => false, 'message' => 'Engine no soportado para test'];
+        }
+        $pdo->query('SELECT 1');
+        return ['success' => true, 'message' => 'Conexión exitosa'];
+    } catch (Exception $e) {
+        return ['success' => false, 'message' => $e->getMessage()];
+    }
 }
 
 function folderList() {
@@ -496,8 +704,8 @@ function folderDelete() {
 function setLockdown() {
     $user = Auth::requireAuth();
     $body = get_body();
-    $agentId = $body['agentId'] ?? '';
-    $action = $body['action'] ?? '';
+    $agentId = $body['agentId'] ?? $body['id'] ?? $_GET['agentId'] ?? $_GET['id'] ?? $_POST['agentId'] ?? $_POST['id'] ?? '';
+    $action = $body['action'] ?? $_GET['action'] ?? '';
     if (!$agentId || !in_array($action, ['lock', 'unlock'])) json_error('agentId y action (lock|unlock) requeridos');
 
     $db = Database::getInstance();
@@ -538,43 +746,18 @@ function setLockdown() {
 }
 
 function download() {
+    @set_time_limit(180);
     $user = Auth::requireAuth();
     $token = get_token();
 
-    $platform = $_GET['platform'] ?? 'linux-x64';
-    if (preg_match('#^win#', $platform)) {
+    $platform = $_GET['platform'] ?? 'win-x64';
+    if (preg_match('#^win#i', $platform) || isset($_GET['installer'])) {
         $platform = 'win-x64';
     }
+
     $allowedPlatforms = ['win-x64', 'linux-x64', 'mac-x64', 'mac-arm64'];
     if (!in_array($platform, $allowedPlatforms)) {
-        json_error('plataforma no válida');
-    }
-
-    // Si se solicita el instalador (EXE con token)
-    if (isset($_GET['installer'])) {
-        $user = Auth::requireAuth();
-        
-        // Generar token para este agente
-        $agentToken = Auth::createToken($user['_id'], [
-            'email' => $user['email'] ?? '',
-            'purpose' => 'agent_installation',
-            'platform' => 'windows'
-        ]);
-        
-        // Usar el instalador NSIS pre-generado      
-        $installerFile = '/var/www/html/installer/output/SecureLabAgent-Installer.exe';
-        
-        if (!file_exists($installerFile)) {
-            json_error('Instalador NSIS no encontrado en el contenedor', 503);
-        }
-        
-        // Enviar instalador
-        header('Content-Type: application/octet-stream');
-        header('Content-Disposition: attachment; filename="SecureLabAgent-Installer.exe"');
-        header('Content-Length: ' . filesize($installerFile));
-        readfile($installerFile);
-        
-        exit;
+        $platform = 'win-x64';
     }
 
     // Optional deploy ID to track downloads
@@ -587,218 +770,216 @@ function download() {
         }
     }
 
-    // ── Windows: generar ZIP on-the-fly CON TOKEN del usuario ──
+    // ── Windows: Instalador ejecutable compilado con NSIS ──
     if ($platform === 'win-x64') {
-        // Generar siempre un ZIP personalizado con el token del usuario
-        $binaryMap = [
-            'win-x64'    => 'securelab-agent-win-x64.exe',
-            'linux-x64'  => 'securelab-agent-linux-x64',
-            'mac-x64'    => 'securelab-agent-mac-x64',
-            'mac-arm64'  => 'securelab-agent-mac-arm64',
-        ];
-        $binaryName = $binaryMap[$platform];
-        $binDir = __DIR__ . '/../agent-bin';
-        $binaryPath = $binDir . '/' . $binaryName;
+        $agentToken = $token ?: Auth::createToken($user['_id'], [
+            'email' => $user['email'] ?? '',
+            'purpose' => 'agent_installation',
+            'platform' => 'windows'
+        ]);
 
-        if (!file_exists($binaryPath) || filesize($binaryPath) < 1000000) {
-            json_error('Agente aún no compilado, intenta de nuevo en unos segundos', 503);
+        $baseUrl = API_BASE_URL !== '' ? API_BASE_URL : 'https://169.58.144.242';
+        $apiBase = rtrim($baseUrl, '/') . '/api/agents';
+        $wsBase = preg_replace(['#^https://#', '#^http://#'], ['wss://', 'ws://'], rtrim($baseUrl, '/')) . '/ws/';
+
+        // Check cache for this token
+        $cacheFile = sys_get_temp_dir() . '/nsis-cache-' . md5($agentToken . $apiBase . $wsBase) . '.exe';
+        if (file_exists($cacheFile) && filesize($cacheFile) > 500000 && (time() - filemtime($cacheFile) < 86400)) {
+            header('Content-Type: application/octet-stream');
+            header('Content-Disposition: attachment; filename="SecureLabAgent-Installer.exe"');
+            header('Content-Length: ' . filesize($cacheFile));
+            header('Cache-Control: no-cache, no-store, must-revalidate');
+            header('Pragma: no-cache');
+            header('Expires: 0');
+            readfile($cacheFile);
+            exit;
         }
 
-        $tmpDir = sys_get_temp_dir() . '/agent-dl-' . uniqid();
-        mkdir($tmpDir, 0755, true);
-        copy($binaryPath, $tmpDir . '/' . $binaryName);
-
-        $basePath = 'C:\\Program Files\\SecureLab Agent';
-        $baseUrl = API_BASE_URL !== '' ? API_BASE_URL : 'https://leysecurelab.sytes.net';
-        $wsBase  = preg_replace(['#^https://#', '#^http://#'], ['wss://', 'ws://'], rtrim($baseUrl, '/'));
-
-        $config = [
-            'api_base'           => rtrim($baseUrl, '/') . '/api/agents',
-            'ws_url'             => $wsBase . '/ws/',
-            'token'              => $token,
-            'heartbeat_interval' => 5,
-            'agent_version'      => '2.0.0',
-            'audit_db_path'      => $basePath . DIRECTORY_SEPARATOR . 'audit.db',
-            'knowledge_db_path'  => $basePath . DIRECTORY_SEPARATOR . 'knowledge.db',
-            'log_file'           => $basePath . DIRECTORY_SEPARATOR . 'agent.log',
-            'hardening_enabled'  => true,
-            'persistence_mode'   => 'aggressive',
-            'log_level'          => 'info',
+        // Buscar script NSIS y binario
+        $nsiCandidates = [
+            __DIR__ . '/../installer/SecureLabAgent.nsi',
+            '/var/www/html/installer/SecureLabAgent.nsi',
+            '/var/www/asier_ley-main/backend/installer/SecureLabAgent.nsi',
+            dirname(__DIR__, 2) . '/backend/installer/SecureLabAgent.nsi',
         ];
-
-        file_put_contents(
-            $tmpDir . '/config.json',
-            json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
-        );
-
-        // Copiar el .bat y .ps1 de auto-instalación
-        $batSrc = __DIR__ . '/../installer/Install-SecureLabAgent.bat';
-        $ps1Src = __DIR__ . '/../installer/Install-SecureLabAgent.ps1';
-        $readmeSrc = __DIR__ . '/../installer/README.txt';
-        if (!file_exists($batSrc) || !file_exists($ps1Src) || !file_exists($readmeSrc)) {
-            json_error('Instalador incompleto: faltan los scripts de auto-instalación', 500);
+        $nsiPath = null;
+        foreach ($nsiCandidates as $candidate) {
+            if (file_exists($candidate)) {
+                $nsiPath = $candidate;
+                break;
+            }
         }
-        copy($batSrc, $tmpDir . '/Install-SecureLabAgent.bat');
-        copy($ps1Src, $tmpDir . '/Install-SecureLabAgent.ps1');
 
-        // README con instrucciones
-        $folderName = 'SecureLabAgent-Windows';
-        $readme = "========================================\n"
-                . "  SecureLab Agent - Instalador Windows\n"
-                . "========================================\n\n"
-                . "1. Haz DOBLE CLIC en el archivo:\n"
-                . "   Install-SecureLabAgent.bat\n\n"
-                . "2. Acepta el Control de Cuentas de Usuario (UAC) cuando aparezca.\n\n"
-                . "3. El agente se instalará en:\n"
-                . "   C:\\Program Files\\SecureLab Agent\n\n"
-                . "4. El servicio SecureLabAgent se iniciará automáticamente.\n\n"
-                . "No necesitas abrir los otros archivos manualmente.\n";
-        file_put_contents($tmpDir . '/README.txt', $readme);
+        $binCandidates = [
+            __DIR__ . '/../installer/securelab-agent.exe',
+            __DIR__ . '/../agent-bin/securelab-agent-win-x64.exe',
+            __DIR__ . '/../securelab-agent/securelab-agent.exe',
+            '/var/www/html/installer/securelab-agent.exe',
+            '/var/www/html/agent-bin/securelab-agent-win-x64.exe',
+            '/var/www/asier_ley-main/backend/installer/securelab-agent.exe',
+            '/var/www/asier_ley-main/backend/agent-bin/securelab-agent-win-x64.exe',
+        ];
+        $agentExePath = null;
+        foreach ($binCandidates as $candidate) {
+            if (file_exists($candidate) && filesize($candidate) > 500000) {
+                $agentExePath = $candidate;
+                break;
+            }
+        }
 
-        // Fallback: ZIP con todos los archivos dentro de una carpeta
-        $archiveName = 'SecureLabAgent-Windows-Installer.zip';
-        $archivePath = sys_get_temp_dir() . '/' . $archiveName;
-        $zip = new ZipArchive();
-        $zip->open($archivePath, ZipArchive::CREATE);
-        $zip->addFile($tmpDir . '/' . $binaryName, $folderName . '/securelab-agent.exe');
-        $zip->addFile($tmpDir . '/config.json', $folderName . '/config.json');
-        $zip->addFile($tmpDir . '/Install-SecureLabAgent.bat', $folderName . '/Install-SecureLabAgent.bat');
-        $zip->addFile($tmpDir . '/Install-SecureLabAgent.ps1', $folderName . '/Install-SecureLabAgent.ps1');
-        $zip->addFile($tmpDir . '/README.txt', $folderName . '/README.txt');
-        $zip->close();
+        $finalInstallerPath = null;
 
-        $size = filesize($archivePath);
-        header('Content-Type: application/zip');
-        header('Content-Disposition: attachment; filename="' . $archiveName . '"');
-        header('Content-Length: ' . $size);
-        readfile($archivePath);
+        // Intentar compilación dinámica con makensis si está disponible
+        $hasMakensis = false;
+        exec('which makensis 2>/dev/null', $whichOut, $whichRet);
+        if ($whichRet === 0 && !empty($whichOut[0])) {
+            $hasMakensis = true;
+        }
 
-        array_map('unlink', glob($tmpDir . '/*'));
-        rmdir($tmpDir);
-        unlink($archivePath);
+        if ($hasMakensis && $nsiPath && $agentExePath) {
+            $tmpDir = sys_get_temp_dir() . '/nsis-build-' . uniqid();
+            if (mkdir($tmpDir, 0755, true)) {
+                $tmpOut = $tmpDir . '/SecureLabAgent-Installer.exe';
+                $nsiDir = dirname($nsiPath);
+
+                // Copiar archivos auxiliares si están en el directorio NSIS
+                foreach (['LICENSE.txt', 'installer-logo.bmp', 'installer-small.bmp'] as $aux) {
+                    if (file_exists($nsiDir . '/' . $aux)) {
+                        @copy($nsiDir . '/' . $aux, $tmpDir . '/' . $aux);
+                    }
+                }
+                @copy($agentExePath, $tmpDir . '/securelab-agent.exe');
+                @copy($nsiPath, $tmpDir . '/SecureLabAgent.nsi');
+
+                $cmd = sprintf(
+                    'cd %s && makensis -DAGENT_TOKEN=%s -DAPI_BASE=%s -DWS_URL=%s -DOUTFILE=%s SecureLabAgent.nsi 2>&1',
+                    escapeshellarg($tmpDir),
+                    escapeshellarg($agentToken),
+                    escapeshellarg($apiBase),
+                    escapeshellarg($wsBase),
+                    escapeshellarg($tmpOut)
+                );
+
+                exec($cmd, $makensisOutput, $makensisStatus);
+                if ($makensisStatus === 0 && file_exists($tmpOut) && filesize($tmpOut) > 500000) {
+                    @copy($tmpOut, $cacheFile);
+                    $finalInstallerPath = $cacheFile;
+                }
+                @array_map('unlink', glob($tmpDir . '/*'));
+                @rmdir($tmpDir);
+            }
+        }
+
+        // Fallback a instalador pre-generado si la compilación dinámica no se usó
+        if (!$finalInstallerPath || !file_exists($finalInstallerPath)) {
+            $prebuiltCandidates = [
+                __DIR__ . '/../installer/SecureLabAgent-Installer.exe',
+                __DIR__ . '/../installer/Output/SecureLabAgent-Setup.exe',
+                __DIR__ . '/../SecureLabAgent-Installer.exe',
+                '/var/www/asier_ley-main/backend/installer/SecureLabAgent-Installer.exe',
+                '/var/www/asier_ley-main/backend/SecureLabAgent-Installer.exe',
+                '/var/www/html/installer/output/SecureLabAgent-Installer.exe',
+                '/var/www/html/installer/SecureLabAgent-Installer.exe',
+                '/var/www/html/SecureLabAgent-Installer.exe',
+            ];
+            foreach ($prebuiltCandidates as $candidate) {
+                if (file_exists($candidate) && filesize($candidate) > 500000) {
+                    $finalInstallerPath = $candidate;
+                    break;
+                }
+            }
+        }
+
+        if (!$finalInstallerPath || !file_exists($finalInstallerPath)) {
+            json_error('Instalador NSIS no disponible en el servidor', 503);
+        }
+
+        $fileSize = filesize($finalInstallerPath);
+        header('Content-Type: application/octet-stream');
+        header('Content-Disposition: attachment; filename="SecureLabAgent-Installer.exe"');
+        header('Content-Length: ' . $fileSize);
+        header('Cache-Control: no-cache, no-store, must-revalidate');
+        header('Pragma: no-cache');
+        header('Expires: 0');
+
+        readfile($finalInstallerPath);
         exit;
     }
 
-    // ── Linux/macOS: devolver binario directamente con config en ZIP ──
+    // ── Linux / macOS: binario directo ──
     $binaryMap = [
         'linux-x64'  => 'securelab-agent-linux-x64',
         'mac-x64'    => 'securelab-agent-mac-x64',
         'mac-arm64'  => 'securelab-agent-mac-arm64',
     ];
-    
-    if (isset($binaryMap[$platform])) {
-        $binaryName = $binaryMap[$platform];
-        $binDir = __DIR__ . '/../agent-bin';
-        $binaryPath = $binDir . '/' . $binaryName;
+    $binaryName = $binaryMap[$platform] ?? 'securelab-agent-' . $platform;
 
-        if (!file_exists($binaryPath) || filesize($binaryPath) < 1000000) {
-            json_error('Agente aún no compilado, intenta de nuevo en unos segundos', 503);
+    $candidateDirs = [
+        __DIR__ . '/../agent-bin',
+        '/var/www/html/agent-bin',
+        __DIR__ . '/../securelab-agent',
+    ];
+
+    $binaryPath = null;
+    foreach ($candidateDirs as $dir) {
+        $p = $dir . '/' . $binaryName;
+        if (file_exists($p) && filesize($p) > 500000) {
+            $binaryPath = $p;
+            break;
         }
-
-        $tmpDir = sys_get_temp_dir() . '/agent-dl-' . uniqid();
-        mkdir($tmpDir, 0755, true);
-        copy($binaryPath, $tmpDir . '/' . $binaryName);
-
-        $baseUrl = API_BASE_URL !== '' ? API_BASE_URL : 'https://leysecurelab.sytes.net';
-        $wsBase  = preg_replace(['#^https://#', '#^http://#'], ['wss://', 'ws://'], rtrim($baseUrl, '/'));
-
-        $config = [
-            'api_base'           => rtrim($baseUrl, '/') . '/api/agents',
-            'ws_url'             => $wsBase . '/ws/',
-            'token'              => $token,
-            'heartbeat_interval' => 5,
-            'agent_version'      => '2.0.0',
-            'log_level'          => 'info',
-        ];
-
-        file_put_contents(
-            $tmpDir . '/config.json',
-            json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
-        );
-
-        // ZIP con binario y config
-        $archiveName = 'securelab-agent-' . $platform . '.zip';
-        $archivePath = sys_get_temp_dir() . '/' . $archiveName;
-        $zip = new ZipArchive();
-        $zip->open($archivePath, ZipArchive::CREATE);
-        $zip->addFile($tmpDir . '/' . $binaryName, $binaryName);
-        $zip->addFile($tmpDir . '/config.json', 'config.json');
-        $zip->close();
-
-        $size = filesize($archivePath);
-        header('Content-Type: application/zip');
-        header('Content-Disposition: attachment; filename="' . $archiveName . '"');
-        header('Content-Length: ' . $size);
-        readfile($archivePath);
-
-        array_map('unlink', glob($tmpDir . '/*'));
-        rmdir($tmpDir);
-        unlink($archivePath);
-        exit;
     }
 
-    json_error('Plataforma no soportada', 400);
+    if (!$binaryPath || !file_exists($binaryPath)) {
+        json_error('Binario del agente no disponible', 503);
+    }
 
-    // ── Linux / macOS: tar.gz (sin cambios) ──
+    $fileSize = filesize($binaryPath);
+    header('Content-Type: application/octet-stream');
+    header('Content-Disposition: attachment; filename="' . $binaryName . '"');
+    header('Content-Length: ' . $fileSize);
+    readfile($binaryPath);
+    exit;
+}
+
+function downloadBinary() {
+    $platform = $_GET['platform'] ?? 'win-x64';
+    if (preg_match('#^win#i', $platform)) {
+        $platform = 'win-x64';
+    }
+
     $binaryMap = [
+        'win-x64'    => 'securelab-agent-win-x64.exe',
         'linux-x64'  => 'securelab-agent-linux-x64',
         'mac-x64'    => 'securelab-agent-mac-x64',
         'mac-arm64'  => 'securelab-agent-mac-arm64',
     ];
-    $binaryName = $binaryMap[$platform];
-    $binDir = __DIR__ . '/../agent-bin';
-    $binaryPath = $binDir . '/' . $binaryName;
+    $binaryName = $binaryMap[$platform] ?? 'securelab-agent-win-x64.exe';
 
-    if (!file_exists($binaryPath) || filesize($binaryPath) < 1000000) {
-        json_error('Agente aún no compilado, intenta de nuevo en unos segundos', 503);
-    }
-
-    $tmpDir = sys_get_temp_dir() . '/agent-dl-' . uniqid();
-    mkdir($tmpDir, 0755, true);
-    copy($binaryPath, $tmpDir . '/' . $binaryName);
-
-    $basePath = '/opt/securelab-agent';
-    $baseUrl = API_BASE_URL !== '' ? API_BASE_URL : 'https://leysecurelab.sytes.net';
-    $wsBase  = preg_replace(['#^https://#', '#^http://#'], ['wss://', 'ws://'], rtrim($baseUrl, '/'));
-
-    $config = [
-        'api_base'           => rtrim($baseUrl, '/') . '/api/agents',
-        'ws_url'             => $wsBase . '/ws/',
-        'token'              => $token,
-        'heartbeat_interval' => 5,
-        'agent_version'      => '2.0.0',
-        'audit_db_path'      => $basePath . DIRECTORY_SEPARATOR . 'audit.db',
-        'knowledge_db_path'  => $basePath . DIRECTORY_SEPARATOR . 'knowledge.db',
-        'log_file'           => $basePath . DIRECTORY_SEPARATOR . 'agent.log',
-        'hardening_enabled'  => true,
-        'persistence_mode'   => 'aggressive',
-        'log_level'          => 'info',
+    $candidatePaths = [
+        __DIR__ . '/../agent-bin/' . $binaryName,
+        __DIR__ . '/../installer/securelab-agent.exe',
+        __DIR__ . '/../securelab-agent/' . $binaryName,
+        __DIR__ . '/../securelab-agent/securelab-agent.exe',
+        '/var/www/html/agent-bin/' . $binaryName,
+        '/var/www/html/installer/securelab-agent.exe',
     ];
 
-    file_put_contents(
-        $tmpDir . '/config.json',
-        json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
-    );
+    $binaryPath = null;
+    foreach ($candidatePaths as $p) {
+        if (file_exists($p) && filesize($p) > 100000) {
+            $binaryPath = $p;
+            break;
+        }
+    }
 
-    $archiveName = 'SecureLab-Agent-' . $platform . '.tar.gz';
-    $tarPath = sys_get_temp_dir() . '/agent-' . uniqid('', true) . '.tar';
-    $phar = new PharData($tarPath);
-    $phar->addFile($tmpDir . '/' . $binaryName, $binaryName);
-    $phar->addFile($tmpDir . '/config.json', 'config.json');
-    $phar->compress(Phar::GZ);
-    unset($phar);
-    Phar::unlinkArchive($tarPath);
-    $archivePath = $tarPath . '.gz';
+    if (!$binaryPath) {
+        json_error('Binario no encontrado', 404);
+    }
 
-    $size = filesize($archivePath);
-    header('Content-Type: application/gzip');
-    header('Content-Disposition: attachment; filename="' . $archiveName . '"');
-    header('Content-Length: ' . $size);
-    readfile($archivePath);
-
-    array_map('unlink', glob($tmpDir . '/*'));
-    rmdir($tmpDir);
-    unlink($archivePath);
+    header('Content-Type: application/octet-stream');
+    header('Content-Disposition: attachment; filename="' . $binaryName . '"');
+    header('Content-Length: ' . filesize($binaryPath));
+    readfile($binaryPath);
     exit;
 }
 

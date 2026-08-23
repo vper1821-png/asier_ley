@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"securelab-agent/internal/audit"
@@ -22,6 +23,44 @@ func newFileWatcher(dir string, eventChan chan audit.FileEvent, log *logger.Logg
 	}
 }
 
+// Directorios del sistema que se deben excluir del monitoreo
+var excludedDirs = map[string]bool{
+	"appdata":           true,
+	"localappdata":      true,
+	"roamingappdata":    true,
+	"temp":              true,
+	"tmp":               true,
+	"cache":             true,
+	"caches":            true,
+	".git":              true,
+	".vs":               true,
+	"node_modules":      true,
+	"bin":               true,
+	"obj":               true,
+	"packages":          true,
+	"packages.config":   true,
+	"app_packages":      true,
+	"__pycache__":       true,
+	"venv":              true,
+	".venv":             true,
+	"env":               true,
+	".env":              true,
+	"system volume information": true,
+	"recycle.bin":       true,
+	"$recycle.bin":      true,
+	"system32":          true,
+	"syswow64":          true,
+	"windows":           true,
+	"program files":     true,
+	"program files (x86)": true,
+	"programdata":       true,
+}
+
+func isExcludedDir(path string) bool {
+	base := strings.ToLower(filepath.Base(path))
+	return excludedDirs[base]
+}
+
 // watch inicia el monitoreo del directorio con fsnotify
 func (w *fileWatcher) watch(ctx context.Context) error {
 	w.log.Debug("FileWatcher: iniciando vigilancia en %s", w.dir)
@@ -33,7 +72,7 @@ func (w *fileWatcher) watch(ctx context.Context) error {
 	}
 	defer watcher.Close()
 
-	// Añadir el directorio y todos sus subdirectorios recursivamente
+	// Añadir el directorio y sus subdirectorios recursivamente, excluyendo directorios del sistema
 	var addedCount int
 	err = filepath.Walk(w.dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -41,6 +80,11 @@ func (w *fileWatcher) watch(ctx context.Context) error {
 			return nil // ignorar errores de permisos
 		}
 		if info.IsDir() {
+			// Saltar directorios excluidos
+			if isExcludedDir(path) {
+				w.log.Debug("FileWatcher: excluyendo directorio del sistema: %s", path)
+				return filepath.SkipDir
+			}
 			if err := watcher.Add(path); err != nil {
 				w.log.Warn("FileWatcher: no se pudo añadir %s: %v", path, err)
 			} else {
@@ -53,7 +97,7 @@ func (w *fileWatcher) watch(ctx context.Context) error {
 		w.log.Error("FileWatcher: error en Walk para %s: %v", w.dir, err)
 		return err
 	}
-	w.log.Info("FileWatcher: %d directorios añadidos en %s", addedCount, w.dir)
+	w.log.Info("FileWatcher: %d directorios añadidos en %s (excluyendo directorios del sistema)", addedCount, w.dir)
 
 	// Bucle principal de eventos
 	for {

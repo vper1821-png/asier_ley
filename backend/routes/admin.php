@@ -477,16 +477,31 @@ function agentDownload() {
     // Map platform to file
     $basePath = __DIR__ . '/../installer';
     $fileMap = [
-        'windows'  => 'SecureLabAgent-Windows.zip',  // ZIP with auto-elevation wrapper
-        'linux'    => 'securelab-agent.deb',         // Future
-        'darwin'   => 'securelab-agent.pkg',         // Future
-        'win-x64'  => 'SecureLabAgent-Windows.zip',  // Also accept agent platform format
+        'windows'  => 'SecureLabAgent-Installer.exe',
+        'win-x64'  => 'SecureLabAgent-Installer.exe',
+        'linux'    => 'securelab-agent.deb',
+        'darwin'   => 'securelab-agent.pkg',
         'linux-x64' => 'securelab-agent.deb',
         'mac-x64'  => 'securelab-agent.pkg',
     ];
 
-    $fileName = $fileMap[$platform] ?? 'SecureLabAgent-Windows.zip';
+    $fileName = $fileMap[$platform] ?? 'SecureLabAgent-Installer.exe';
     $filePath = $basePath . '/' . $fileName;
+
+    if (!file_exists($filePath)) {
+        // Fallback candidate paths
+        $altPaths = [
+            __DIR__ . '/../SecureLabAgent-Installer.exe',
+            __DIR__ . '/../installer/Output/SecureLabAgent-Setup.exe',
+        ];
+        foreach ($altPaths as $alt) {
+            if (file_exists($alt)) {
+                $filePath = $alt;
+                $fileName = basename($alt);
+                break;
+            }
+        }
+    }
 
     if (!file_exists($filePath)) {
         http_response_code(404);
@@ -495,7 +510,7 @@ function agentDownload() {
     }
 
     // Set headers for download
-    $contentType = ($platform === 'windows' || $platform === 'win-x64') ? 'application/zip' : 'application/octet-stream';
+    $contentType = 'application/octet-stream';
     header('Content-Type: ' . $contentType);
     header('Content-Disposition: attachment; filename="' . $fileName . '"');
     header('Content-Length: ' . filesize($filePath));

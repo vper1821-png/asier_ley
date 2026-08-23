@@ -13,10 +13,6 @@ $statsRes = api_post_form('/api/dashboard/stats', ['token' => $token]);
 $s = is_array($statsRes) && isset($statsRes['stats']) ? $statsRes['stats'] : [];
 $dbCompliance = $statsRes['dbCompliance'] ?? [];
 
-// Fetch alerts for recent list
-$alertsRes = api_post_form('/api/alerts', ['token' => $token]);
-$alerts = is_array($alertsRes) && empty($alertsRes['error']) ? $alertsRes : [];
-
 // UF value (mindicador.cl, cached in session for 6h)
 $ufValue = null;
 if (!empty($_SESSION['uf_cache']) && $_SESSION['uf_cache']['ts'] > time() - 21600) {
@@ -264,17 +260,22 @@ function kpi_card($label, $value, $sub, $color, $icon, $big = true) {
                         <p class="text-[11px] font-semibold text-text-heading">Cumplimiento por Base de Datos — Ley 21.719</p>
                     </div>
                     <div class="divide-y divide-white/[0.03]">
-                        <?php foreach ($dbCompliance as $d): ?>
+                        <?php foreach ($dbCompliance as $d):
+                            $isConnected = ($d['status'] ?? '') === 'connected';
+                            $label = $d['compliant'] ? 'Cumple' : ($isConnected ? 'No cumple' : 'No conectada');
+                            $color = $d['compliant'] ? 'text-[#34d399]' : 'text-[#f87171]';
+                            $bg = $d['compliant'] ? 'bg-[#34d399]' : 'bg-[#f87171]';
+                        ?>
                         <div class="px-5 py-3 flex items-center justify-between gap-4">
                             <div class="min-w-0">
                                 <p class="text-[12px] font-medium text-text-heading truncate"><?= h($d['name']) ?> <span class="text-[10px] text-text-subtle">(<?= h($d['engine']) ?>)</span></p>
                                 <p class="text-[10px] text-text-subtle mt-0.5"><?= $d['tables'] ?> tablas · <?= number_format($d['records']) ?> registros · <?= $d['breaches'] ?> brechas de seguridad</p>
                             </div>
-                            <div class="flex items-center gap-3 flex-shrink-0 w-40">
+                            <div class="flex items-center gap-3 flex-shrink-0 w-44">
                                 <div class="flex-1 h-1.5 rounded-full bg-white/[0.04] overflow-hidden">
-                                    <div class="h-full rounded-full <?= $d['compliant'] ? 'bg-[#34d399]' : 'bg-[#f87171]' ?>" style="width:<?= $d['compliant'] ? 100 : 8 ?>%"></div>
+                                    <div class="h-full rounded-full <?= $bg ?>" style="width:<?= $d['compliant'] ? 100 : 8 ?>%"></div>
                                 </div>
-                                <span class="text-[11px] font-semibold <?= $d['compliant'] ? 'text-[#34d399]' : 'text-[#f87171]' ?>"><?= $d['compliant'] ? '100%' : '0%' ?></span>
+                                <span class="text-[11px] font-semibold <?= $color ?> w-20 text-right"><?= $label ?></span>
                             </div>
                         </div>
                         <?php endforeach; ?>
@@ -304,24 +305,6 @@ function kpi_card($label, $value, $sub, $color, $icon, $big = true) {
                     <a href="/compliance" class="btn-primary text-[11px] inline-block mt-4">Ir a Compliance</a>
                 </div>
             </div>
-
-            <!-- Recent Alerts -->
-            <?php if (!empty($alerts)): ?>
-            <div class="rounded-xl border border-white/[0.04] bg-white/[0.01] p-5">
-                <h3 class="text-[12px] font-semibold text-white mb-4">Alertas recientes</h3>
-                <div class="space-y-2">
-                    <?php foreach (array_slice($alerts, 0, 5) as $alert): ?>
-                    <div class="flex items-center justify-between p-3 rounded-lg border border-border-theme bg-bg-elevated/50">
-                        <div class="flex items-center gap-3 min-w-0">
-                            <span class="w-2 h-2 rounded-full flex-shrink-0 <?= ($alert['severity'] ?? 'low') === 'critical' ? 'bg-red-500' : (($alert['severity'] ?? '') === 'high' ? 'bg-orange-500' : (($alert['severity'] ?? '') === 'medium' ? 'bg-yellow-500' : 'bg-green-500')) ?>"></span>
-                            <span class="text-[12px] text-text-body truncate"><?= h($alert['title'] ?? $alert['message'] ?? 'Sin título') ?></span>
-                        </div>
-                        <span class="text-[10px] text-text-subtle flex-shrink-0 ml-3"><?= h(substr($alert['createdAt'] ?? '', 0, 16)) ?></span>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-            </div>
-            <?php endif; ?>
         </div>
     </main>
 </div>

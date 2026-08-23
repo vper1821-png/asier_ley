@@ -35,17 +35,6 @@ func IsLockdownActive() bool {
 	return err == nil
 }
 
-func lockdownMessage() string {
-	if !IsLockdownActive() {
-		return ""
-	}
-	st := readState()
-	if st.Message == "" {
-		return "ESTE EQUIPO ESTÁ BLOQUEADO POR SEGURIDAD"
-	}
-	return st.Message
-}
-
 func setLockdownState(message string, unlockAt int64, silent ...bool) {
 	if message == "" {
 		os.Remove(stateFilePath())
@@ -60,24 +49,23 @@ func setLockdownState(message string, unlockAt int64, silent ...bool) {
 	os.WriteFile(stateFilePath(), data, 0600)
 }
 
-// Lockdown bloquea visualmente el equipo (overlay a pantalla completa,
-// audio de alarma y mensaje hablado). NO corta la conexión con el
-// servidor para poder desbloquearlo de forma remota.
+// Lockdown bloquea completamente el equipo: overlay a pantalla completa,
+// bloqueo total de teclado/ratón, cambio de wallpaper, hardening del sistema.
 func Lockdown(message string) {
 	if message == "" {
-		message = "ESTE EQUIPO ESTÁ BLOQUEADO POR SEGURIDAD"
+		message = "ESTE EQUIPO ESTA BLOQUEADO POR SEGURIDAD"
 	}
-	applyLockdown(message, false)
 	setLockdownState(message, 0, false)
+	applyLockdown(message, false)
 }
 
-// LockdownSilent bloquea visualmente el equipo sin reproducir sonido ni TTS.
+// LockdownSilent bloquea sin reproducir sonido ni TTS.
 func LockdownSilent(message string) {
 	if message == "" {
-		message = "ESTE EQUIPO ESTÁ BLOQUEADO POR SEGURIDAD"
+		message = "ESTE EQUIPO ESTA BLOQUEADO POR SEGURIDAD"
 	}
-	applyLockdown(message, true)
 	setLockdownState(message, 0, true)
+	applyLockdown(message, true)
 }
 
 // LockdownTimed bloquea el equipo durante N minutos y se desbloquea solo.
@@ -88,9 +76,9 @@ func LockdownTimed(message string, minutes int) {
 	if message == "" {
 		message = "EQUIPO BLOQUEADO TEMPORALMENTE POR SEGURIDAD"
 	}
-	applyLockdown(message, false)
 	unlockAt := time.Now().Add(time.Duration(minutes) * time.Minute).Unix()
 	setLockdownState(message, unlockAt, false)
+	applyLockdown(message, false)
 	go func() {
 		time.Sleep(time.Duration(minutes) * time.Minute)
 		Unlock()
@@ -105,23 +93,22 @@ func LockdownTimedSilent(message string, minutes int) {
 	if message == "" {
 		message = "EQUIPO BLOQUEADO TEMPORALMENTE POR SEGURIDAD"
 	}
-	applyLockdown(message, true)
 	unlockAt := time.Now().Add(time.Duration(minutes) * time.Minute).Unix()
 	setLockdownState(message, unlockAt, true)
+	applyLockdown(message, true)
 	go func() {
 		time.Sleep(time.Duration(minutes) * time.Minute)
 		Unlock()
 	}()
 }
 
-// Unlock restaura el equipo y borra el estado persistente.
+// Unlock restaura el equipo completamente.
 func Unlock() {
 	removeLockdown()
 	setLockdownState("", 0)
 }
 
-// TimedLockPending indica si hay un bloqueo temporizado vigente (aún no vence).
-// El sync loop del servidor no debe forzar desbloqueo mientras esté activo.
+// TimedLockPending indica si hay un bloqueo temporizado vigente.
 func TimedLockPending() bool {
 	if !IsLockdownActive() {
 		return false
@@ -131,6 +118,7 @@ func TimedLockPending() bool {
 }
 
 // ApplyLockdownIfFlagged re-aplica el bloqueo persistente al arrancar.
+// Esto garantiza que el equipo permanezca bloqueado incluso después de reiniciar.
 func ApplyLockdownIfFlagged() {
 	if !IsLockdownActive() {
 		return

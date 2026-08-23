@@ -93,6 +93,13 @@ $routes = [
     'GET /api/agents/download/'     => 'routes/agents.php@download',
     'POST /api/agents/download/'    => 'routes/agents.php@download',
     'POST /api/agents/download-token' => 'routes/agents.php@downloadToken',
+    'POST /api/agents/sensitive-inventory' => 'routes/agents.php@sensitiveInventory',
+    'GET /api/agents/{id}' => 'routes/agents.php@getAgent',
+    'POST /api/agents/{id}/logs' => 'routes/agents.php@getAgentLogs',
+    'POST /api/agents/{id}/db-connections' => 'routes/agents.php@dbConnectionList',
+    'POST /api/agents/{id}/db-connection' => 'routes/agents.php@dbConnectionCreate',
+    'POST /api/agents/{id}/db-connection/delete' => 'routes/agents.php@dbConnectionDelete',
+    'POST /api/agents/{id}/db-connection/test' => 'routes/agents.php@dbConnectionTest',
 
     // Alerts
     'POST /api/alerts' => 'routes/alerts.php@listAll',
@@ -147,7 +154,10 @@ $routes = [
     'POST /api/host-monitor/events' => 'routes/hostMonitor.php@events',
     'POST /api/host-monitor/stats' => 'routes/hostMonitor.php@eventsStats',
 
-    // User Monitor
+    // Host Privacy Control Panel - Ley 21.719
+    'POST /api/host-privacy/summary' => 'routes/hostPrivacy.php@summary',
+    'POST /api/host-privacy/arco' => 'routes/hostPrivacy.php@arcoCreate',
+    'POST /api/host-privacy/breach' => 'routes/hostPrivacy.php@breachReport',
     'POST /api/user-monitor' => 'routes/userMonitor.php@listAll',
 
     // Payments
@@ -295,7 +305,8 @@ $routes = [
 ];
 
 // Check static routes first
-$routeKey = $method . ' ' . $uri;
+$matchMethod = ($method === 'HEAD') ? 'GET' : $method;
+$routeKey = $matchMethod . ' ' . $uri;
 if (isset($routes[$routeKey])) {
     [$file, $action] = explode('@', $routes[$routeKey]);
     require_once __DIR__ . '/' . $file;
@@ -349,6 +360,34 @@ if (preg_match('#^/api/agents/([a-zA-Z0-9_-]+)/heartbeat$#', $uri, $m)) {
     exit;
 }
 
+if (preg_match('#^/api/agents/([a-zA-Z0-9_-]+)/db-connections$#', $uri, $m) && $method === 'GET') {
+    $_GET['id'] = $m[1];
+    require_once __DIR__ . '/routes/agents.php';
+    dbConnectionList();
+    exit;
+}
+
+if (preg_match('#^/api/agents/([a-zA-Z0-9_-]+)/db-connection$#', $uri, $m) && $method === 'POST') {
+    $_GET['id'] = $m[1];
+    require_once __DIR__ . '/routes/agents.php';
+    dbConnectionCreate();
+    exit;
+}
+
+if (preg_match('#^/api/agents/([a-zA-Z0-9_-]+)/db-connection/delete$#', $uri, $m) && $method === 'POST') {
+    $_GET['id'] = $m[1];
+    require_once __DIR__ . '/routes/agents.php';
+    dbConnectionDelete();
+    exit;
+}
+
+if (preg_match('#^/api/agents/([a-zA-Z0-9_-]+)/db-connection/test$#', $uri, $m) && $method === 'POST') {
+    $_GET['id'] = $m[1];
+    require_once __DIR__ . '/routes/agents.php';
+    dbConnectionTest();
+    exit;
+}
+
 if (preg_match('#^/api/agents/([a-zA-Z0-9_-]+)/(delete|command)$#', $uri, $m) && $method === 'POST') {
     $_GET['id'] = $m[1];
     require_once __DIR__ . '/routes/agents.php';
@@ -364,6 +403,20 @@ if (preg_match('#^/api/agents/([a-zA-Z0-9_-]+)/message$#', $uri, $m) && $method 
     $_GET['agentId'] = $m[1];
     require_once __DIR__ . '/routes/agents.php';
     message();
+    exit;
+}
+
+if (preg_match('#^/api/agents/([a-zA-Z0-9_-]+)$#', $uri, $m) && $method === 'GET') {
+    $_GET['id'] = $m[1];
+    require_once __DIR__ . '/routes/agents.php';
+    getAgent();
+    exit;
+}
+
+if (preg_match('#^/api/agents/([a-zA-Z0-9_-]+)/logs$#', $uri, $m) && $method === 'GET') {
+    $_GET['id'] = $m[1];
+    require_once __DIR__ . '/routes/agents.php';
+    getAgentLogs();
     exit;
 }
 

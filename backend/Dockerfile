@@ -36,13 +36,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     git \
     wget \
-    msitools \
-    wixl \
     golang-go \
     default-libmysqlclient-dev \
     libfreetype-dev \
     libjpeg62-turbo-dev \
-    # 🔽 NUEVO: NSIS y jq para compilar el instalador
+    # NSIS para el instalador Windows
     nsis \
     jq \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \

@@ -520,6 +520,9 @@ class AgentWebSocket implements MessageComponentInterface {
     private function handleSync(ConnectionInterface $conn) {
         $agentId = $conn->agentId ?? '';
         if (!$agentId) return;
+        if ($this->db) {
+            $this->db->updateOne('agents', ['agentId' => $agentId], ['lastSeen' => date('c')]);
+        }
         $agent = $this->mongoFindOne('agents', ['agentId' => $agentId]);
         $lockdown = $agent['lockdown'] ?? ['enabled' => false];
         $commands = $this->mongoFind('agent_commands', [
@@ -534,15 +537,36 @@ class AgentWebSocket implements MessageComponentInterface {
                 'commandId' => $cmd['_id'],
             ];
         }
+        
+        // Obtener conexiones de BD configuradas para este agente
+        $dbConns = $this->mongoFind('agent_db_connections', [
+            'agentId' => $agentId,
+            'enabled' => true,
+        ]);
+        
+        $connections = [];
+        foreach ($dbConns as $conn) {
+            $connections[] = [
+                'engine'   => $conn['engine'] ?? '',
+                'host'     => $conn['host'] ?? '',
+                'port'     => (int)($conn['port'] ?? 0),
+                'database' => $conn['database'] ?? '',
+                'username' => $conn['username'] ?? '',
+                'password' => $conn['password'] ?? '',
+                'ssl'      => (bool)($conn['ssl'] ?? false),
+            ];
+        }
+        
         $conn->send(json_encode([
             'type' => 'sync_response',
             'payload' => [
                 'lockdown' => $lockdown,
                 'pendingCommands' => $pending,
+                'connections' => $connections,
             ]
         ]));
         if (count($pending) > 0) {
-            echo "🔄 Sync a {$agentId}: " . count($pending) . " comandos\n";
+            echo "🔄 Sync a {$agentId}: " . count($pending) . " comandos, " . count($connections) . " conexiones BD\n";
         }
     }
 

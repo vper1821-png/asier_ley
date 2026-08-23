@@ -130,15 +130,9 @@ func (m *PostgresMonitor) checkActivity() {
 		if err := rows.Scan(&pid, &usename, &clientAddr, &query, &queryStart); err != nil {
 			continue
 		}
-		if usename == "" || usename == "postgres" {
+		// Loguear todas las consultas activas, incluidas las del superusuario postgres.
+		if usename == "" || query == "" {
 			continue
-		}
-		categories := m.piiScanner.AnalyzeQuery(query)
-		if len(categories) > 0 {
-			m.log.Warn("PII detectada en consulta de %s: %s", usename, query)
-			m.wsClient.SendEvent("PII Detectada (PostgreSQL)",
-				fmt.Sprintf("Usuario %s ejecutó consulta con datos personales: %s", usename, query),
-				"db_activity", "high")
 		}
 		entry := audit.DBQueryEntry{
 			Timestamp: time.Now(),
@@ -147,10 +141,9 @@ func (m *PostgresMonitor) checkActivity() {
 			User:      usename,
 			Host:      clientAddr,
 			Query:     query,
-			Operation: "SELECT",
-			RiskScore: float64(len(categories)),
+			Operation: "", // se clasifica en reportDBQuery
 		}
-		m.store.SaveDBQuery(entry)
+		reportDBQuery(m.store, m.wsClient, m.piiScanner, m.log, entry)
 	}
 	// Verificar errores después del bucle
 	if err := rows.Err(); err != nil {

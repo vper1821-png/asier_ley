@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"io"
@@ -20,15 +21,21 @@ type Client struct {
 	token    string
 	client   *http.Client
 	log      *logger.Logger
-	sendChan chan interface{} // canal para enviar mensajes (igual que ws.Client)
+	sendChan chan interface{}
 	agentID  string
 }
 
 func NewClient(baseURL, token string, log *logger.Logger) *Client {
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
 	return &Client{
-		baseURL:  baseURL,
-		token:    token,
-		client:   &http.Client{Timeout: 30 * time.Second},
+		baseURL: baseURL,
+		token:   token,
+		client: &http.Client{
+			Transport: tr,
+			Timeout:   30 * time.Second,
+		},
 		log:      log,
 		sendChan: make(chan interface{}, 100),
 	}

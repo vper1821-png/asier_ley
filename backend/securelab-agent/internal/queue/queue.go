@@ -3,6 +3,8 @@ package queue
 import (
 	"database/sql"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -22,6 +24,9 @@ type Queue struct {
 }
 
 func NewQueue(dbPath string) (*Queue, error) {
+	if dir := filepath.Dir(dbPath); dir != "" && dir != "." && dir != "/" {
+		_ = os.MkdirAll(dir, 0755)
+	}
 	db, err := sql.Open("sqlite", dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
 	if err != nil {
 		return nil, err
