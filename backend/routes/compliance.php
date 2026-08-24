@@ -243,9 +243,26 @@ function updateConfig() {
     $config = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
     
     $updates = [
-        'privacyPolicyUrl' => $body['privacyPolicyUrl'] ?? '',
-        'cookiesPolicyUrl' => $body['cookiesPolicyUrl'] ?? '',
-        'dataRetentionPolicy' => $body['dataRetentionPolicy'] ?? '',
+        // Campos existentes
+        'privacyPolicyUrl' => $body['privacyPolicyUrl'] ?? $config['privacyPolicyUrl'] ?? '',
+        'cookiesPolicyUrl' => $body['cookiesPolicyUrl'] ?? $config['cookiesPolicyUrl'] ?? '',
+        'dataRetentionPolicy' => $body['dataRetentionPolicy'] ?? $config['dataRetentionPolicy'] ?? '',
+        // Campos DPD
+        'dpdName' => $body['dpdName'] ?? $config['dpdName'] ?? '',
+        'dpdRut' => $body['dpdRut'] ?? $config['dpdRut'] ?? '',
+        'dpdEmail' => $body['dpdEmail'] ?? $config['dpdEmail'] ?? '',
+        'dpdPhone' => $body['dpdPhone'] ?? $config['dpdPhone'] ?? '',
+        'dpdTitle' => $body['dpdTitle'] ?? $config['dpdTitle'] ?? '',
+        'companyName' => $body['companyName'] ?? $config['companyName'] ?? '',
+        'companyRut' => $body['companyRut'] ?? $config['companyRut'] ?? '',
+        'dpdAddress' => $body['dpdAddress'] ?? $config['dpdAddress'] ?? '',
+        'dpdPublicUrl' => $body['dpdPublicUrl'] ?? $config['dpdPublicUrl'] ?? '',
+        // Campos APDP
+        'apdpRegistered' => $body['apdpRegistered'] ?? $config['apdpRegistered'] ?? '',
+        'apdpRegistrationNumber' => $body['apdpRegistrationNumber'] ?? $config['apdpRegistrationNumber'] ?? '',
+        'apdpRegistrationDate' => $body['apdpRegistrationDate'] ?? $config['apdpRegistrationDate'] ?? '',
+        'complianceLevel' => $body['complianceLevel'] ?? $config['complianceLevel'] ?? '',
+        'preventionModelDate' => $body['preventionModelDate'] ?? $config['preventionModelDate'] ?? '',
     ];
     
     if (empty($config)) {

@@ -198,6 +198,10 @@ $hardeningDone = count(array_filter($measures, fn($m) => $m['done']));
 $hardeningTotal = count($measures);
 $hardeningPct = $hardeningTotal ? (int)round($hardeningDone / $hardeningTotal * 100) : 0;
 
+// Para compatibilidad con el HTML existente
+$doneCount = $hardeningDone;
+$total = $hardeningTotal;
+
 // ── Cálculo preciso de Compliance (basado en completitud real) ──
 $complianceMetrics = [
     // DPD Designado: debe tener email, nombre y teléfono

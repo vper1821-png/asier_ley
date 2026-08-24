@@ -22,6 +22,14 @@ func ScanFile(path string) (map[string][]string, error) {
 		return scanCSV(path)
 	case ".txt":
 		return scanTXT(path)
+	case ".json":
+		return scanJSON(path)
+	case ".xml":
+		return scanXML(path)
+	case ".pdf":
+		return scanPDF(path)
+	case ".doc", ".docx":
+		return scanDOC(path)
 	}
 	return nil, nil
 }
@@ -135,6 +143,114 @@ func scanTXT(path string) (map[string][]string, error) {
 	// Verificar errores del scanner
 	if err := scanner.Err(); err != nil {
 		return result, fmt.Errorf("error leyendo archivo TXT: %w", err)
+	}
+	return result, nil
+}
+
+func scanJSON(path string) (map[string][]string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	result := make(map[string][]string)
+	lineNum := 0
+	for scanner.Scan() && lineNum < 100 {
+		line := scanner.Text()
+		cats := DetectPersonalData(line)
+		for cat := range cats {
+			key := fmt.Sprintf("line_%d", lineNum)
+			if !stringInSlice(cat, result[key]) {
+				result[key] = append(result[key], cat)
+			}
+		}
+		lineNum++
+	}
+	if err := scanner.Err(); err != nil {
+		return result, fmt.Errorf("error leyendo archivo JSON: %w", err)
+	}
+	return result, nil
+}
+
+func scanXML(path string) (map[string][]string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	result := make(map[string][]string)
+	lineNum := 0
+	for scanner.Scan() && lineNum < 100 {
+		line := scanner.Text()
+		cats := DetectPersonalData(line)
+		for cat := range cats {
+			key := fmt.Sprintf("line_%d", lineNum)
+			if !stringInSlice(cat, result[key]) {
+				result[key] = append(result[key], cat)
+			}
+		}
+		lineNum++
+	}
+	if err := scanner.Err(); err != nil {
+		return result, fmt.Errorf("error leyendo archivo XML: %w", err)
+	}
+	return result, nil
+}
+
+func scanPDF(path string) (map[string][]string, error) {
+	// Leer como texto plano (limitado - PDF binario)
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	// Leer primeros 10KB para detectar PII en metadata o texto plano
+	buf := make([]byte, 10240)
+	n, err := f.Read(buf)
+	if err != nil && err != io.EOF {
+		return nil, err
+	}
+	
+	content := string(buf[:n])
+	result := make(map[string][]string)
+	cats := DetectPersonalData(content)
+	for cat := range cats {
+		key := "metadata"
+		if !stringInSlice(cat, result[key]) {
+			result[key] = append(result[key], cat)
+		}
+	}
+	return result, nil
+}
+
+func scanDOC(path string) (map[string][]string, error) {
+	// Leer como texto plano (limitado - DOC/DOCX binario)
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	// Leer primeros 10KB para detectar PII en metadata o texto plano
+	buf := make([]byte, 10240)
+	n, err := f.Read(buf)
+	if err != nil && err != io.EOF {
+		return nil, err
+	}
+	
+	content := string(buf[:n])
+	result := make(map[string][]string)
+	cats := DetectPersonalData(content)
+	for cat := range cats {
+		key := "metadata"
+		if !stringInSlice(cat, result[key]) {
+			result[key] = append(result[key], cat)
+		}
 	}
 	return result, nil
 }
