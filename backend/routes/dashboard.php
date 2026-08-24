@@ -64,7 +64,7 @@ function stats() {
     }
     $nonCompliantDBs = count($databases) - $compliantDBs;
     
-    // Calcular complianceScore basado en el checklist de Compliance (igual que la página Compliance)
+    // Calcular complianceScore basado en completitud real (no solo existencia)
     $config = $db->findOne('compliance_config', ['userId' => $user['_id']]);
     $inventory = $db->find('compliance_inventory', ['userId' => $user['_id']]);
     $consents = $db->find('compliance_consents', ['userId' => $user['_id']]);
@@ -74,20 +74,43 @@ function stats() {
     
     // Si config no existe, inicializar array vacío
     if (!$config) $config = [];
-    
+
+    // DPD Designado: debe tener email, nombre y teléfono
+    $dpdComplete = !empty($config['dpdEmail']) && !empty($config['dpdName']) && !empty($config['dpdPhone']);
+    // Registro APDP: debe estar registrado con número de registro
+    $apdpComplete = ($config['apdpRegistered'] === '1' || $config['apdpRegistered'] === true) && !empty($config['apdpRegistrationNumber']);
+    // Inventario: debe tener items completos (nombre, legalBasis, dataCategories)
+    $inventoryComplete = count($inventory) > 0 && count(array_filter($inventory, fn($i) => 
+        !empty($i['name']) && !empty($i['legalBasis']) && !empty($i['dataCategories'])
+    )) > 0;
+    // Política de Privacidad: debe tener URL pública
+    $privacyPolicyComplete = !empty($config['privacyPolicyUrl']);
+    // Consentimientos: debe haber consentimientos activos (no revocados)
+    $consentsComplete = count(array_filter($consents, fn($c) => empty($c['revokedAt']))) > 0;
+    // Protocolo de Brechas: debe haber protocolo documentado o breaches resueltos
+    $breachProtocolComplete = count($breaches) > 0 || !empty($config['breachProtocolUrl']);
+    // Portal ARCO: siempre activo
+    $arcoComplete = true;
+    // Seudonimización: debe haber reglas ejecutadas
+    $pseudonymizationComplete = count(array_filter($pseudoRules, fn($r) => ($r['status'] ?? '') === 'executed' || !empty($r['executed']))) > 0;
+    // Plan de Respuesta a Incidentes: debe haber breaches resueltos o protocolo
+    $incidentResponseComplete = count(array_filter($breaches, fn($b) => ($b['status'] ?? '') === 'resolved')) > 0 || !empty($config['incidentResponsePlan']);
+    // Capacitación: debe haber capacitaciones completadas
+    $trainingComplete = count(array_filter($trainings, fn($t) => !empty($t['completed']))) > 0;
+
     $checklist = [
-        !empty($config['dpdEmail']), // DPD Designado
-        !empty($config['apdpRegistered']), // Registro APDP
-        count($inventory) > 0, // Inventario de Datos
-        !empty($config['privacyPolicyUrl']), // Política de Privacidad
-        count($consents) > 0, // Consentimientos
-        count($breaches) > 0, // Protocolo de Brechas
-        true, // Portal ARCO (siempre)
-        count($pseudoRules) > 0, // Seudonimización
-        count(array_filter($breaches, fn($b) => ($b['status'] ?? '') === 'resolved')) > 0, // Plan de Respuesta a Incidentes
-        count($trainings) > 0, // Capacitación
+        $dpdComplete,
+        $apdpComplete,
+        $inventoryComplete,
+        $privacyPolicyComplete,
+        $consentsComplete,
+        $breachProtocolComplete,
+        $arcoComplete,
+        $pseudonymizationComplete,
+        $incidentResponseComplete,
+        $trainingComplete,
     ];
-    
+
     $complianceChecklistDone = count(array_filter($checklist, fn($c) => $c));
     $complianceScore = (int)round($complianceChecklistDone / count($checklist) * 100);
 

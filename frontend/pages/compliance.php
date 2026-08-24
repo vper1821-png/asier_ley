@@ -84,7 +84,7 @@ if (!in_array($tab, ['overview', 'violations'])) {
 // ── Checklist (mismo criterio que React) ──
 $CHECKLIST = [
     ['id' => 'dpd', 'label' => 'DPD Designado', 'desc' => 'Delegado de Protección de Datos (Art. 28)', 'icon' => 'users', 'done' => !empty($config['dpdEmail'])],
-    ['id' => 'apdp', 'label' => 'Registro APDP', 'desc' => 'Registro ante Agencia de Protección de Datos (Art. 31)', 'icon' => 'shield', 'done' => !empty($config['apdpRegistered'])],
+    ['id' => 'apdp', 'label' => 'Registro APDP', 'desc' => 'Registro ante Agencia de Protección de Datos (Art. 31)', 'icon' => 'shield', 'done' => ($config['apdpRegistered'] === '1' || $config['apdpRegistered'] === true)],
     ['id' => 'inventory', 'label' => 'Inventario de Datos', 'desc' => 'Inventario de datos personales (Art. 15)', 'icon' => 'database', 'done' => count($inventory) > 0],
     ['id' => 'privacy', 'label' => 'Política de Privacidad', 'desc' => 'Política actualizada y accesible (Art. 14)', 'icon' => 'fileText', 'done' => !empty($config['privacyPolicyUrl'])],
     ['id' => 'consents', 'label' => 'Consentimientos', 'desc' => 'Mecanismo de consentimiento explícito (Art. 12)', 'icon' => 'check', 'done' => count($consents) > 0],
@@ -278,12 +278,12 @@ require_once __DIR__ . '/../includes/header.php';
                 </div>
                 <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5">
                     <div class="flex items-center gap-3 mb-4">
-                        <div class="w-10 h-10 rounded-lg flex items-center justify-center <?= !empty($config['apdpRegistered']) ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400' ?>">
-                            <?= cIcon(!empty($config['apdpRegistered']) ? 'shield' : 'alert') ?>
+                        <div class="w-10 h-10 rounded-lg flex items-center justify-center <?= ($config['apdpRegistered'] === '1' || $config['apdpRegistered'] === true) ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400' ?>">
+                            <?= cIcon(($config['apdpRegistered'] === '1' || $config['apdpRegistered'] === true) ? 'shield' : 'alert') ?>
                         </div>
                         <h4 class="text-[11px] font-bold text-text-muted uppercase tracking-wider">Registro APDP</h4>
                     </div>
-                    <?php if (!empty($config['apdpRegistered'])): ?>
+                    <?php if ($config['apdpRegistered'] === '1' || $config['apdpRegistered'] === true): ?>
                     <p class="text-[13px] text-emerald-400 font-medium flex items-center gap-1.5"><?= cIcon('check') ?> Registrado</p>
                     <?php else: ?>
                     <div class="flex items-center gap-2.5">

@@ -183,61 +183,53 @@ $getOverride = function ($id) use ($overrides) {
 $onlineAgents = (int)($stats['onlineAgents'] ?? 0);
 $totalDatabases = (int)($stats['totalDatabases'] ?? 0);
 
+// ── Cálculo preciso de Hardening (solo basado en overrides marcados) ──
 $measures = [];
 foreach ($HARDENING_DEFS as $def) {
-    $done = false;
-    switch ($def['id']) {
-        case 'encryption': $done = $hasSslDbs || $totalDatabases > 0; break;
-        case 'access_control': $done = $onlineAgents > 0; break;
-        case 'backup': $done = $hasScannedRecently || $totalDatabases > 1; break;
-        case 'logging': $done = $onlineAgents > 0 || $hasAlertsForDataDiscovery; break;
-        case 'patching': $done = $onlineAgents > 0 && $hasScannedRecently; break;
-        case 'ids_ips': $done = $onlineAgents > 0; break;
-        case 'dlp':
-            $done = $hasPersonalData;
-            foreach ($inventory as $i) { if (!empty($i['securityMeasures'])) $done = true; }
-            break;
-        case 'waf': $done = $hasWaf; break;
-        case 'pseudonymization':
-            foreach ($pseudoRules as $r) { if (($r['status'] ?? '') === 'executed' || !empty($r['executed'])) $done = true; }
-            foreach ($inventory as $i) {
-                foreach (($i['securityMeasures'] ?? []) as $m) {
-                    if (stripos($m, 'seudonim') !== false || stripos($m, 'pseudonym') !== false) $done = true;
-                }
-            }
-            break;
-        case 'incident_response':
-            foreach ($breaches as $b) { if (($b['status'] ?? '') === 'resolved') $done = true; }
-            break;
-    }
     $ov = $getOverride($def['id']);
+    // Solo consideramos una medida como "hecha" si está marcada explícitamente en overrides
+    $done = $ov !== null;
     $def['override'] = $ov;
-    $def['done'] = $done || $ov !== null;
+    $def['done'] = $done;
     $measures[] = $def;
 }
 
-$doneCount = count(array_filter($measures, fn($m) => $m['done']));
-$total = count($measures);
-$pct = $total ? (int)round($doneCount / $total * 100) : 0;
+$hardeningDone = count(array_filter($measures, fn($m) => $m['done']));
+$hardeningTotal = count($measures);
+$hardeningPct = $hardeningTotal ? (int)round($hardeningDone / $hardeningTotal * 100) : 0;
 
-// Calcular complianceScore general basado en el checklist de Compliance (igual que dashboard)
-$complianceChecklist = [
-    !empty($config['dpdEmail']), // DPD Designado
-    !empty($config['apdpRegistered']), // Registro APDP
-    count($inventory) > 0, // Inventario de Datos
-    !empty($config['privacyPolicyUrl']), // Política de Privacidad
-    count($consents) > 0, // Consentimientos
-    count($breaches) > 0, // Protocolo de Brechas
-    true, // Portal ARCO (siempre)
-    count($pseudoRules) > 0, // Seudonimización
-    count(array_filter($breaches, fn($b) => ($b['status'] ?? '') === 'resolved')) > 0, // Plan de Respuesta a Incidentes
-    count($trainings) > 0, // Capacitación
+// ── Cálculo preciso de Compliance (basado en completitud real) ──
+$complianceMetrics = [
+    // DPD Designado: debe tener email, nombre y teléfono
+    'dpd' => !empty($config['dpdEmail']) && !empty($config['dpdName']) && !empty($config['dpdPhone']),
+    // Registro APDP: debe estar registrado y tener número de registro
+    'apdp' => ($config['apdpRegistered'] === '1' || $config['apdpRegistered'] === true) && !empty($config['apdpRegistrationNumber']),
+    // Inventario: debe tener items y deben estar completos (nombre, legalBasis, dataCategories)
+    'inventory' => count($inventory) > 0 && count(array_filter($inventory, fn($i) => 
+        !empty($i['name']) && !empty($i['legalBasis']) && !empty($i['dataCategories'])
+    )) > 0,
+    // Política de Privacidad: debe tener URL pública
+    'privacyPolicy' => !empty($config['privacyPolicyUrl']),
+    // Consentimientos: debe haber consentimientos activos (no revocados)
+    'consents' => count(array_filter($consents, fn($c) => empty($c['revokedAt']))) > 0,
+    // Protocolo de Brechas: debe haber protocolo documentado (breach protocol)
+    'breachProtocol' => count($breaches) > 0 || !empty($config['breachProtocolUrl']),
+    // Portal ARCO: siempre activo
+    'arco' => true,
+    // Seudonimización: debe haber reglas ejecutadas
+    'pseudonymization' => count(array_filter($pseudoRules, fn($r) => ($r['status'] ?? '') === 'executed' || !empty($r['executed']))) > 0,
+    // Plan de Respuesta a Incidentes: debe haber breaches resueltos o protocolo
+    'incidentResponse' => count(array_filter($breaches, fn($b) => ($b['status'] ?? '') === 'resolved')) > 0 || !empty($config['incidentResponsePlan']),
+    // Capacitación: debe haber capacitaciones completadas
+    'training' => count(array_filter($trainings, fn($t) => !empty($t['completed']))) > 0,
 ];
-$complianceChecklistDone = count(array_filter($complianceChecklist, fn($c) => $c));
-$compliancePct = (int)round($complianceChecklistDone / count($complianceChecklist) * 100);
 
-// Usar el porcentaje de cumplimiento general en lugar del de medidas técnicas
-$pct = $compliancePct;
+$complianceDone = count(array_filter($complianceMetrics, fn($c) => $c));
+$complianceTotal = count($complianceMetrics);
+$compliancePct = $complianceTotal ? (int)round($complianceDone / $complianceTotal * 100) : 0;
+
+// Usar el porcentaje de hardening para esta página
+$pct = $hardeningPct;
 
 $riskLabel = $pct >= 70 ? 'Bajo' : ($pct >= 40 ? 'Medio' : 'Alto');
 $pctColor = $pct >= 70 ? 'text-emerald-400' : ($pct >= 40 ? 'text-yellow-400' : 'text-red-400');
@@ -247,7 +239,7 @@ $dpdObligations = [
     ['label' => 'Supervisar el cumplimiento normativo', 'done' => !empty($config['dpdEmail'])],
     ['label' => 'Asesorar en evaluaciones de impacto', 'done' => !empty($config['companyName'])],
     ['label' => 'Atender solicitudes de titulares', 'done' => count($breaches) > 0],
-    ['label' => 'Coordinar con la APDP', 'done' => !empty($config['apdpRegistered'])],
+    ['label' => 'Coordinar con la APDP', 'done' => ($config['apdpRegistered'] === '1' || $config['apdpRegistered'] === true)],
     ['label' => 'Capacitar al personal', 'done' => count($inventory) > 0],
     ['label' => 'Mantener registro de actividades', 'done' => $totalDatabases > 0],
     ['label' => 'Reportar brechas a la APDP', 'done' => count(array_filter($breaches, fn($b) => !empty($b['notifiedAPDP']))) > 0],

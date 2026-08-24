@@ -452,16 +452,8 @@ func RunOverlayUI() {
 	}
 	lockdownMsgText = st.Message
 
-	// Apply hardening and wallpaper
-	saveWallpaper()
-	setLockdownWallpaper()
+	// Apply hardening (without wallpaper or audio)
 	applySystemHardening()
-
-	// Audio feedback
-	if !st.Silent {
-		_ = PlayAlarm()
-		Speak(st.Message)
-	}
 
 	// Block input and start overlay
 	_, _, _ = procBlockInput.Call(1)

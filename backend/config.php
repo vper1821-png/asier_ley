@@ -10,7 +10,7 @@ define('CORS_ORIGIN', getenv('CORS_ORIGIN') ?: '*');
 define('OLLAMA_HOST', getenv('OLLAMA_HOST') ?: 'http://localhost:11434');
 define('AI_MODEL', getenv('AI_MODEL') ?: 'mistral');
 define('TURNSTILE_SECRET_KEY', getenv('TURNSTILE_SECRET_KEY') ?: '');
-define('API_BASE_URL', getenv('API_BASE_URL') ?: 'https://leysecurelab.sytes.net');
+define('API_BASE_URL', getenv('API_BASE_URL') ?: 'https://169.58.144.242');
 
 // SMTP Configuration (for real email sending in production)
 define('SMTP_HOST', getenv('SMTP_HOST') ?: '');

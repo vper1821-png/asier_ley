@@ -807,7 +807,7 @@ function download() {
             'platform' => 'windows'
         ]);
 
-        $baseUrl = API_BASE_URL !== '' ? API_BASE_URL : 'https://leysecurelab.sytes.net';
+        $baseUrl = API_BASE_URL !== '' ? API_BASE_URL : 'https://169.58.144.242';
         $apiBase = rtrim($baseUrl, '/') . '/api/agents';
         $wsBase = preg_replace(['#^https://#', '#^http://#'], ['wss://', 'ws://'], rtrim($baseUrl, '/')) . '/ws/';
 

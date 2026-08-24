@@ -60,7 +60,7 @@ interface ServerInterface extends EventEmitterInterface
      * after the socket has been closed), it MAY return a `NULL` value instead.
      *
      * Otherwise, it will return the full address (URI) as a string value, such
-     * as `tcp://127.0.0.1:8080`, `tcp://[::1]:80` or `tls://127.0.0.1:443`.
+     * as `tcp://leysecurelab.sytes.net`, `tcp://[::1]:80` or `tls://127.0.0.1:443`.
      * Note that individual URI components are application specific and depend
      * on the underlying transport protocol.
      *
