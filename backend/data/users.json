@@ -1,0 +1,19 @@
+[
+    {
+        "email": "alonso@securelab.cl",
+        "password": "$2y$10$R3.gMy9puwx9/Xhn5KD5yuQ34kTWHeo2GQ1PuYQ5Tn3psLSjHzV0K",
+        "companyName": "SecureLab Admin",
+        "domain": "",
+        "isActive": true,
+        "isAdmin": true,
+        "role": "superadmin",
+        "planType": "enterprise",
+        "paymentStatus": "active",
+        "onboardingComplete": true,
+        "twoFactorEnabled": false,
+        "encryptionKey": "5f23ea85894e8b8dc05a974e886278b7f694939763522458de609b7ef51d5490",
+        "_id": "e4a9759a62b373937ed50318",
+        "createdAt": "2026-08-21T21:11:39+02:00",
+        "updatedAt": "2026-08-21T21:11:39+02:00"
+    }
+]
