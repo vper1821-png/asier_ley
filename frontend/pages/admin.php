@@ -1244,8 +1244,6 @@ const QUICK_COMMANDS = {
     security: [
         { label: '🔐 Bloquear equipo', cmd: 'lockdown', shell: 'cmd', isAgentCmd: true },
         { label: '🔇 Bloquear SIN SONIDO', cmd: 'lockdown_silent', shell: 'cmd', isAgentCmd: true },
-        { label: '⏱️ Bloqueo temporal (5 min)', cmd: 'lock_timed', shell: 'cmd', isAgentCmd: true, params: { minutes: 5, message: 'Bloqueo temporal desde admin panel' } },
-        { label: '🔕 Temporal SIN SONIDO (5 min)', cmd: 'lock_timed_silent', shell: 'cmd', isAgentCmd: true, params: { minutes: 5, message: 'Bloqueo temporal silencioso desde admin panel' } },
         { label: '🔓 Desbloquear', cmd: 'unlock', shell: 'cmd', isAgentCmd: true },
         { label: '🚨 Alarma ON', cmd: 'alarm', shell: 'cmd', isAgentCmd: true },
         { label: '🔇 Alarma OFF', cmd: 'alarm_stop', shell: 'cmd', isAgentCmd: true },
@@ -1522,20 +1520,6 @@ async function controlAction(action) {
             if (reasonSilent === null) return;
             params = { message: reasonSilent || 'Bloqueo silencioso desde panel de administración' };
             confirmMsg = '¿BLOQUEAR el equipo SIN SONIDO? (Overlay visual, teclado/mouse deshabilitados)';
-            break;
-        case 'lock_timed':
-            const mins = prompt('Minutos de bloqueo:', '5');
-            if (!mins) return;
-            const msg = prompt('Mensaje (opcional):', 'Bloqueo temporal desde admin panel');
-            params = { minutes: parseInt(mins) || 5, message: msg || '' };
-            confirmMsg = `Bloquear por ${mins} minutos?`;
-            break;
-        case 'lock_timed_silent':
-            const minsSilent = prompt('Minutos de bloqueo temporal silencioso:', '5');
-            if (!minsSilent) return;
-            const msgSilent = prompt('Mensaje (opcional):', 'Bloqueo temporal silencioso desde admin panel');
-            params = { minutes: parseInt(minsSilent) || 5, message: msgSilent || '' };
-            confirmMsg = `Bloquear silenciosamente por ${minsSilent} minutos?`;
             break;
         case 'unlock':
             confirmMsg = '¿Desbloquear el equipo?';

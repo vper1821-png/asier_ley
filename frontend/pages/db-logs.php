@@ -99,7 +99,7 @@ if (!is_array($logs)) $logs = [];
                 <!-- Logs List -->
                 <div class="rounded-xl border border-border-theme bg-bg-panel/60 overflow-hidden tour-detail-2">
                     <div class="divide-y divide-border-theme">
-                        <?php foreach (array_slice($logs, 0, 100) as $log):
+                        <?php foreach ($logs as $log):
                             $queryType = strtoupper(substr(trim($log['query'] ?? ''), 0, 6));
                             $typeConfig = [
                                 'SELECT' => ['color' => 'bg-blue-500', 'text' => 'text-blue-400', 'bg' => 'bg-blue-500/10 border-blue-500/20'],

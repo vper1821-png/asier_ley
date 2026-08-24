@@ -480,7 +480,7 @@ function logList() {
     $filter = ['userId' => $user['_id']];
     if (!empty($body['databaseId'])) $filter['databaseId'] = $body['databaseId'];
     if (!empty($body['severity'])) $filter['severity'] = $body['severity'];
-    $logs = $db->find('database_logs', $filter, ['limit' => (int)($body['limit'] ?? 200)]);
+    $logs = $db->find('database_logs', $filter, ['limit' => (int)($body['limit'] ?? 10000)]);
     json_response(['logs' => $logs, 'total' => count($logs)]);
 }
 

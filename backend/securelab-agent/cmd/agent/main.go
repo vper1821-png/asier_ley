@@ -123,6 +123,7 @@ func runAgent(ctx context.Context) {
 
 	// Re-aplicar bloqueo persistente si estaba activo
 	security.ApplyLockdownIfFlagged()
+	security.StartLockdownMonitor()
 
 	// ── 3.1 Sync loop: comandos pendientes + estado de bloqueo ──
 	syncInterval := time.Duration(cfg.SyncInterval) * time.Millisecond

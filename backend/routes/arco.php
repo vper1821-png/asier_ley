@@ -20,6 +20,7 @@ function create() {
 
     $db = Database::getInstance();
     $requestId = 'ARCO-' . strtoupper(substr(bin2hex(random_bytes(4)), 0, 8));
+    $now = date('c');
 
     $request = $db->insertOne('arco_requests', [
         'requestId' => $requestId,
@@ -28,7 +29,22 @@ function create() {
         'descripcion' => $descripcion,
         'companyId' => $companyId,
         'status' => 'pending',
+        'createdAt' => $now,
+        'updatedAt' => $now,
     ]);
+
+    // Notificar al responsable de la empresa
+    if ($companyId) {
+        $db->insertOne('notifications', [
+            'userId' => $companyId,
+            'type' => 'arco',
+            'title' => 'Nueva solicitud ARCO recibida',
+            'message' => 'Solicitud ' . $requestId . ' de ' . $tipo . ' recibida de ' . ($solicitante['nombre'] ?? 'un titular'),
+            'read' => false,
+            'createdAt' => $now,
+            'requestId' => $requestId,
+        ]);
+    }
 
     json_response([
         'success' => true,
@@ -345,5 +361,108 @@ function exportPortabilidad() {
     header('Content-Type: application/json; charset=utf-8');
     header('Content-Disposition: attachment; filename="portabilidad_' . $requestId . '.json"');
     echo json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+function downloadReceipt() {
+    $requestId = $_GET['requestId'] ?? '';
+    $email = $_GET['email'] ?? '';
+
+    if (!$requestId) json_error('requestId requerido');
+
+    $db = Database::getInstance();
+    $req = $db->findOne('arco_requests', ['requestId' => $requestId]);
+    if (!$req) json_error('solicitud no encontrada', 404);
+
+    // Verificación mínima para evitar acceso a ciegas por ID
+    $solicitanteEmail = $req['solicitante']['email'] ?? ($req['email'] ?? '');
+    if ($email && strtolower($email) !== strtolower($solicitanteEmail)) {
+        json_error('verificación de email fallida', 403);
+    }
+
+    $company = $db->findOne('users', ['_id' => ($req['companyId'] ?? '')]) ?? [];
+    $companyName = $company['companyName'] ?? ($company['name'] ?? 'Empresa');
+    $dpdName = $company['dpdName'] ?? '—';
+    $dpdEmail = $company['dpdEmail'] ?? '—';
+
+    $type = $req['tipo'] ?? $req['type'] ?? 'acceso';
+    $typeLabels = [
+        'acceso' => 'Acceso',
+        'rectificacion' => 'Rectificación',
+        'cancelacion' => 'Cancelación',
+        'oposicion' => 'Oposición',
+        'portabilidad' => 'Portabilidad',
+        'supresion' => 'Supresión',
+        'bloqueo' => 'Bloqueo',
+    ];
+    $typeLabel = $typeLabels[$type] ?? ucfirst($type);
+
+    $solicitante = $req['solicitante'] ?? [];
+    $name = $solicitante['nombre'] ?? ($req['name'] ?? 'Titular');
+    $rut = $solicitante['rut'] ?? ($req['rut'] ?? '—');
+    $email = $solicitante['email'] ?? ($req['email'] ?? '—');
+    $requestDate = substr(($req['createdAt'] ?? date('c')), 0, 10);
+    $receiptDate = date('d/m/Y');
+
+    $h = fn($s) => htmlspecialchars((string)($s ?? ''), ENT_QUOTES, 'UTF-8');
+
+    $html = "<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'><title>Comprobante ARCO - {$h($typeLabel)}</title>";
+    $html .= "<style>
+        @page{margin:80px 60px}
+        body{font-family:'DejaVu Sans',Arial,sans-serif;font-size:11px;line-height:1.6;color:#1a1a1a}
+        .header{border-bottom:1.5px solid #000;padding-bottom:10px;margin-bottom:30px}
+        .header h1{font-size:16px;font-weight:bold;margin:0}
+        .header p{margin:4px 0;font-size:10px;color:#444}
+        .meta{margin-bottom:20px}
+        .meta div{margin-bottom:4px}
+        .label{font-weight:bold;color:#333}
+        .subject{font-size:13px;font-weight:bold;margin:25px 0 15px}
+        .body p{margin-bottom:12px;text-align:justify}
+        .data-table{width:100%;border-collapse:collapse;margin:15px 0}
+        .data-table td{border:0.5px solid #bbb;padding:6px 8px}
+        .footer{margin-top:40px;border-top:1px solid #ccc;padding-top:10px;font-size:9px;color:#555}
+        .stamp{display:inline-block;margin-top:30px;padding:8px 15px;border:1.5px dashed #22c55e;color:#22c55e;font-weight:bold;border-radius:4px}
+    </style></head><body>";
+    $html .= "<div class='header'><h1>{$h($companyName)}</h1>";
+    $html .= "<p>Delegado de Protección de Datos: {$h($dpdName)}</p>";
+    $html .= "<p>Email DPD: {$h($dpdEmail)}</p></div>";
+
+    $html .= "<div class='subject'>Comprobante de recepción de solicitud ARCO - {$h($typeLabel)}</div>";
+
+    $html .= "<div class='meta'>";
+    $html .= "<div><span class='label'>Número de solicitud:</span> {$h($requestId)}</div>";
+    $html .= "<div><span class='label'>Derecho ejercido:</span> {$h($typeLabel)}</div>";
+    $html .= "<div><span class='label'>Fecha de recepción:</span> {$h($requestDate)}</div>";
+    $html .= "<div><span class='label'>Fecha de comprobante:</span> {$h($receiptDate)}</div>";
+    $html .= "</div>";
+
+    $html .= "<div class='meta'>";
+    $html .= "<div><span class='label'>Titular:</span> {$h($name)}</div>";
+    $html .= "<div><span class='label'>RUT:</span> {$h($rut)}</div>";
+    $html .= "<div><span class='label'>Email:</span> {$h($email)}</div>";
+    $html .= "</div>";
+
+    $html .= "<table class='data-table'>";
+    $html .= "<tr><td class='label'>Descripción de la solicitud</td><td>" . $h($req['descripcion'] ?? 'Sin descripción adicional.') . "</td></tr>";
+    $html .= "</table>";
+
+    $html .= "<div class='body'>";
+    $html .= "<p>De conformidad con la Ley 21.719, la presente solicitud ha sido registrada por el responsable del tratamiento. El plazo máximo de respuesta es de 30 días corridos, pudiendo extenderse por un plazo adicional de hasta 30 días cuando concurren causas justificadas y se notifica oportunamente al titular.</p>";
+    $html .= "<p>El titular podrá hacer seguimiento de esta solicitud mediante el número de referencia <strong>{$h($requestId)}</strong> y el email declarado en el formulario.</p>";
+    $html .= "</div>";
+
+    $html .= "<div class='stamp'>SOLICITUD RECIBIDA</div>";
+
+    $html .= "<div class='footer'>Documento generado conforme a la Ley 21.719 - Protección de Datos Personales · República de Chile · Fecha: {$h($receiptDate)}</div>";
+    $html .= "</body></html>";
+
+    $dompdf = new Dompdf\Dompdf();
+    $dompdf->setPaper('A4', 'portrait');
+    $dompdf->loadHtml($html);
+    $dompdf->render();
+
+    header('Content-Type: application/pdf');
+    header('Content-Disposition: attachment; filename="comprobante_arco_' . $requestId . '.pdf"');
+    echo $dompdf->output();
     exit;
 }

@@ -128,11 +128,16 @@ func spawnOverlayInSession(sessionID uint32) error {
 	_ = windows.CloseHandle(pi.Process)
 
 	recordOverlayProcess(uint32(pi.ProcessId))
+	recordOverlaySession(sessionID, uint32(pi.ProcessId))
 	return nil
 }
 
 func overlayPidsFile() string {
 	return filepath.Join(agentDir(), ".securelab-overlay-pids")
+}
+
+func overlaySessionsFile() string {
+	return filepath.Join(agentDir(), ".securelab-overlay-sessions")
 }
 
 func recordOverlayProcess(pid uint32) {
@@ -144,6 +149,78 @@ func recordOverlayProcess(pid uint32) {
 	fmt.Fprintln(f, pid)
 }
 
+func recordOverlaySession(sessionID, pid uint32) {
+	f, err := os.OpenFile(overlaySessionsFile(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	fmt.Fprintf(f, "%d:%d\n", sessionID, pid)
+}
+
+func readOverlaySessions() map[uint32]uint32 {
+	result := make(map[uint32]uint32)
+	data, err := os.ReadFile(overlaySessionsFile())
+	if err != nil {
+		return result
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, ":")
+		if len(parts) != 2 {
+			continue
+		}
+		sid, err1 := strconv.ParseUint(parts[0], 10, 32)
+		pid, err2 := strconv.ParseUint(parts[1], 10, 32)
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		result[uint32(sid)] = uint32(pid)
+	}
+	return result
+}
+
+func writeOverlaySessions(m map[uint32]uint32) {
+	f, err := os.OpenFile(overlaySessionsFile(), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	for sid, pid := range m {
+		fmt.Fprintf(f, "%d:%d\n", sid, pid)
+	}
+}
+
+func isProcessAlive(pid uint32) bool {
+	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+	if err != nil {
+		return false
+	}
+	defer windows.CloseHandle(h)
+
+	var exitCode uint32
+	err = windows.GetExitCodeProcess(h, &exitCode)
+	if err != nil {
+		return false
+	}
+	return exitCode == 259 // STILL_ACTIVE
+}
+
+func cleanupOverlaySessions() map[uint32]uint32 {
+	m := readOverlaySessions()
+	clean := make(map[uint32]uint32)
+	for sid, pid := range m {
+		if isProcessAlive(pid) {
+			clean[sid] = pid
+		}
+	}
+	writeOverlaySessions(clean)
+	return clean
+}
+
 // KillOverlayProcesses kills all overlay child processes launched by the service.
 func KillOverlayProcesses() {
 	data, err := os.ReadFile(overlayPidsFile())
@@ -151,6 +228,7 @@ func KillOverlayProcesses() {
 		return
 	}
 	_ = os.Remove(overlayPidsFile())
+	_ = os.Remove(overlaySessionsFile())
 
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
@@ -170,7 +248,9 @@ func KillOverlayProcesses() {
 }
 
 // SpawnOverlayForAllSessions spawns the overlay process in every active user session.
+// It skips sessions that already have a live overlay.
 func SpawnOverlayForAllSessions() {
+	active := cleanupOverlaySessions()
 	sessions := EnumerateActiveUserSessions()
 	if len(sessions) == 0 {
 		// Fallback to active console session
@@ -179,6 +259,9 @@ func SpawnOverlayForAllSessions() {
 		}
 	}
 	for _, sid := range sessions {
+		if _, ok := active[sid]; ok {
+			continue
+		}
 		if err := spawnOverlayInSession(sid); err != nil {
 			// Silently ignore sessions that cannot be locked (e.g. disconnected RDP)
 		}

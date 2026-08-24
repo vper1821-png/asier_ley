@@ -325,6 +325,12 @@ if (preg_match('#^/api/agents/deploy$#', $uri) && $method === 'POST') {
     exit;
 }
 
+if (preg_match('#^/api/agents/install/linux$#', $uri, $m)) {
+    require_once __DIR__ . '/routes/agents.php';
+    linuxInstall();
+    exit;
+}
+
 if (preg_match('#^/api/agents/download/(.+)$#', $uri, $m)) {
     $_GET['platform'] = $m[1];
     require_once __DIR__ . '/routes/agents.php';
@@ -463,6 +469,13 @@ if (preg_match('#^/api/arco/requests/([A-Z0-9-]+)/document$#', $uri, $m) && $met
     $_GET['requestId'] = $m[1];
     require_once __DIR__ . '/routes/arco.php';
     downloadResponse();
+    exit;
+}
+
+if (preg_match('#^/api/arco/requests/([A-Z0-9-]+)/receipt$#', $uri, $m) && $method === 'GET') {
+    $_GET['requestId'] = $m[1];
+    require_once __DIR__ . '/routes/arco.php';
+    downloadReceipt();
     exit;
 }
 

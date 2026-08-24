@@ -544,16 +544,42 @@ class AgentWebSocket implements MessageComponentInterface {
             'enabled' => true,
         ]);
         
+        // Incluir también las BBDD conectadas desde el dashboard
+        $dashboardConns = $this->mongoFind('databases', [
+            'userId' => $from->userId,
+            'status' => 'connected',
+        ]);
+        
         $connections = [];
-        foreach ($dbConns as $conn) {
+        $seen = [];
+        foreach (array_merge($dbConns, $dashboardConns) as $conn) {
+            $engine = $conn['engine'] ?? $conn['type'] ?? '';
+            $host = $conn['host'] ?? '';
+            $port = (int)($conn['port'] ?? 0);
+            $database = $conn['database'] ?? '';
+            $username = $conn['username'] ?? $conn['user'] ?? '';
+            $password = $conn['password'] ?? '';
+            $ssl = (bool)($conn['ssl'] ?? false);
+            
+            // Normalizar tipo a motor del agente
+            if (in_array($engine, ['mariadb', 'mysql'])) {
+                $engine = 'mysql';
+            } elseif (in_array($engine, ['postgresql', 'postgres'])) {
+                $engine = 'postgres';
+            }
+            
+            $key = "$engine|$host|$port|$database|$username";
+            if (isset($seen[$key])) continue;
+            $seen[$key] = true;
+            
             $connections[] = [
-                'engine'   => $conn['engine'] ?? '',
-                'host'     => $conn['host'] ?? '',
-                'port'     => (int)($conn['port'] ?? 0),
-                'database' => $conn['database'] ?? '',
-                'username' => $conn['username'] ?? '',
-                'password' => $conn['password'] ?? '',
-                'ssl'      => (bool)($conn['ssl'] ?? false),
+                'engine'   => $engine,
+                'host'     => $host,
+                'port'     => $port,
+                'database' => $database,
+                'username' => $username,
+                'password' => $password,
+                'ssl'      => $ssl,
             ];
         }
         

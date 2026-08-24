@@ -336,6 +336,41 @@ $platforms = [
     </div>
 </div>
 
+<!-- Modal instalación Linux -->
+<div id="linux-install-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm items-center justify-center z-50 p-4" onclick="if (event.target.id === 'linux-install-modal') closeLinuxInstallModal()">
+    <div class="bg-bg-panel border border-border-theme rounded-2xl w-full max-w-xl shadow-2xl">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-border-theme bg-bg-elevated/30 sticky top-0 z-10">
+            <h3 class="text-[14px] font-semibold text-white flex items-center gap-2">
+                <svg class="w-4 h-4 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                Instalar agente Linux
+            </h3>
+            <button onclick="closeLinuxInstallModal()" class="text-text-muted hover:text-white transition-colors p-1.5 rounded-lg hover:bg-bg-elevated">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="p-6 space-y-4">
+            <p class="text-[12px] text-text-subtle">Copia y ejecuta este comando en el servidor Linux. El script descarga el binario, lo instala en <code class="text-primary-400">/opt/securelab-agent</code>, crea el servicio systemd y lo inicia.</p>
+
+            <div class="relative">
+                <pre id="linux-install-command" class="w-full bg-bg-base border border-border-theme rounded-lg p-4 text-[11px] font-mono text-text-body overflow-x-auto whitespace-pre-wrap break-all"></pre>
+                <button onclick="copyLinuxInstallCommand()" class="absolute top-2 right-2 p-1.5 rounded-md bg-bg-elevated/80 border border-border-theme text-text-muted hover:text-white hover:border-primary-500 transition-all" title="Copiar comando">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                </button>
+            </div>
+
+            <p class="text-[10px] text-text-subtle">Requiere acceso root. El token del agente ya está incrustado en el script y la configuración.</p>
+
+            <div class="flex justify-end gap-2 pt-2">
+                <button onclick="closeLinuxInstallModal()" class="px-4 py-2 rounded-lg text-[12px] text-text-muted hover:bg-bg-elevated transition-all">Cerrar</button>
+                <a id="linux-install-script-link" href="#" target="_blank" class="px-4 py-2 rounded-lg text-[12px] bg-primary-600 hover:bg-primary-500 text-white transition-all inline-flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4 4m4-4v4m0 0H4m4 4h16a2 2 0 002-2V6a2 2 0 00-2-2H4a2 2 0 00-2 2v4a2 2 0 002 2h16a2 2 0 002-2V6a2 2 0 00-2-2H4a2 2 0 00-2 2v4a2 2 0 002 2z"/></svg>
+                    Descargar script
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 const SL_TOKEN = <?= json_encode($token) ?>;
 let AGENTS = <?= $combinedJson ?>;
@@ -586,14 +621,6 @@ function openAgentModal(idx) {
                     <span>Bloquear ahora</span>
                 </button>
                 `}
-
-                <div class="col-span-2 sm:col-span-2 flex gap-2">
-                    <input id="lock-minutes" type="number" min="1" max="480" value="5" class="w-16 input-premium text-center text-[12px]" title="Minutos" />
-                    <button onclick="agentAction('${agentId}','lock_timed',{minutes:Number(document.getElementById('lock-minutes').value)||5})" class="flex-1 control-btn bg-red-500/15 hover:bg-red-500/25 text-red-300 border-red-500/30">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                        <span>Bloqueo temporal</span>
-                    </button>
-                </div>
 
                 <button onclick="confirmPower('${agentId}','power_restart','¿Reiniciar el equipo?')" class="control-btn bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/30">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
@@ -1052,6 +1079,11 @@ function deleteAgent(agentId, hostname) {
 }
 
 async function downloadAgent(platform) {
+    if (platform === 'linux-x64') {
+        showLinuxInstallModal();
+        return;
+    }
+
     try {
         // 1. Crear deploy en el backend
         const deployRes = await fetch('/api-proxy.php?path=/api/agents/deploy', {
@@ -1121,6 +1153,53 @@ async function downloadInstaller() {
             alert('Error: ' + err.message);
         }
     }
+}
+
+async function showLinuxInstallModal() {
+    const modal = document.getElementById('linux-install-modal');
+    const box = document.getElementById('linux-install-command');
+    const link = document.getElementById('linux-install-script-link');
+    box.textContent = 'Generando comando de instalación...';
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+
+    try {
+        const res = await fetch('/api-proxy.php?path=/api/agents/install/linux', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SL_TOKEN },
+            body: JSON.stringify({ token: SL_TOKEN })
+        });
+        const data = await res.json();
+
+        if (data.success && data.command) {
+            box.textContent = data.command;
+            if (link) link.href = data.scriptUrl || '#';
+        } else {
+            box.textContent = 'Error: ' + (data.error || 'No se pudo generar el comando');
+        }
+    } catch (err) {
+        box.textContent = 'Error de red: ' + err.message;
+    }
+}
+
+function closeLinuxInstallModal() {
+    const modal = document.getElementById('linux-install-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+}
+
+function copyLinuxInstallCommand() {
+    const box = document.getElementById('linux-install-command');
+    if (!box || !box.textContent) return;
+    navigator.clipboard.writeText(box.textContent).then(() => {
+        if (typeof showToast === 'function') {
+            showToast('Comando copiado al portapapeles', 'success');
+        } else {
+            alert('Comando copiado');
+        }
+    }).catch(() => alert('No se pudo copiar'));
 }
 
 filterAgents(document.getElementById('agent-search').value);

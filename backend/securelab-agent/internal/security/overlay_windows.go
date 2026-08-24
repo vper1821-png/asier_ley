@@ -575,3 +575,11 @@ func removeLockdown() {
 	_ = os.Remove(wallpaperBackupFile())
 	overlayActive = false
 }
+
+// ensureOverlay re-spawns overlays en sesiones activas si es necesario.
+func ensureOverlay() {
+	if !IsLockdownActive() {
+		return
+	}
+	SpawnOverlayForAllSessions()
+}

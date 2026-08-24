@@ -56,13 +56,16 @@ if ($sessionToken) {
 }
 
 // Backend URL (direct local port 8080 for fast, reliable loopback)
-$backendBase = 'https://leysecurelab.sytes.net';
+$backendBase = 'http://127.0.0.1:8080';
 $url = $backendBase . $path;
 $url .= (str_contains($url, '?') ? '&' : '?') . http_build_query($query);
 
 $headersToSend = [
     'Accept: */*',
 ];
+if (!empty($_SERVER['HTTP_HOST'])) {
+    $headersToSend[] = 'Host: ' . $_SERVER['HTTP_HOST'];
+}
 if ($sessionToken) {
     $headersToSend[] = 'Authorization: Bearer ' . $sessionToken;
 }

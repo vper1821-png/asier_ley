@@ -392,7 +392,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const data = await res.json();
 
                 if (data.success) {
-                    window.location.href = '/arco-solicitud?success=1&requestId=' + encodeURIComponent(data.requestId);
+                    window.location.href = '/arco-solicitud?success=1&requestId=' + encodeURIComponent(data.requestId) + '&email=' + encodeURIComponent(email);
                 } else {
                     showError(data.error || 'Error al enviar la solicitud.');
                     submitBtn.disabled = false;
@@ -421,26 +421,56 @@ document.addEventListener('DOMContentLoaded', function() {
     // Check for success parameter
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('success') === '1') {
-        const requestId = urlParams.get('requestId');
-        // Show success message
+        const requestId = urlParams.get('requestId') || '';
+        const email = urlParams.get('email') || '';
+
+        // Build PDF receipt URL
+        const pdfUrl = requestId
+            ? ('<?= API_BASE_URL_BROWSER ?>/api/arco/requests/' + encodeURIComponent(requestId) + '/receipt?email=' + encodeURIComponent(email))
+            : '';
+
         const container = document.querySelector('.max-w-3xl');
         if (container) {
             container.innerHTML = `
-                <div class="glass-card p-8 text-center">
+                <div class="bg-bg-panel border border-border-theme rounded-xl p-8 text-center relative overflow-hidden shadow-2xl">
+                    <div class="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-emerald-500 to-primary-500"></div>
                     <div class="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto mb-4">
                         <svg class="w-8 h-8 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
                     </div>
                     <h2 class="text-2xl font-bold text-white mb-2">¡Solicitud enviada correctamente!</h2>
-                    <p class="text-text-muted mb-2">Tu solicitud ha sido registrada con el ID:</p>
-                    <p class="text-primary-400 font-mono text-xl mb-4">${requestId || 'N/A'}</p>
-                    <p class="text-sm text-text-muted">Recibirás una respuesta en tu email en un plazo máximo de 30 días hábiles.</p>
-                    <a href="/arco-solicitud" class="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] font-medium bg-primary-500/10 border border-primary-500/20 text-primary-400 hover:bg-primary-500/20 transition-all">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                        Nueva solicitud
-                    </a>
+                    <p class="text-text-muted mb-4">Tu solicitud ARCO ha sido registrada. Guarda tu número de referencia.</p>
+
+                    <div class="rounded-xl border border-border-theme bg-bg-base/60 p-5 mb-5 text-left">
+                        <p class="text-[10px] uppercase tracking-wider text-text-subtle mb-1">Número de referencia</p>
+                        <div class="flex items-center gap-2">
+                            <p id="arco-ref" class="text-primary-400 font-mono text-xl font-bold">${requestId || 'N/A'}</p>
+                            <button onclick="copyArcoRef()" title="Copiar referencia" class="p-1.5 rounded-md hover:bg-white/5 text-text-muted hover:text-white transition-colors">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                            </button>
+                        </div>
+                        <p class="text-[11px] text-text-subtle mt-2">Se ha enviado un comprobante a tu email. También puedes descargarlo ahora.</p>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+                        ${pdfUrl ? `<a href="${pdfUrl}" target="_blank" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-[12px] font-medium bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                            Descargar comprobante PDF
+                        </a>` : ''}
+                        <a href="/arco-solicitud" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-[12px] font-medium bg-primary-500/10 border border-primary-500/20 text-primary-400 hover:bg-primary-500/20 transition-all">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                            Nueva solicitud
+                        </a>
+                    </div>
+
+                    <p class="text-[11px] text-text-subtle mt-5">Recibirás una respuesta en tu email en un plazo máximo de 30 días hábiles.</p>
                 </div>
             `;
         }
+    }
+
+    function copyArcoRef() {
+        const ref = document.getElementById('arco-ref')?.textContent || '';
+        navigator.clipboard.writeText(ref).then(() => alert('Referencia copiada: ' + ref)).catch(() => {});
     }
 
     // Auto-formateo de RUT

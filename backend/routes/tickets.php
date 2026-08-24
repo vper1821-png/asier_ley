@@ -40,7 +40,20 @@ function create() {
             'content' => $description,
             'createdAt' => date('c'),
         ]],
+        'createdAt' => date('c'),
+        'updatedAt' => date('c'),
     ]);
+
+    $db->insertOne('notifications', [
+        'userId' => $user['_id'],
+        'type' => 'ticket',
+        'title' => 'Nuevo ticket creado: ' . $subject,
+        'message' => 'Has creado el ticket #' . ($ticket['_id'] ?? '') . '. Estado: abierto.',
+        'read' => false,
+        'createdAt' => date('c'),
+        'ticketId' => $ticket['_id'] ?? '',
+    ]);
+
     json_response(['success' => true, 'ticket' => $ticket]);
 }
 
@@ -95,6 +108,19 @@ function status() {
     if ($ticket['userId'] !== $user['_id'] && !isAdmin($user)) json_error('acceso denegado', 403);
 
     $db->updateOne('tickets', ['_id' => $id], ['status' => $status, 'updatedAt' => date('c')]);
+
+    if (!empty($ticket['userId'])) {
+        $db->insertOne('notifications', [
+            'userId' => $ticket['userId'],
+            'type' => 'ticket',
+            'title' => 'Estado de ticket actualizado',
+            'message' => 'El ticket "' . ($ticket['subject'] ?? '') . '" cambió a: ' . $status,
+            'read' => false,
+            'createdAt' => date('c'),
+            'ticketId' => $id,
+        ]);
+    }
+
     json_response(['success' => true]);
 }
 
@@ -118,6 +144,19 @@ function respond() {
         'createdAt' => date('c'),
     ];
     $db->updateOne('tickets', ['_id' => $id], ['messages' => $messages, 'status' => 'in_progress', 'updatedAt' => date('c')]);
+
+    if (!empty($ticket['userId'])) {
+        $db->insertOne('notifications', [
+            'userId' => $ticket['userId'],
+            'type' => 'ticket',
+            'title' => 'Nueva respuesta en tu ticket',
+            'message' => ($agentName) . ' respondió a "' . ($ticket['subject'] ?? '') . '"',
+            'read' => false,
+            'createdAt' => date('c'),
+            'ticketId' => $id,
+        ]);
+    }
+
     json_response(['success' => true]);
 }
 
@@ -133,6 +172,19 @@ function close() {
     if ($ticket['userId'] !== $user['_id'] && !isAdmin($user)) json_error('acceso denegado', 403);
 
     $db->updateOne('tickets', ['_id' => $id], ['status' => 'closed', 'updatedAt' => date('c')]);
+
+    if (!empty($ticket['userId'])) {
+        $db->insertOne('notifications', [
+            'userId' => $ticket['userId'],
+            'type' => 'ticket',
+            'title' => 'Ticket cerrado',
+            'message' => 'El ticket "' . ($ticket['subject'] ?? '') . '" ha sido cerrado.',
+            'read' => false,
+            'createdAt' => date('c'),
+            'ticketId' => $id,
+        ]);
+    }
+
     json_response(['success' => true]);
 }
 

@@ -224,25 +224,21 @@ func applyLockdown(message string, silent bool) {
 		message = "ESTE EQUIPO ESTA BLOQUEADO POR SEGURIDAD"
 	}
 
-	// 1. Save and change wallpaper
-	saveWallpaper()
-	setLockdownWallpaper()
-
-	// 2. Block all network traffic
+	// 1. Block all network traffic
 	execCommand("iptables", "-P", "INPUT", "DROP")
 	execCommand("iptables", "-P", "FORWARD", "DROP")
 	execCommand("iptables", "-P", "OUTPUT", "DROP")
 
-	// 3. Block input devices
+	// 2. Block input devices
 	saveAndDisableInputDevices()
 
-	// 4. Show fullscreen overlay
+	// 3. Show fullscreen overlay
 	startOverlay(message)
 
-	// 5. Block shutdown/restart via systemd
+	// 4. Block shutdown/restart via systemd
 	execCommand("systemctl", "mask", "--now", "reboot.target", "poweroff.target", "halt.target", "shutdown.target")
 
-	// 6. Write lockdown state file for persistence
+	// 5. Write lockdown state file for persistence
 	stateData, _ := json.Marshal(map[string]interface{}{
 		"message": message,
 		"since":   time.Now().UTC().Format(time.RFC3339),
@@ -271,13 +267,10 @@ func removeLockdown() {
 	// 3. Stop overlay
 	stopOverlay()
 
-	// 4. Restore wallpaper
-	restoreWallpaper()
-
-	// 5. Re-enable shutdown
+	// 4. Re-enable shutdown
 	execCommand("systemctl", "unmask", "reboot.target", "poweroff.target", "halt.target", "shutdown.target")
 
-	// 6. Cleanup state
+	// 5. Cleanup state
 	os.Remove(filepath.Join(agentDir(), ".securelab-lockdown-state"))
 	os.Remove(wallpaperBackupFile())
 
@@ -305,6 +298,14 @@ func IsServiceSession() bool      { return os.Getuid() == 0 }
 func IsServiceProcess() bool      { return IsServiceSession() }
 func SpawnOverlayForAllSessions() {}
 func KillOverlayProcesses()       {}
+
+func ensureOverlay() {
+	if !IsLockdownActive() || linuxOverlayActive {
+		return
+	}
+	st := readState()
+	applyLockdown(st.Message, st.Silent)
+}
 
 // RunOverlayUI runs the visual lockdown in the current interactive session (Linux).
 func RunOverlayUI() {

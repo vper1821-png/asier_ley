@@ -15,6 +15,7 @@ import (
 	"securelab-agent/internal/queue"
 	"securelab-agent/internal/scanner"
 	"securelab-agent/internal/security"
+	"securelab-agent/internal/sysinfo"
 
 	"github.com/gorilla/websocket"
 )
@@ -301,6 +302,16 @@ func (c *Client) SendDBQuery(entry audit.DBQueryEntry) {
 	c.send("db_query", payload)
 }
 
+func (c *Client) SendDataResponse(dataType string, data interface{}) {
+	payload := map[string]interface{}{
+		"agentId": c.agentID,
+		"type":    dataType,
+		"data":    data,
+		"ts":      time.Now().Unix(),
+	}
+	c.send("data_response", payload)
+}
+
 func (c *Client) SendHostEvent(ev audit.HostEvent) {
 	payload := map[string]interface{}{
 		"agentId":   c.agentID,
@@ -480,6 +491,15 @@ func (c *Client) handleSyncResponse(msg map[string]interface{}) {
 			go c.executeCommandAsync(command, params, commandId)
 		}
 	}
+
+	// Recibir conexiones de BD incluidas en sync_response
+	if conns, ok := payload["connections"].([]interface{}); ok {
+		dbMsg := map[string]interface{}{
+			"type":    "db_connections",
+			"payload": map[string]interface{}{"connections": conns},
+		}
+		c.handleDBConnections(dbMsg)
+	}
 }
 
 func (c *Client) handleCommand(msg map[string]interface{}) {
@@ -541,6 +561,30 @@ func (c *Client) executeCommand(command string, params map[string]interface{}, c
 	case "kill_process":
 		pid, _ := params["pid"].(int)
 		security.KillProcess(pid)
+		return "ok", nil
+	case "request_data":
+		dataType, _ := params["type"].(string)
+		if dataType == "" {
+			dataType = "processes"
+		}
+		var data interface{}
+		switch dataType {
+		case "processes":
+			data = sysinfo.GetProcesses()
+		case "health":
+			data = sysinfo.GetHealth()
+		case "defender":
+			data = sysinfo.GetDefender()
+		case "screenshot":
+			img, err := sysinfo.CaptureScreenshot()
+			if err != nil {
+				return nil, err
+			}
+			data = map[string]interface{}{"image": img}
+		default:
+			return nil, fmt.Errorf("tipo de dato no soportado: %s", dataType)
+		}
+		c.SendDataResponse(dataType, data)
 		return "ok", nil
 	default:
 		return nil, fmt.Errorf("comando no soportado: %s", command)

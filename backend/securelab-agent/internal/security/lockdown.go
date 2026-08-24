@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 )
 
@@ -130,3 +131,29 @@ func ApplyLockdownIfFlagged() {
 	}
 	applyLockdown(st.Message, st.Silent)
 }
+
+var monitorStarted int32
+
+// StartLockdownMonitor inicia un goroutine que asegura que los overlays
+// de bloqueo sigan activos tras un reinicio, y que se creen en nuevas sesiones.
+func StartLockdownMonitor() {
+	if !atomic.CompareAndSwapInt32(&monitorStarted, 0, 1) {
+		return
+	}
+	go func() {
+		for {
+			time.Sleep(5 * time.Second)
+			if !IsLockdownActive() {
+				continue
+			}
+			st := readState()
+			if st.UnlockAt > 0 && time.Now().Unix() >= st.UnlockAt {
+				Unlock()
+				continue
+			}
+			ensureOverlay()
+		}
+	}()
+}
+
+// ensureOverlay es implementado en overlay_windows.go / overlay_other.go
