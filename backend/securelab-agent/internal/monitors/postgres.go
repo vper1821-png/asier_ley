@@ -16,17 +16,19 @@ import (
 )
 
 type PostgresMonitor struct {
-	mu         sync.RWMutex
-	db         *sql.DB
-	conn       DBConnection
-	connected  bool
-	store      *audit.Store
-	wsClient   *ws.Client
-	piiScanner *scanner.PIIScanner
-	log        *logger.Logger
-	wg         sync.WaitGroup
-	ctx        context.Context
-	cancel     context.CancelFunc
+	mu                 sync.RWMutex
+	db                 *sql.DB
+	conn               DBConnection
+	connected          bool
+	store              *audit.Store
+	wsClient           *ws.Client
+	piiScanner         *scanner.PIIScanner
+	log                *logger.Logger
+	wg                 sync.WaitGroup
+	ctx                context.Context
+	cancel             context.CancelFunc
+	lastCheckTime      time.Time
+	pgStatEnabled     bool
 }
 
 func NewPostgresMonitor(store *audit.Store, wsClient *ws.Client, piiScanner *scanner.PIIScanner, log *logger.Logger) *PostgresMonitor {
@@ -45,6 +47,8 @@ func (m *PostgresMonitor) SetConnection(conn DBConnection) {
 	defer m.mu.Unlock()
 	m.conn = conn
 	m.connected = false
+	m.pgStatEnabled = false
+	m.lastCheckTime = time.Time{}
 	if m.db != nil {
 		m.db.Close()
 		m.db = nil
@@ -76,6 +80,16 @@ func (m *PostgresMonitor) Start(ctx context.Context) error {
 	m.ctx, m.cancel = context.WithCancel(ctx)
 	m.mu.Unlock()
 	m.log.Info("PostgreSQL monitor conectado a %s:%d", m.conn.Host, m.conn.Port)
+
+	// Intentar habilitar pg_stat_statements para captura de historial
+	if _, err := db.Exec("CREATE EXTENSION IF NOT EXISTS pg_stat_statements"); err == nil {
+		m.log.Info("PostgreSQL: pg_stat_statements habilitado para captura de historial")
+		m.mu.Lock()
+		m.pgStatEnabled = true
+		m.mu.Unlock()
+	} else {
+		m.log.Warn("PostgreSQL: no se pudo habilitar pg_stat_statements: %v", err)
+	}
 
 	m.wg.Add(1)
 	go m.loop()
@@ -112,6 +126,12 @@ func (m *PostgresMonitor) checkActivity() {
 	}
 	m.mu.RUnlock()
 
+	// Primero intentar usar pg_stat_statements para historial
+	if m.pgStatEnabled {
+		m.checkPgStatStatements(db)
+	}
+
+	// Luego consultar pg_stat_activity para consultas activas
 	rows, err := db.Query(`
 		SELECT pid, usename, client_addr, query, query_start
 		FROM pg_stat_activity
@@ -149,6 +169,75 @@ func (m *PostgresMonitor) checkActivity() {
 	if err := rows.Err(); err != nil {
 		m.log.Warn("PostgreSQL: error al iterar pg_stat_activity: %v", err)
 	}
+}
+
+func (m *PostgresMonitor) checkPgStatStatements(db *sql.DB) {
+	m.mu.RLock()
+	last := m.lastCheckTime
+	m.mu.RUnlock()
+
+	start := time.Now()
+	since := last
+	if since.IsZero() {
+		// Primera vez: leer últimos 5 minutos
+		since = start.Add(-5 * time.Minute)
+	}
+
+	// Consultar pg_stat_statements para historial de consultas
+	query := `
+		SELECT s.query, s.calls, s.total_exec_time, u.usename, d.datname
+		FROM pg_stat_statements s
+		JOIN pg_user u ON s.userid = u.usesysid
+		JOIN pg_database d ON s.dbid = d.oid
+		WHERE s.query != '<insufficient privilege>'
+		ORDER BY s.calls DESC
+		LIMIT 100
+	`
+	rows, err := db.Query(query)
+	if err != nil {
+		m.log.Warn("PostgreSQL: error en pg_stat_statements: %v", err)
+		m.mu.Lock()
+		m.pgStatEnabled = false
+		m.mu.Unlock()
+		return
+	}
+	defer rows.Close()
+
+	count := 0
+	for rows.Next() {
+		var queryText, userName, dbName string
+		var calls int64
+		var totalTime float64
+		if err := rows.Scan(&queryText, &calls, &totalTime, &userName, &dbName); err != nil {
+			continue
+		}
+		if queryText == "" {
+			continue
+		}
+		entry := audit.DBQueryEntry{
+			Timestamp: time.Now(),
+			Engine:    "postgres",
+			Database:  dbName,
+			User:      userName,
+			Host:      "",
+			Query:     queryText,
+			Operation: fmt.Sprintf("ejecuciones: %d, tiempo total: %.2fms", calls, totalTime),
+		}
+		reportDBQuery(m.store, m.wsClient, m.piiScanner, m.log, entry)
+		count++
+	}
+
+	if err := rows.Err(); err != nil {
+		m.log.Warn("PostgreSQL: error al iterar pg_stat_statements: %v", err)
+	}
+
+	if count > 0 {
+		m.mu.Lock()
+		m.lastCheckTime = start
+		m.mu.Unlock()
+	}
+
+	m.log.Debug("PostgreSQL: %d consultas enviadas desde pg_stat_statements", count)
 }
 
 func (m *PostgresMonitor) Stop() error {
