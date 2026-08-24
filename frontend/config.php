@@ -4,8 +4,8 @@ session_start();
 
 // API Base URL: backend local interno para llamadas PHP cURL rápidas
 define('API_BASE_URL', getenv('API_BASE_URL') ?: 'http://leysecurelab.sytes.net');
-define('API_BASE_URL_BROWSER', getenv('API_BASE_URL_BROWSER') ?: 'https://169.58.144.242');
-define('SITE_URL', getenv('SITE_URL') ?: 'https://169.58.144.242');
+define('API_BASE_URL_BROWSER', getenv('API_BASE_URL_BROWSER') ?: 'https://leysecurelab.sytes.net');
+define('SITE_URL', getenv('SITE_URL') ?: 'https://leysecurelab.sytes.net');
 define('SITE_NAME', 'SecureLab');
 define('SITE_SUBTITLE', 'Cumplimiento ley 21.719');
 define('TURNSTILE_SITE_KEY', getenv('TURNSTILE_SITE_KEY') ?: '');
