@@ -105,7 +105,7 @@ function arcoRut($r) {
         <div class="flex-1 overflow-hidden flex flex-col p-4 sm:p-6 min-h-0 space-y-4">
 
             <!-- KPI Cards -->
-            <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 flex-shrink-0">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 flex-shrink-0">
                 <div class="bg-bg-panel/70 border border-border-theme rounded-2xl p-3.5 backdrop-blur-md flex items-center justify-between">
                     <div>
                         <p class="text-[10px] uppercase font-semibold text-text-subtle tracking-wider">Total</p>

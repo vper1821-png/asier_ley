@@ -87,10 +87,12 @@ function stats() {
     $privacyPolicyComplete = !empty($config['privacyPolicyUrl']);
     // Consentimientos: debe haber consentimientos activos (no revocados)
     $consentsComplete = count(array_filter($consents, fn($c) => empty($c['revokedAt']))) > 0;
-    // Protocolo de Brechas: debe haber protocolo documentado o breaches resueltos
-    $breachProtocolComplete = count($breaches) > 0 || !empty($config['breachProtocolUrl']);
-    // Portal ARCO: siempre activo
-    $arcoComplete = true;
+    // Protocolo de Brechas: debe haber protocolo documentado O breaches resueltos (no solo abiertos)
+    $resolvedBreaches = count(array_filter($breaches, fn($b) => ($b['status'] ?? '') === 'resolved'));
+    $breachProtocolComplete = !empty($config['breachProtocolUrl']) || $resolvedBreaches > 0;
+    // Portal ARCO: debe haber solicitudes ARCO reales
+    $arcoRequests = $db->find('compliance_arco-requests', ['userId' => $user['_id']]);
+    $arcoComplete = count($arcoRequests) > 0;
     // Seudonimización: debe haber reglas ejecutadas
     $pseudonymizationComplete = count(array_filter($pseudoRules, fn($r) => ($r['status'] ?? '') === 'executed' || !empty($r['executed']))) > 0;
     // Plan de Respuesta a Incidentes: debe haber breaches resueltos o protocolo

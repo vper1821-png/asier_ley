@@ -600,5 +600,17 @@ if (preg_match('#^/api/invisia/compliance/.+$#', $uri) || preg_match('#^/api/com
     exit;
 }
 
+// DB Logs API
+if (preg_match('#^/api/db-logs$#', $uri)) {
+    require_once __DIR__ . '/routes/db-logs.php';
+    exit;
+}
+
+// Generate PDF for Incident Response Plan
+if (preg_match('#^/api/generate-incident-response-pdf$#', $uri) && $method === 'POST') {
+    require_once __DIR__ . '/generate-incident-response-pdf.php';
+    exit;
+}
+
 // 404
 json_error('Ruta no encontrada', 404);

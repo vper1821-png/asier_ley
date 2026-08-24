@@ -56,10 +56,15 @@ class Database {
     public function findOne($collection, $filter = []) {
         if ($this->useMongo) {
             $filter = $this->normalizeFilter($filter);
+            error_log("[DB] findOne on {$collection}: " . json_encode($filter));
             $result = $this->db->selectCollection($collection)->findOne($filter);
-            if (!$result) return null;
+            if (!$result) {
+                error_log("[DB] findOne result: null");
+                return null;
+            }
             $result = (array)$result;
             if (isset($result['_id'])) $result['_id'] = (string)$result['_id'];
+            error_log("[DB] findOne result: found document with _id=" . $result['_id']);
             return $result;
         }
         $data = $this->readCollection($collection);
@@ -76,6 +81,7 @@ class Database {
     public function find($collection, $filter = [], $options = []) {
         if ($this->useMongo) {
             $filter = $this->normalizeFilter($filter);
+            error_log("[DB] find on {$collection}: " . json_encode($filter) . " options: " . json_encode($options));
             $cursor = $this->db->selectCollection($collection)->find($filter, $options);
             $results = [];
             foreach ($cursor as $doc) {
@@ -83,6 +89,7 @@ class Database {
                 if (isset($doc['_id'])) $doc['_id'] = (string)$doc['_id'];
                 $results[] = $doc;
             }
+            error_log("[DB] find result: returned " . count($results) . " documents");
             return $results;
         }
         $data = $this->readCollection($collection);
@@ -114,6 +121,7 @@ class Database {
         $document['updatedAt'] = date('c');
 
         if ($this->useMongo) {
+            error_log("[DB] insertOne on {$collection}: " . json_encode($document, JSON_UNESCAPED_UNICODE));
             $idValue = $document['_id'] ?? $this->generateId();
             if (is_string($idValue) && preg_match('/^[0-9a-fA-F]{24}$/', $idValue)) {
                 $document['_id'] = new MongoDB\BSON\ObjectId($idValue);
@@ -122,6 +130,7 @@ class Database {
             }
             $result = $this->db->selectCollection($collection)->insertOne($document);
             $document['_id'] = (string)$result->getInsertedId();
+            error_log("[DB] insertOne result: insertedId=" . $document['_id']);
             return $document;
         }
         $data = $this->readCollection($collection);
@@ -157,7 +166,9 @@ class Database {
     public function deleteOne($collection, $filter) {
         if ($this->useMongo) {
             $filter = $this->normalizeFilter($filter);
-            $this->db->selectCollection($collection)->deleteOne($filter);
+            error_log("[DB] deleteOne on {$collection}: " . json_encode($filter));
+            $result = $this->db->selectCollection($collection)->deleteOne($filter);
+            error_log("[DB] deleteOne result: deletedCount=" . $result->getDeletedCount());
             return true;
         }
         $data = $this->readCollection($collection);
@@ -173,10 +184,34 @@ class Database {
         return true;
     }
 
+    public function deleteMany($collection, $filter) {
+        if ($this->useMongo) {
+            $filter = $this->normalizeFilter($filter);
+            error_log("[DB] deleteMany on {$collection}: " . json_encode($filter));
+            $result = $this->db->selectCollection($collection)->deleteMany($filter);
+            error_log("[DB] deleteMany result: deletedCount=" . $result->getDeletedCount());
+            return $result;
+        }
+        $data = $this->readCollection($collection);
+        $newData = [];
+        foreach ($data as $doc) {
+            $match = true;
+            foreach ($filter as $k => $v) {
+                if (!isset($doc[$k]) || $doc[$k] != $v) { $match = false; break; }
+            }
+            if (!$match) $newData[] = $doc;
+        }
+        $this->writeCollection($collection, $newData);
+        return ['deletedCount' => count($data) - count($newData)];
+    }
+
     public function count($collection, $filter = []) {
         if ($this->useMongo) {
             $filter = $this->normalizeFilter($filter);
-            return $this->db->selectCollection($collection)->countDocuments($filter);
+            error_log("[DB] count on {$collection}: " . json_encode($filter));
+            $count = $this->db->selectCollection($collection)->countDocuments($filter);
+            error_log("[DB] count result: {$count} documents");
+            return $count;
         }
         $data = $this->readCollection($collection);
         if (empty($filter)) return count($data);

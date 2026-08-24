@@ -253,8 +253,8 @@ $dpdObligations = [
 $breachTimeline = [
     ['time' => '0-3 horas', 'action' => 'Alerta temprana al CSIRT (Ley 21.663)', 'severity' => 'critical'],
     ['time' => 'Inmediato', 'action' => 'Contener la brecha (aislar sistemas, revocar accesos)', 'severity' => 'critical'],
-    ['time' => '24 horas', 'action' => 'Notificar a la APDP por medios expeditos (Art. 26)', 'severity' => 'high'],
-    ['time' => '48 horas', 'action' => 'Informar a los titulares si hay datos sensibles, niños o datos económicos', 'severity' => 'high'],
+    ['time' => 'Sin dilación indebida', 'action' => 'Notificar a la autoridad por los medios más expeditos posibles, según corresponda (Art. 14 sexies)', 'severity' => 'high'],
+    ['time' => 'Sin dilación indebida', 'action' => 'Informar a los titulares cuando la brecha pueda afectar sus derechos, especialmente ante datos sensibles, de niños o económicos', 'severity' => 'high'],
     ['time' => '72 horas', 'action' => 'Reporte completo al CSIRT con análisis forense', 'severity' => 'medium'],
     ['time' => '10 días', 'action' => 'Documentar completamente el incidente y las acciones tomadas', 'severity' => 'medium'],
     ['time' => '30 días', 'action' => 'Implementar medidas correctivas y actualizar el plan de respuesta', 'severity' => 'low'],
@@ -450,6 +450,14 @@ require_once __DIR__ . '/../includes/header.php';
                                     Completar
                                 </button>
                                 <?php endif; ?>
+
+                                <?php if ($item['id'] === 'incident_response'): ?>
+                                <button onclick="generateIncidentResponsePDF()"
+                                    class="text-[9px] px-2 py-0.5 rounded-md bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all font-medium whitespace-nowrap flex items-center gap-1">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                    PDF
+                                </button>
+                                <?php endif; ?>
                             </div>
                         </div>
                         <?php endforeach; ?>
@@ -615,204 +623,7 @@ require_once __DIR__ . '/../includes/header.php';
                         </div>
                     </div>
 
-                    <!-- Formulario de Protocolo de Brechas (Art. 26 Ley 21.719) -->
-                    <div class="rounded-xl border border-red-500/20 bg-red-500/[0.02] p-5 mb-5">
-                        <div class="flex items-center justify-between mb-4">
-                            <p class="text-[12px] font-semibold text-white flex items-center gap-2">
-                                <svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
-                                Documentar Protocolo de Brechas (Art. 26 Ley 21.719 + Ley 21.663)
-                            </p>
-                        </div>
-
-                        <form method="POST" class="space-y-4">
-                            <input type="hidden" name="save_breach_protocol" value="1">
-
-                            <!-- Información del protocolo -->
-                            <fieldset class="rounded-lg border border-red-500/20 bg-red-500/[0.02] p-4">
-                                <legend class="text-[11px] font-medium text-red-300 px-2">Identificación del Protocolo</legend>
-                                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                    <div>
-                                        <label class="label-premium">Versión del documento *</label>
-                                        <input name="protocolVersion" value="<?= h($config['breachProtocolVersion'] ?? '1.0') ?>" required placeholder="Ej: 2.1" class="input-premium w-full">
-                                    </div>
-                                    <div>
-                                        <label class="label-premium">Fecha versión *</label>
-                                        <input name="protocolDate" value="<?= h($config['breachProtocolDate'] ?? date('Y-m-d')) ?>" required type="date" class="input-premium w-full">
-                                    </div>
-                                    <div>
-                                        <label class="label-premium">Responsable *</label>
-                                        <input name="protocolOwner" value="<?= h($config['breachProtocolOwner'] ?? $config['dpdName'] ?? '') ?>" required placeholder="DPD / CISO / Jefe Seguridad" class="input-premium w-full">
-                                    </div>
-                                </div>
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                                    <div>
-                                        <label class="label-premium">Aprobado por</label>
-                                        <input name="protocolApprovedBy" value="<?= h($config['breachProtocolApprovedBy'] ?? '') ?>" placeholder="Director General / Comité Seguridad" class="input-premium w-full">
-                                    </div>
-                                    <div>
-                                        <label class="label-premium">Fecha próxima revisión</label>
-                                        <input name="protocolNextReview" value="<?= h($config['breachProtocolNextReview'] ?? date('Y-m-d', strtotime('+1 year'))) ?>" type="date" class="input-premium w-full">
-                                    </div>
-                                </div>
-                            </fieldset>
-
-                            <!-- Equipo de respuesta -->
-                            <fieldset class="rounded-lg border border-amber-500/20 bg-amber-500/[0.02] p-4">
-                                <legend class="text-[11px] font-medium text-amber-300 px-2">Equipo de Respuesta a Incidentes (CSIRT Interno)</legend>
-                                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                    <div>
-                                        <label class="label-premium">Líder de respuesta</label>
-                                        <input name="incidentLeader" value="<?= h($config['incidentLeader'] ?? '') ?>" placeholder="Nombre / Cargo" class="input-premium w-full">
-                                    </div>
-                                    <div>
-                                        <label class="label-premium">Contacto líder (24/7)</label>
-                                        <input name="incidentLeaderContact" value="<?= h($config['incidentLeaderContact'] ?? '') ?>" placeholder="+56 9 XXXX XXXX / email" class="input-premium w-full">
-                                    </div>
-                                    <div>
-                                        <label class="label-premium">Tamaño equipo</label>
-                                        <select name="teamSize" class="input-premium w-full">
-                                            <option value="1-3" <?= ($config['teamSize'] ?? '') === '1-3' ? 'selected' : '' ?>>1-3 personas</option>
-                                            <option value="4-10" <?= ($config['teamSize'] ?? '') === '4-10' ? 'selected' : '' ?>>4-10 personas</option>
-                                            <option value="10+" <?= ($config['teamSize'] ?? '') === '10+' ? 'selected' : '' ?>>Más de 10</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
-                                    <div>
-                                        <label class="label-premium">Miembros (RUT, Nombre, Rol, Contacto)</label>
-                                        <textarea name="teamMembers" rows="3" class="input-premium w-full" placeholder="12.345.678-9, Juan Pérez, Líder técnico, +56 9 1234 5678&#10;98.765.432-1, María González, Legal, +56 9 8765 4321"></textarea>
-                                    </div>
-                                    <div>
-                                        <label class="label-premium">Contactos externos clave</label>
-                                        <textarea name="externalContacts" rows="3" class="input-premium w-full" placeholder="APDP: +56 2 XXXX XXXX / dpd@apdp.gob.cl&#10;CSIRT: +56 2 XXXX XXXX / csirt@gob.cl&#10;Fiscalía: +56 2 XXXX XXXX&#10;Proveedor forense: Empresa X - +56 9 XXXX XXXX"></textarea>
-                                    </div>
-                                    <div>
-                                        <label class="label-premium">Canales de comunicación internos</label>
-                                        <select name="commChannels[]" multiple class="input-premium w-full" size="4">
-                                            <option value="slack" <?= in_array('slack', $config['commChannels'] ?? []) ? 'selected' : '' ?>>Slack / Teams (canal #incidentes)</option>
-                                            <option value="email" <?= in_array('email', $config['commChannels'] ?? []) ? 'selected' : '' ?>>Email dedicado (seguridad@empresa.cl)</option>
-                                            <option value="telefono" <?= in_array('telefono', $config['commChannels'] ?? []) ? 'selected' : '' ?>>Teléfono 24/7 (línea directa)</option>
-                                            <option value="sms" <?= in_array('sms', $config['commChannels'] ?? []) ? 'selected' : '' ?>>SMS masivo</option>
-                                            <option value="web" <?= in_array('web', $config['commChannels'] ?? []) ? 'selected' : '' ?>>Intranet / Portal empleados</option>
-                                        </select>
-                                    </div>
-                                </div>
-                            </fieldset>
-
-                            <!-- Procedimientos de detección y clasificación -->
-                            <fieldset class="rounded-lg border border-blue-500/20 bg-blue-500/[0.02] p-4">
-                                <legend class="text-[11px] font-medium text-blue-300 px-2">Detección y Clasificación (Art. 26.1-2)</legend>
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    <div>
-                                        <label class="label-premium">Fuentes de detección</label>
-                                        <select name="detectionSources[]" multiple class="input-premium w-full" size="5">
-                                            <option value="siem" <?= in_array('siem', $config['detectionSources'] ?? []) ? 'selected' : '' ?>>SIEM / Correlación de logs</option>
-                                            <option value="dlp" <?= in_array('dlp', $config['detectionSources'] ?? []) ? 'selected' : '' ?>>DLP (Data Loss Prevention)</option>
-                                            <option value="ids_ips" <?= in_array('ids_ips', $config['detectionSources'] ?? []) ? 'selected' : '' ?>>IDS/IPS</option>
-                                            <option value="report_interno" <?= in_array('report_interno', $config['detectionSources'] ?? []) ? 'selected' : '' ?>>Reporte interno (empleado/tercero)</option>
-                                            <option value="report_externo" <?= in_array('report_externo', $config['detectionSources'] ?? []) ? 'selected' : '' ?>>Reporte externo (cliente/proveedor/autoridad)</option>
-                                            <option value="monitoreo_darkweb" <?= in_array('monitoreo_darkweb', $config['detectionSources'] ?? []) ? 'selected' : '' ?>>Monitoreo Dark Web</option>
-                                            <option value="auditoria" <?= in_array('auditoria', $config['detectionSources'] ?? []) ? 'selected' : '' ?>>Auditoría / Pentest</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label class="label-premium">Criterios de clasificación</label>
-                                        <textarea name="classificationCriteria" rows="3" class="input-premium w-full" placeholder="Definir criterios para: Crítica (datos sensibles+niños), Alta (datos sensibles), Media (datos personales), Baja (sin datos personales). Considerar: volumen, sensibilidad, probabilidad daño, obligación legal."></textarea>
-                                    </div>
-                                </div>
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                                    <div>
-                                        <label class="label-premium">SLA detección → notificación interna</label>
-                                        <input name="slaInternalNotification" value="<?= h($config['slaInternalNotification'] ?? '1 hora') ?>" placeholder="Ej: 1 hora" class="input-premium w-full">
-                                    </div>
-                                    <div>
-                                        <label class="label-premium">SLA clasificación → respuesta</label>
-                                        <input name="slaClassification" value="<?= h($config['slaClassification'] ?? '4 horas') ?>" placeholder="Ej: 4 horas" class="input-premium w-full">
-                                    </div>
-                                </div>
-                            </fieldset>
-
-                            <!-- Notificaciones obligatorias -->
-                            <fieldset class="rounded-lg border border-purple-500/20 bg-purple-500/[0.02] p-4">
-                                <legend class="text-[11px] font-medium text-purple-300 px-2">Notificaciones Obligatorias (Art. 26 Ley 21.719 + Ley 21.663)</legend>
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    <div>
-                                        <label class="label-premium">Notificación APDP (Art. 26)</label>
-                                        <textarea name="apdpNotificationProc" rows="3" class="input-premium w-full" placeholder="Procedimiento: canal (portal APDP/email), formato, información mínima (naturaleza, categorías, nº titulares, consecuencias, medidas), plazos (sin dilación indebida, máx 72h), responsable."></textarea>
-                                    </div>
-                                    <div>
-                                        <label class="label-premium">Notificación Titulares (Art. 26.4)</label>
-                                        <textarea name="subjectsNotificationProc" rows="3" class="input-premium w-full" placeholder="Cuándo: si riesgo alto para derechos. Cómo: email directo, carta certificada, web, medios. Qué: naturaleza, medidas, contacto DPD, derechos. Idioma: español claro."></textarea>
-                                    </div>
-                                </div>
-                                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
-                                    <div>
-                                        <label class="label-premium">Notificación CSIRT (Ley 21.663)</label>
-                                        <textarea name="csirtNotificationProc" rows="3" class="input-premium w-full" placeholder="Alerta temprana 3h → reporte completo 72h. Canal: portal CSIRT. Información: taxonomía incidente, impacto, acciones, indicadores compromiso (IoC)."></textarea>
-                                    </div>
-                                    <div>
-                                        <label class="label-premium">Otras notificaciones (Fiscalía, reguladores sectoriales)</label>
-                                        <textarea name="otherNotifications" rows="3" class="input-premium w-full" placeholder="Fiscalía si delito informático. CMF si entidad financiera. SSI si salud. SBIF si bancario. Contraloría si público."></textarea>
-                                    </div>
-                                    <div>
-                                        <label class="label-premium">Plantillas de notificación</label>
-                                        <input name="notificationTemplatesUrl" value="<?= h($config['notificationTemplatesUrl'] ?? '') ?>" placeholder="https://drive.empresa.cl/breach-templates" class="input-premium w-full">
-                                    </div>
-                                </div>
-                            </fieldset>
-
-                            <!-- Contención, investigación, recuperación -->
-                            <fieldset class="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.02] p-4">
-                                <legend class="text-[11px] font-medium text-emerald-300 px-2">Contención, Investigación y Recuperación</legend>
-                                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                    <div>
-                                        <label class="label-premium">Acciones de contención inmediata</label>
-                                        <textarea name="containmentActions" rows="3" class="input-premium w-full" placeholder="Aislar sistemas, revocar credenciales, bloquear IPs, activar WAF/IPS, desconectar segmentos red, activar backups inmutables."></textarea>
-                                    </div>
-                                    <div>
-                                        <label class="label-premium">Investigación forense</label>
-                                        <textarea name="forensicProc" rows="3" class="input-premium w-full" placeholder="Preservación evidencia (cadena custodia), análisis logs, IOCs, alcance real, atribución. Proveedor forense externo: SÍ/NO."></textarea>
-                                    </div>
-                                    <div>
-                                        <label class="label-premium">Recuperación y restauración</label>
-                                        <textarea name="recoveryProc" rows="3" class="input-premium w-full" placeholder="Restaurar desde backups verificados, validar integridad, monitoreo post-incidente, retorno gradual a producción."></textarea>
-                                    </div>
-                                </div>
-                            </fieldset>
-
-                            <!-- Post-incidente y mejora continua -->
-                            <fieldset class="rounded-lg border border-indigo-500/20 bg-indigo-500/[0.02] p-4">
-                                <legend class="text-[11px] font-medium text-indigo-300 px-2">Post-Incidente y Mejora Continua (Art. 26.5)</legend>
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    <div>
-                                        <label class="label-premium">Análisis causa raíz (RCA)</label>
-                                        <textarea name="rcaProc" rows="3" class="input-premium w-full" placeholder="Metodología (5 Whys, Ishikawa, Fault Tree), responsable, plazo (30 días), hallazgos, acciones correctivas."></textarea>
-                                    </div>
-                                    <div>
-                                        <label class="label-premium">Actualización de medidas (Art. 25)</label>
-                                        <textarea name="measuresUpdate" rows="3" class="input-premium w-full" placeholder="Revisar y actualizar: políticas, controles técnicos, capacitación, RAT, EIPD. Registrar en endurecimiento (Hardening)."></textarea>
-                                    </div>
-                                </div>
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                                    <div>
-                                        <label class="label-premium">Reporte de lecciones aprendidas</label>
-                                        <textarea name="lessonsLearned" rows="3" class="input-premium w-full" placeholder="Documento interno: qué pasó, por qué, qué se hizo bien, qué mejorar, indicadores (MTTD, MTTR, MTTC). Compartir con dirección."></textarea>
-                                    </div>
-                                    <div>
-                                        <label class="label-premium">Fecha último simulacro (Drill)</label>
-                                        <input name="lastDrillDate" value="<?= h($config['lastDrillDate'] ?? '') ?>" type="date" class="input-premium w-full">
-                                    </div>
-                                </div>
-                            </fieldset>
-
-                            <div class="flex justify-end gap-2 pt-2 border-t border-border-theme">
-                                <button type="submit" class="px-5 py-2.5 text-[12px] font-semibold rounded-lg bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white transition-all flex items-center gap-2">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                                    Guardar Protocolo de Brechas (Art. 26 + Ley 21.663)
-                                </button>
-                            </div>
-                        </form>
-                    </div>
+                    
 
                     <!-- Referencia legal rápida -->
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1034,7 +845,7 @@ require_once __DIR__ . '/../includes/header.php';
                             <p class="text-[10px] text-text-muted mt-0.5">Implementar medida de seguridad técnica/organizativa — Art. 25 Ley 21.719</p>
                         </div>
                     </div>
-                    <button onclick="document.getElementById('measure-modal').classList.add('hidden')" class="text-text-muted hover:text-text-heading transition-colors p-1 hover:bg-bg-elevated rounded-lg flex-shrink-0"><?= hIcon('xmark') ?></button>
+                    <button onclick="closeMeasureModal()" class="text-text-muted hover:text-text-heading transition-colors p-1 hover:bg-bg-elevated rounded-lg flex-shrink-0"><?= hIcon('xmark') ?></button>
                 </div>
                 <form method="POST" class="p-5 space-y-4">
                     <input type="hidden" name="measure_id" id="measure-modal-id">
@@ -1044,6 +855,37 @@ require_once __DIR__ . '/../includes/header.php';
 
                     <div class="space-y-3" id="measure-modal-fields">
                         <p class="text-[10px] font-semibold text-text-subtle uppercase tracking-widest">Detalles de la implementación</p>
+                        
+                        <!-- Campos estáticos para incident_response -->
+                        <div id="incident-response-fields" class="hidden space-y-3">
+                            <div>
+                                <label class="block text-[10px] text-text-muted font-semibold uppercase tracking-widest mb-1.5">Estado del plan</label>
+                                <select name="field_planStatus" class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all">
+                                    <option value="">Seleccionar...</option>
+                                    <option value="Documentado y probado">Documentado y probado</option>
+                                    <option value="Documentado sin probar">Documentado sin probar</option>
+                                    <option value="En desarrollo">En desarrollo</option>
+                                    <option value="No existe">No existe</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-text-muted font-semibold uppercase tracking-widest mb-1.5">Fecha último simulacro (drill)</label>
+                                <input type="date" name="field_lastDrill" class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-text-muted font-semibold uppercase tracking-widest mb-1.5">Tamaño del equipo de respuesta</label>
+                                <select name="field_teamSize" class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all">
+                                    <option value="">Seleccionar...</option>
+                                    <option value="1-3 personas">1-3 personas</option>
+                                    <option value="4-10 personas">4-10 personas</option>
+                                    <option value="Más de 10">Más de 10</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-text-muted font-semibold uppercase tracking-widest mb-1.5">URL del plan de respuesta a incidentes</label>
+                                <input type="url" name="field_evidenceUrl" placeholder="https://empresa.cl/plan-incidentes" class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all">
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Evidencia y validación -->
@@ -1128,7 +970,7 @@ require_once __DIR__ . '/../includes/header.php';
                     </fieldset>
 
                     <div class="flex justify-end gap-2 pt-2 border-t border-border-theme">
-                        <button type="button" onclick="document.getElementById('measure-modal').classList.add('hidden')"
+                        <button type="button" onclick="closeMeasureModal()"
                             class="px-4 py-2 text-[11px] font-medium rounded-lg bg-bg-elevated text-text-body border border-border-theme transition-all">Cancelar</button>
                         <button type="submit" name="save_measure" value="1"
                             class="px-5 py-2.5 text-[12px] font-semibold rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white transition-all flex items-center gap-2">
@@ -1150,6 +992,22 @@ require_once __DIR__ . '/../includes/header.php';
             document.getElementById('measure-modal-title').textContent = def.label;
             document.getElementById('measure-modal-desc').textContent = def.desc;
             const wrap = document.getElementById('measure-modal-fields');
+            
+            // Para incident_response, mostrar campos estáticos
+            if (id === 'incident_response') {
+                const staticFields = document.getElementById('incident-response-fields');
+                staticFields.classList.remove('hidden');
+                // Ocultar título dinámico
+                wrap.querySelector('p').classList.add('hidden');
+                document.getElementById('measure-modal').classList.remove('hidden');
+                return;
+            }
+            
+            // Para otras medidas, ocultar campos estáticos y generar campos dinámicos
+            const staticFields = document.getElementById('incident-response-fields');
+            staticFields.classList.add('hidden');
+            wrap.querySelector('p').classList.remove('hidden');
+            
             wrap.innerHTML = '<p class="text-[10px] font-semibold text-text-subtle uppercase tracking-widest">Detalles de la implementacion</p>';
             def.fields.forEach(f => {
                 const div = document.createElement('div');
@@ -1169,6 +1027,13 @@ require_once __DIR__ . '/../includes/header.php';
                 wrap.appendChild(div);
             });
             document.getElementById('measure-modal').classList.remove('hidden');
+        }
+
+        function closeMeasureModal() {
+            document.getElementById('measure-modal').classList.add('hidden');
+            // Ocultar campos estáticos de incident_response
+            const staticFields = document.getElementById('incident-response-fields');
+            staticFields.classList.add('hidden');
         }
 
         // Auto-formateo de RUT
@@ -1199,6 +1064,45 @@ require_once __DIR__ . '/../includes/header.php';
                 });
             }
         });
+
+        // Generar PDF del Plan de Respuesta a Incidentes
+        function generateIncidentResponsePDF() {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                alert('No hay sesión activa');
+                return;
+            }
+
+            fetch('/api/generate-incident-response-pdf', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
+                body: JSON.stringify({ token: token })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    if (data.pdfUrl) {
+                        window.open(data.pdfUrl, '_blank');
+                    } else if (data.html) {
+                        // Si no se puede generar PDF, abrir HTML en nueva ventana para impresión
+                        const printWindow = window.open('', '_blank');
+                        printWindow.document.write(data.html);
+                        printWindow.document.close();
+                        printWindow.onload = function() {
+                            printWindow.print();
+                        };
+                    }
+                } else {
+                    alert('Error al generar PDF: ' + (data.error || 'Error desconocido'));
+                }
+            })
+            .catch(error => {
+                alert('Error al generar PDF: ' + error.message);
+            });
+        }
         </script>
     </main>
 </div>

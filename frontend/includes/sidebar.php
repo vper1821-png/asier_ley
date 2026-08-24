@@ -190,7 +190,49 @@ $checklistItems = $checklistRes['checklist'] ?? [];
 
 </aside>
 
+<div id="mobile-nav-backdrop" class="mobile-nav-backdrop" onclick="closeMobileNav()"></div>
+<aside id="mobile-nav-drawer" class="mobile-nav-drawer" aria-hidden="true">
+    <div class="flex items-center gap-3 px-4 py-4 border-b border-border-theme">
+        <div class="w-9 h-9 rounded-xl bg-bg-panel border border-border-theme overflow-hidden flex-shrink-0"><img src="/logo-nuevo.png" alt="SecureLab" class="w-full h-full object-contain"></div>
+        <div class="flex-1 min-w-0"><p class="text-sm font-semibold text-text-heading truncate">SecureLab</p><p class="text-[10px] text-text-subtle truncate">Centro de cumplimiento</p></div>
+        <button type="button" onclick="closeMobileNav()" class="w-9 h-9 rounded-xl border border-border-theme text-text-muted flex items-center justify-center" aria-label="Cerrar navegación"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+    </div>
+    <div class="mx-4 mt-4 p-3 rounded-xl border border-border-theme bg-bg-panel/70 flex items-center gap-3">
+        <div class="relative w-12 h-12 <?= $ringColor ?> flex-shrink-0"><svg class="w-full h-full -rotate-90" viewBox="0 0 48 48"><circle cx="24" cy="24" r="18" fill="none" stroke="currentColor" stroke-width="5" class="text-text-subtle opacity-20"/><circle cx="24" cy="24" r="18" fill="none" stroke="currentColor" stroke-width="5" stroke-dasharray="<?= $circ ?>" stroke-dashoffset="<?= $dashOffset ?>" stroke-linecap="round"/></svg><span class="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-text-heading"><?= $complianceScore ?>%</span></div>
+        <div><p class="text-[10px] uppercase tracking-wider text-text-subtle">Cumplimiento</p><p class="text-xs font-medium text-text-heading mt-0.5"><?= h($ringLabel) ?></p></div>
+    </div>
+    <nav class="flex-1 overflow-y-auto p-3 space-y-1">
+        <?php foreach ($navItems as $item): $hasPage = file_exists(__DIR__ . '/../pages/' . $item['id'] . '.php'); $href = ($item['id'] === 'dashboard' || $hasPage) ? '/' . $item['id'] : '/dashboard?tab=' . $item['id']; ?>
+        <a href="<?= h($href) ?>" class="mobile-nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl border <?= $currentPage === $item['id'] ? 'bg-primary-500/10 text-primary-400 border-primary-500/20' : 'text-text-muted border-transparent hover:bg-bg-elevated hover:text-text-heading' ?>">
+            <span class="w-5 flex justify-center"><?= navIcon($item['icon']) ?></span><span class="text-[13px] font-medium"><?= h($item['label']) ?></span>
+        </a>
+        <?php endforeach; ?>
+    </nav>
+    <div class="p-3 border-t border-border-theme safe-bottom grid grid-cols-2 gap-2">
+        <button type="button" onclick="toggleThemePopup();closeMobileNav()" class="px-3 py-2.5 rounded-xl border border-border-theme bg-bg-panel text-xs text-text-body">Tema</button>
+        <a href="/logout" class="px-3 py-2.5 rounded-xl border border-red-500/20 bg-red-500/10 text-xs text-red-400 text-center">Salir</a>
+    </div>
+</aside>
+
+<header class="app-mobile-header md:hidden">
+    <button type="button" onclick="openMobileNav()" class="w-9 h-9 rounded-xl border border-border-theme bg-bg-panel text-text-body flex items-center justify-center" aria-label="Abrir navegación"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+    <div class="flex-1 min-w-0"><p class="text-[10px] uppercase tracking-wider text-text-subtle">SecureLab</p><p class="text-sm font-semibold text-text-heading truncate"><?= h($pageTitle ?? 'Panel') ?></p></div>
+    <a href="/alerts" class="relative w-9 h-9 rounded-xl border border-border-theme bg-bg-panel text-text-muted flex items-center justify-center" aria-label="Alertas"><?= navIcon('alerts') ?><span id="mobile-notif-badge" class="hidden absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-red-500 text-[8px] text-white items-center justify-center"></span></a>
+</header>
+
 <script>
+function openMobileNav() {
+    document.getElementById('mobile-nav-drawer')?.classList.add('is-open');
+    document.getElementById('mobile-nav-backdrop')?.classList.add('is-open');
+    document.getElementById('mobile-nav-drawer')?.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+}
+function closeMobileNav() {
+    document.getElementById('mobile-nav-drawer')?.classList.remove('is-open');
+    document.getElementById('mobile-nav-backdrop')?.classList.remove('is-open');
+    document.getElementById('mobile-nav-drawer')?.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+}
 function toggleSidebarCollapsed() {
     const cur = document.cookie.includes('sidebar_collapsed=1');
     document.cookie = 'sidebar_collapsed=' + (cur ? '0' : '1') + ';path=/;max-age=31536000';
@@ -236,8 +278,14 @@ async function updateNotifBadge() {
         const data = await res.json();
         const count = data.count ?? data.unread ?? 0;
         const badge = document.getElementById('notif-badge');
-        if (count > 0) { badge.textContent = count; badge.classList.remove('hidden'); }
-        else { badge.classList.add('hidden'); }
+        const mobileBadge = document.getElementById('mobile-notif-badge');
+        if (count > 0) {
+            if (badge) { badge.textContent = count; badge.classList.remove('hidden'); }
+            if (mobileBadge) { mobileBadge.textContent = count > 99 ? '99+' : count; mobileBadge.classList.remove('hidden'); mobileBadge.classList.add('flex'); }
+        } else {
+            if (badge) badge.classList.add('hidden');
+            if (mobileBadge) { mobileBadge.classList.add('hidden'); mobileBadge.classList.remove('flex'); }
+        }
     } catch (e) { /* noop */ }
 }
 

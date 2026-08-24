@@ -112,6 +112,30 @@ $critical = count(array_filter($alerts, fn($a) => ($a['severity'] ?? '') === 'cr
 $high = count(array_filter($alerts, fn($a) => ($a['severity'] ?? '') === 'high' && empty($a['resolved'])));
 $unread = count(array_filter($alerts, fn($a) => empty($a['read'])));
 
+// Tendencias - últimos 7 días
+$trendData = [];
+for ($i = 6; $i >= 0; $i--) {
+    $date = date('Y-m-d', strtotime("-$i days"));
+    $dayAlerts = array_filter($alerts, fn($a) => ($a['createdAt'] ?? '') >= $date . 'T00:00:00' && ($a['createdAt'] ?? '') <= $date . 'T23:59:59');
+    $trendData[] = [
+        'date' => date('d/m', strtotime("-$i days")),
+        'count' => count($dayAlerts),
+        'critical' => count(array_filter($dayAlerts, fn($a) => ($a['severity'] ?? '') === 'critical'))
+    ];
+}
+
+// Distribución por severidad
+$sevDistribution = [
+    'critical' => count(array_filter($alerts, fn($a) => ($a['severity'] ?? '') === 'critical')),
+    'high' => count(array_filter($alerts, fn($a) => ($a['severity'] ?? '') === 'high')),
+    'medium' => count(array_filter($alerts, fn($a) => ($a['severity'] ?? '') === 'medium')),
+    'low' => count(array_filter($alerts, fn($a) => ($a['severity'] ?? '') === 'low'))
+];
+
+// Alertas más recientes (últimas 24h)
+$recentAlerts = array_filter($alerts, fn($a) => ($a['createdAt'] ?? '') >= date('Y-m-d\TH:i:s', strtotime('-24 hours')));
+$recentCount = count($recentAlerts);
+
 // Por categoría legal
 $byCategory = [];
 foreach ($alerts as $a) {
@@ -139,11 +163,11 @@ $filteredJson = json_encode(array_values($filtered), JSON_UNESCAPED_UNICODE | JS
 // ── Helpers ────────────────────────────────────────────────────
 function sevBadge($s) {
     return [
-        'critical' => ['Crítica', 'bg-red-500/15 text-red-400 border border-red-500/30', 'bg-red-500'],
-        'high'     => ['Alta',     'bg-orange-500/15 text-orange-400 border border-orange-500/30', 'bg-orange-500'],
-        'medium'   => ['Media',    'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30', 'bg-yellow-500'],
-        'low'      => ['Baja',     'bg-green-500/15 text-green-400 border border-green-500/30', 'bg-green-500'],
-    ][$s ?? 'low'] ?? ['Baja', 'bg-green-500/15 text-green-400 border border-green-500/30', 'bg-green-500'];
+        'critical' => ['Crítica', 'bg-red-500/10 text-red-300 border border-red-500/30', 'bg-red-500'],
+        'high'     => ['Alta',     'bg-orange-500/10 text-orange-300 border border-orange-500/30', 'bg-orange-400'],
+        'medium'   => ['Media',    'bg-amber-500/10 text-amber-300 border border-amber-500/25', 'bg-amber-400'],
+        'low'      => ['Baja',     'bg-sky-500/10 text-sky-300 border border-sky-500/25', 'bg-sky-400'],
+    ][$s ?? 'low'] ?? ['Baja', 'bg-sky-500/10 text-sky-300 border border-sky-500/25', 'bg-sky-400'];
 }
 function catLabel($c) {
     return [
@@ -226,7 +250,7 @@ function cIcon($name, $cls = 'w-4 h-4') {
             </div>
 
             <!-- Stats Bar -->
-            <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 md:gap-3 mb-4">
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2 md:gap-3 mb-4">
                 <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-3 md:p-4 flex items-center gap-2.5">
                     <div class="w-8 h-8 rounded-lg bg-slate-500/10 border border-slate-500/20 flex items-center justify-center flex-shrink-0"><?= cIcon('list', 'w-4 h-4 text-slate-400') ?></div>
                     <div class="min-w-0"><p class="text-[18px] md:text-[20px] font-bold text-white"><?= $total ?></p><p class="text-[9px] text-text-muted">Total</p></div>
@@ -254,6 +278,62 @@ function cIcon($name, $cls = 'w-4 h-4') {
                 <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-3 md:p-4 flex items-center gap-2.5">
                     <div class="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center flex-shrink-0"><?= cIcon('eye', 'w-4 h-4 text-blue-400') ?></div>
                     <div class="min-w-0"><p class="text-[18px] md:text-[20px] font-bold text-blue-400"><?= $unread ?></p><p class="text-[9px] text-text-muted">No leídas</p></div>
+                </div>
+            </div>
+
+            <!-- Enhanced Analytics Section -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+                <!-- Trend Analysis -->
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-[12px] font-semibold text-text-heading">Tendencia últimos 7 días</h3>
+                        <span class="text-[10px] text-text-subtle">Últimas 24h: <?= $recentCount ?> alertas</span>
+                    </div>
+                    <div class="flex items-end gap-2 h-24">
+                        <?php foreach ($trendData as $point): ?>
+                        <div class="flex-1 flex flex-col items-center justify-end gap-1">
+                            <div class="text-center">
+                                <?php if ($point['critical'] > 0): ?>
+                                <span class="text-[10px] font-bold text-red-400"><?= $point['critical'] ?></span>
+                                <span class="text-[9px] text-text-muted">c</span>
+                                <?php endif; ?>
+                                <span class="text-[10px] font-medium text-text-body"><?= $point['count'] ?></span>
+                            </div>
+                            <div class="w-full bg-gradient-to-t from-red-500/20 to-red-500/5 rounded-t-sm border-t border-red-500/30" style="height: <?= max(10, min(80, $point['count'] * 3)) ?>px; min-height: 4px;"></div>
+                            <span class="text-[9px] text-text-subtle"><?= $point['date'] ?></span>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+
+                <!-- Severity Distribution -->
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-4">
+                    <h3 class="text-[12px] font-semibold text-text-heading mb-3">Distribución por Severidad</h3>
+                    <div class="space-y-2">
+                        <?php foreach ($sevDistribution as $sev => $count): ?>
+                        <?php
+                        $sevInfo = [
+                            'critical' => ['label' => 'Crítica', 'color' => 'from-red-500 to-red-600', 'bg' => 'bg-red-500', 'text' => 'text-red-400'],
+                            'high' => ['label' => 'Alta', 'color' => 'from-orange-500 to-orange-600', 'bg' => 'bg-orange-500', 'text' => 'text-orange-400'],
+                            'medium' => ['label' => 'Media', 'color' => 'from-amber-500 to-amber-600', 'bg' => 'bg-amber-500', 'text' => 'text-amber-400'],
+                            'low' => ['label' => 'Baja', 'color' => 'from-sky-500 to-sky-600', 'bg' => 'bg-sky-500', 'text' => 'text-sky-400']
+                        ][$sev] ?? ['label' => 'Desconocido', 'color' => 'from-gray-500 to-gray-600', 'bg' => 'bg-gray-500', 'text' => 'text-gray-400'];
+                        $percentage = $total > 0 ? round(($count / $total) * 100) : 0;
+                        ?>
+                        <div>
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="text-[11px] text-text-body flex items-center gap-1.5">
+                                    <span class="w-2 h-2 rounded-full <?= $sevInfo['bg'] ?>"></span>
+                                    <?= $sevInfo['label'] ?>
+                                </span>
+                                <span class="text-[11px] font-medium <?= $sevInfo['text'] ?>"><?= $count ?> (<?= $percentage ?>%)</span>
+                            </div>
+                            <div class="w-full bg-bg-elevated rounded-full h-1.5">
+                                <div class="bg-gradient-to-r <?= $sevInfo['color'] ?> h-1.5 rounded-full transition-all" style="width: <?= max(2, $percentage) ?>%"></div>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
                 </div>
             </div>
 

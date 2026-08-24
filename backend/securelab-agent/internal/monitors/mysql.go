@@ -33,6 +33,7 @@ type MySQLMonitor struct {
 	lastTimerEnd       uint64
 	generalLogEnabled  bool
 	perfSchemaEnabled  bool
+	slowLogEnabled     bool
 	generalLogDeletable bool
 }
 
@@ -54,6 +55,7 @@ func (m *MySQLMonitor) SetConnection(conn DBConnection) {
 	m.connected = false
 	m.generalLogEnabled = false
 	m.perfSchemaEnabled = false
+	m.slowLogEnabled = false
 	m.generalLogDeletable = false
 	m.lastLogTime = time.Time{}
 	m.lastTimerEnd = 0
@@ -97,6 +99,19 @@ func (m *MySQLMonitor) Start(ctx context.Context) error {
 		}
 	} else {
 		m.log.Warn("MySQL: no se pudo cambiar log_output: %v", err)
+	}
+
+	// Intentar habilitar slow_query_log con long_query_time = 0 para capturar TODAS las consultas
+	if _, err := db.Exec("SET GLOBAL slow_query_log = 'ON'"); err == nil {
+		if _, err := db.Exec("SET GLOBAL long_query_time = 0"); err == nil {
+			if _, err := db.Exec("SET GLOBAL log_output = 'TABLE'"); err == nil {
+				m.log.Info("MySQL slow_query_log habilitado con long_query_time=0 para captura total")
+			}
+		} else {
+			m.log.Warn("MySQL: no se pudo configurar long_query_time: %v", err)
+		}
+	} else {
+		m.log.Warn("MySQL: no se pudo habilitar slow_query_log: %v", err)
 	}
 
 	m.mu.Lock()
@@ -146,12 +161,17 @@ func (m *MySQLMonitor) checkActivity() {
 	}
 	m.mu.RUnlock()
 
-	if !m.generalLogEnabled && !m.perfSchemaEnabled {
+	if !m.generalLogEnabled && !m.perfSchemaEnabled && !m.slowLogEnabled {
 		m.detectLogMode(db)
 	}
 
 	if m.generalLogEnabled {
 		m.checkGeneralLog(db)
+		return
+	}
+
+	if m.slowLogEnabled {
+		m.checkSlowLog(db)
 		return
 	}
 
@@ -180,6 +200,21 @@ func (m *MySQLMonitor) detectLogMode(db *sql.DB) {
 		}
 	}
 
+	// Probar slow_query_log con TABLE
+	var slowLogName, slowLog, longQueryTime string
+	_ = db.QueryRow("SHOW VARIABLES LIKE 'slow_query_log'").Scan(&slowLogName, &slowLog)
+	_ = db.QueryRow("SHOW VARIABLES LIKE 'long_query_time'").Scan(&longQueryName, &longQueryTime)
+	
+	if strings.EqualFold(slowLog, "ON") && longQueryTime == "0.000000" {
+		var dummy int
+		err := db.QueryRow("SELECT 1 FROM mysql.slow_log LIMIT 1").Scan(&dummy)
+		if err == nil || err == sql.ErrNoRows {
+			m.slowLogEnabled = true
+			m.log.Info("MySQL: usando mysql.slow_log con long_query_time=0 para captura total")
+			return
+		}
+	}
+
 	// Probar performance_schema
 	var dummy int
 	err := db.QueryRow("SELECT 1 FROM performance_schema.events_statements_history_long LIMIT 1").Scan(&dummy)
@@ -189,7 +224,7 @@ func (m *MySQLMonitor) detectLogMode(db *sql.DB) {
 		return
 	}
 
-	m.log.Warn("MySQL: ni general_log ni performance_schema disponibles, usando processlist")
+	m.log.Warn("MySQL: ni general_log, slow_query_log ni performance_schema disponibles, usando processlist")
 }
 
 func (m *MySQLMonitor) checkGeneralLog(db *sql.DB) {
@@ -345,6 +380,90 @@ func (m *MySQLMonitor) checkPerfSchema(db *sql.DB) {
 	}
 
 	m.log.Debug("MySQL: %d consultas enviadas desde performance_schema", count)
+}
+
+func (m *MySQLMonitor) checkSlowLog(db *sql.DB) {
+	m.mu.RLock()
+	last := m.lastLogTime
+	threadID := m.monitorThreadID
+	m.mu.RUnlock()
+
+	start := time.Now()
+	since := last
+	if since.IsZero() {
+		// Primera vez: leer últimos 2 minutos
+		since = start.Add(-2 * time.Minute)
+	}
+
+	// Leer consultas posteriores a la última ejecución, excluyendo nuestro propio hilo
+	query := `
+		SELECT start_time, user_host, thread_id, query_time, lock_time, rows_sent, rows_examined, db, sql_text, server_id
+		FROM mysql.slow_log
+		WHERE start_time > ? AND thread_id != ?
+		ORDER BY start_time ASC
+		LIMIT 1000
+	`
+	rows, err := db.Query(query, since, threadID)
+	if err != nil {
+		m.log.Warn("MySQL: error leyendo slow_log: %v", err)
+		// Si la tabla deja de existir, volver a detectar
+		m.mu.Lock()
+		m.slowLogEnabled = false
+		m.mu.Unlock()
+		return
+	}
+	defer rows.Close()
+
+	var maxTime time.Time
+	count := 0
+	for rows.Next() {
+		var startTime time.Time
+		var userHost sql.NullString
+		var tid int64
+		var queryTime, lockTime sql.NullFloat64
+		var rowsSent, rowsExamined int64
+		var dbName, sqlText sql.NullString
+		var serverID int64
+		
+		if err := rows.Scan(&startTime, &userHost, &tid, &queryTime, &lockTime, &rowsSent, &rowsExamined, &dbName, &sqlText, &serverID); err != nil {
+			continue
+		}
+		if sqlText.String == "" {
+			continue
+		}
+		user, host := parseUserHost(userHost.String)
+		entry := audit.DBQueryEntry{
+			Timestamp: startTime,
+			Engine:    "mysql",
+			Database:  dbName.String,
+			User:      user,
+			Host:      host,
+			Query:     sqlText.String,
+			Operation: "",
+		}
+		reportDBQuery(m.store, m.wsClient, m.piiScanner, m.log, entry)
+		count++
+		if startTime.After(maxTime) {
+			maxTime = startTime
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		m.log.Warn("MySQL: error iterando slow_log: %v", err)
+	}
+
+	if !maxTime.IsZero() {
+		m.mu.Lock()
+		m.lastLogTime = maxTime
+		m.mu.Unlock()
+	}
+
+	// Limpiar entradas ya leídas para evitar crecimiento
+	if count > 0 {
+		_, _ = db.Exec("DELETE FROM mysql.slow_log WHERE start_time <= ?", maxTime)
+	}
+
+	m.log.Debug("MySQL: %d consultas enviadas desde slow_log", count)
 }
 
 func (m *MySQLMonitor) checkProcessList(db *sql.DB) {

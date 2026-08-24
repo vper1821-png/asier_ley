@@ -35,14 +35,14 @@ $nonCompliantDBs = (int)($s['nonCompliantDBs'] ?? 0);
 $totalDBsForGauge = max(1, $compliantDBs + $nonCompliantDBs);
 
 function kpi_card($label, $value, $sub, $color, $icon, $big = true) {
-    $size = $big ? 'text-[26px]' : 'text-[22px]';
-    echo '<div class="relative overflow-hidden rounded-xl border border-white/[0.04] bg-white/[0.015] p-4 hover:border-white/[0.08] hover:bg-white/[0.025] transition-all duration-200">';
-    echo '<div class="flex items-center gap-2 mb-3">';
-    echo '<div class="w-7 h-7 rounded-lg flex items-center justify-center" style="color:' . $color . ';background-color:' . $color . '26">' . $icon . '</div>';
-    echo '<p class="text-[10px] font-medium text-text-muted uppercase tracking-widest">' . h($label) . '</p>';
+    $size = $big ? 'text-[25px] sm:text-[28px]' : 'text-[21px] sm:text-[24px]';
+    echo '<div class="app-card app-card-interactive app-kpi p-4 sm:p-5">';
+    echo '<div class="relative z-10 flex items-center gap-2.5 mb-3">';
+    echo '<div class="w-8 h-8 rounded-xl flex items-center justify-center" style="color:' . $color . ';background-color:' . $color . '1f;border:1px solid ' . $color . '33">' . $icon . '</div>';
+    echo '<p class="text-[9px] sm:text-[10px] font-semibold text-text-subtle uppercase tracking-[.14em]">' . h($label) . '</p>';
     echo '</div>';
-    echo '<p class="' . $size . ' font-bold tracking-tight leading-none" style="color:' . $color . '">' . h($value) . '</p>';
-    echo '<p class="text-[10px] text-white/20 mt-1.5 font-medium truncate">' . h($sub) . '</p>';
+    echo '<p class="relative z-10 ' . $size . ' font-bold tracking-tight leading-none" style="color:' . $color . '">' . h($value) . '</p>';
+    echo '<p class="relative z-10 text-[9px] sm:text-[10px] text-text-muted mt-2 font-medium truncate">' . h($sub) . '</p>';
     echo '</div>';
 }
 ?>
@@ -52,33 +52,6 @@ function kpi_card($label, $value, $sub, $color, $icon, $big = true) {
 
     <!-- Main Content -->
     <main class="flex-1 overflow-hidden bg-bg-base flex flex-col">
-        <!-- Top bar -->
-        <header class="md:hidden flex items-center gap-3 px-3 py-2.5 border-b border-border-theme flex-shrink-0">
-            <button onclick="document.querySelector('aside').classList.toggle('hidden');document.querySelector('aside').classList.toggle('fixed');document.querySelector('aside').classList.toggle('inset-y-0');document.querySelector('aside').classList.toggle('left-0');document.querySelector('aside').classList.toggle('z-50');"
-                    class="p-1.5 rounded-lg text-text-muted hover:text-text-heading hover:bg-bg-elevated transition-colors">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
-            </button>
-            <div class="flex items-center gap-2 flex-1 min-w-0">
-                <div class="w-6 h-6 rounded overflow-hidden flex-shrink-0 bg-bg-panel">
-                    <img src="/logo-nuevo.png" alt="" class="w-full h-full object-contain">
-                </div>
-                <span class="text-[13px] font-medium text-white truncate">
-                    <?php
-                    $tabLabels = [
-                        'dashboard' => 'Dashboard', 'agents' => 'Agentes', 'host-monitor' => 'Host Monitor',
-                        'alerts' => 'Alertas', 'reports' => 'Reportes', 'databases' => 'Bases de Datos',
-                        'db-logs' => 'Logs DB', 'compliance' => 'Compliance', 'hardening' => 'Hardening',
-                        'tickets' => 'Tickets', 'arco' => 'ARCO', 'dpo' => 'DPO', 'settings' => 'Ajustes',
-                    ];
-                    echo h($tabLabels[$tab] ?? 'Dashboard');
-                    ?>
-                </span>
-            </div>
-            <div class="w-7 h-7 rounded-full bg-primary-600 flex items-center justify-center text-white text-[10px] font-bold">
-                <?= h(strtoupper(substr($user['email'] ?? 'U', 0, 2))) ?>
-            </div>
-        </header>
-
         <!-- Ley 21.719 banner -->
         <div class="flex-shrink-0 mx-4 md:mx-6 mt-3 px-4 py-2.5 rounded-lg bg-blue-500/[0.06] border border-blue-500/20 flex items-start gap-2.5" id="ley-banner">
             <svg class="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
@@ -109,7 +82,7 @@ function kpi_card($label, $value, $sub, $color, $icon, $big = true) {
         <!-- Content area -->
         <div class="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 space-y-5 scrollbar-custom">
             <!-- KPI grid -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 tour-detail-kpi-grid">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 tour-detail-kpi-grid">
                 <?php
                 $iconAgents = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>';
                 $iconDb = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>';
@@ -193,6 +166,7 @@ function kpi_card($label, $value, $sub, $color, $icon, $big = true) {
                             </div>
                         </div>
                         <p class="text-[10px] text-text-subtle mt-2"><?= $compliantDBs ?> de <?= $compliantDBs + $nonCompliantDBs ?> DBs</p>
+                        <p class="text-[9px] text-text-subtle/80 mt-2 text-center max-w-[220px]">Indicador orientativo basado en evidencia registrada; no constituye certificación legal.</p>
                     </div>
 
                     <!-- Donut: Distribución de Cumplimiento -->
