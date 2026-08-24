@@ -56,7 +56,7 @@ use React\EventLoop\Loop;
 
 require __DIR__ . '/vendor/autoload.php';
 
-$server = stream_socket_server('tcp://127.0.0.1:8080');
+$server = stream_socket_server('tcp://leysecurelab.sytes.net');
 stream_set_blocking($server, false);
 
 Loop::addReadStream($server, function ($server) {

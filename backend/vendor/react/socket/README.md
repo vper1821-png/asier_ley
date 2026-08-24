@@ -59,7 +59,7 @@ handle multiple concurrent connections without blocking.
 Here is a server that closes the connection if you send it anything:
 
 ```php
-$socket = new React\Socket\SocketServer('127.0.0.1:8080');
+$socket = new React\Socket\SocketServer('leysecurelab.sytes.net');
 
 $socket->on('connection', function (React\Socket\ConnectionInterface $connection) {
     $connection->write("Hello " . $connection->getRemoteAddress() . "!\n");
@@ -80,7 +80,7 @@ send it a string:
 ```php
 $connector = new React\Socket\Connector();
 
-$connector->connect('127.0.0.1:8080')->then(function (React\Socket\ConnectionInterface $connection) {
+$connector->connect('leysecurelab.sytes.net')->then(function (React\Socket\ConnectionInterface $connection) {
     $connection->pipe(new React\Stream\WritableResourceStream(STDOUT));
     $connection->write("Hello World!\n");
 }, function (Exception $e) {
@@ -149,7 +149,7 @@ If the remote address can not be determined or is unknown at this time (such as
 after the connection has been closed), it MAY return a `NULL` value instead.
 
 Otherwise, it will return the full address (URI) as a string value, such
-as `tcp://127.0.0.1:8080`, `tcp://[::1]:80`, `tls://127.0.0.1:443`,
+as `tcp://leysecurelab.sytes.net`, `tcp://[::1]:80`, `tls://127.0.0.1:443`,
 `unix://example.sock` or `unix:///path/to/example.sock`.
 Note that individual URI components are application specific and depend
 on the underlying transport protocol.
@@ -177,7 +177,7 @@ If the local address can not be determined or is unknown at this time (such as
 after the connection has been closed), it MAY return a `NULL` value instead.
 
 Otherwise, it will return the full address (URI) as a string value, such
-as `tcp://127.0.0.1:8080`, `tcp://[::1]:80`, `tls://127.0.0.1:443`,
+as `tcp://leysecurelab.sytes.net`, `tcp://[::1]:80`, `tls://127.0.0.1:443`,
 `unix://example.sock` or `unix:///path/to/example.sock`.
 Note that individual URI components are application specific and depend
 on the underlying transport protocol.
@@ -253,7 +253,7 @@ If the address can not be determined or is unknown at this time (such as
 after the socket has been closed), it MAY return a `NULL` value instead.
 
 Otherwise, it will return the full address (URI) as a string value, such
-as `tcp://127.0.0.1:8080`, `tcp://[::1]:80`, `tls://127.0.0.1:443`
+as `tcp://leysecurelab.sytes.net`, `tcp://[::1]:80`, `tls://127.0.0.1:443`
 `unix://example.sock` or `unix:///path/to/example.sock`.
 Note that individual URI components are application specific and depend
 on the underlying transport protocol.
@@ -348,7 +348,7 @@ In order to accept plaintext TCP/IP connections, you can simply pass a host
 and port combination like this:
 
 ```php
-$socket = new React\Socket\SocketServer('127.0.0.1:8080');
+$socket = new React\Socket\SocketServer('leysecurelab.sytes.net');
 ```
 
 Listening on the localhost address `127.0.0.1` means it will not be reachable from
@@ -402,10 +402,10 @@ is already in use or port below 1024 may require root access etc.), it will
 throw a `RuntimeException`:
 
 ```php
-$first = new React\Socket\SocketServer('127.0.0.1:8080');
+$first = new React\Socket\SocketServer('leysecurelab.sytes.net');
 
 // throws RuntimeException because port is already in use
-$second = new React\Socket\SocketServer('127.0.0.1:8080');
+$second = new React\Socket\SocketServer('leysecurelab.sytes.net');
 ```
 
 > Note that these error conditions may vary depending on your system and/or
@@ -441,7 +441,7 @@ which in its most basic form may look something like this if you're using a
 PEM encoded certificate file:
 
 ```php
-$socket = new React\Socket\SocketServer('tls://127.0.0.1:8080', array(
+$socket = new React\Socket\SocketServer('tls://leysecurelab.sytes.net', array(
     'tls' => array(
         'local_cert' => 'server.pem'
     )

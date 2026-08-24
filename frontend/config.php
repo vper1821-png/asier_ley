@@ -3,7 +3,7 @@
 session_start();
 
 // API Base URL: backend local interno para llamadas PHP cURL rápidas
-define('API_BASE_URL', getenv('API_BASE_URL') ?: 'http://127.0.0.1:8080');
+define('API_BASE_URL', getenv('API_BASE_URL') ?: 'http://leysecurelab.sytes.net');
 define('API_BASE_URL_BROWSER', getenv('API_BASE_URL_BROWSER') ?: 'https://leysecurelab.sytes.net');
 define('SITE_URL', getenv('SITE_URL') ?: 'https://leysecurelab.sytes.net');
 define('SITE_NAME', 'SecureLab');

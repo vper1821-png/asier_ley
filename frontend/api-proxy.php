@@ -56,7 +56,7 @@ if ($sessionToken) {
 }
 
 // Backend URL (direct local port 8080 for fast, reliable loopback)
-$backendBase = 'http://127.0.0.1:8080';
+$backendBase = 'http://leysecurelab.sytes.net';
 $url = $backendBase . $path;
 $url .= (str_contains($url, '?') ? '&' : '?') . http_build_query($query);
 
