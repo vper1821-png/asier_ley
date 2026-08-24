@@ -3,8 +3,11 @@ module securelab-agent
 go 1.25.0
 
 require (
+	github.com/denisenkom/go-mssqldb v0.12.3
 	github.com/fsnotify/fsnotify v1.10.1
+	github.com/go-sql-driver/mysql v1.8.1
 	github.com/gorilla/websocket v1.5.3
+	github.com/lib/pq v1.12.3
 	github.com/xuri/excelize/v2 v2.11.0
 	golang.org/x/sys v0.47.0
 	modernc.org/sqlite v1.14.0
@@ -13,15 +16,12 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
-	github.com/denisenkom/go-mssqldb v0.12.3 // indirect
-	github.com/go-sql-driver/mysql v1.8.1 // indirect
 	github.com/golang-sql/civil v0.0.0-20190719163853-cb61b32ac6fe // indirect
 	github.com/golang-sql/sqlexp v0.1.0 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
 	github.com/klauspost/compress v1.16.7 // indirect
-	github.com/lib/pq v1.12.3 // indirect
 	github.com/mattn/go-isatty v0.0.12 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20200410134404-eec4a21b6bb0 // indirect
