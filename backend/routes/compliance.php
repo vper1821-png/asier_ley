@@ -346,6 +346,13 @@ function crud() {
     $resource = $segments[0];
     $id = $segments[1] ?? '';
     $action = $segments[2] ?? '';
+    
+    // Special handling for PDF generation
+    if ($id === 'pdf' && empty($action)) {
+        $action = 'pdf';
+        $id = '';
+    }
+    
     $db = Database::getInstance();
 
     // Public endpoints (no auth)
@@ -398,8 +405,9 @@ function crud() {
     }
 
     // PDF generation endpoints
-    if ($action === 'pdf' && in_array($resource, ['dpia', 'dpa'])) {
-        json_response(['success' => true, 'message' => 'PDF en construcción', 'url' => $uri]);
+    if ($action === 'pdf' && in_array($resource, ['consents', 'inventory', 'breaches', 'trainings', 'pseudonymization', 'arco-requests', 'dpia', 'dpa'])) {
+        generateCompliancePDF($resource);
+        return;
     }
 
     // ARCO requests
@@ -938,4 +946,51 @@ function searchCompaniesPublic($body, $db) {
     }
 
     json_response(['companies' => array_slice($results, 0, 10)]);
+}
+
+// PDF Generation Functions
+function generateCompliancePDF($resource) {
+    $user = Auth::requireAuth();
+    $db = Database::getInstance();
+    
+    require_once __DIR__ . '/../PDFGenerator.php';
+    $pdfGenerator = new PDFGenerator($db, $user);
+    
+    $itemId = $_GET['id'] ?? null;
+    
+    switch ($resource) {
+        case 'consents':
+            $html = $pdfGenerator->generateConsentPDF($itemId);
+            $result = $pdfGenerator->generatePDFFile($html, 'consentimientos');
+            break;
+        case 'inventory':
+            $html = $pdfGenerator->generateInventoryPDF($itemId);
+            $result = $pdfGenerator->generatePDFFile($html, 'inventario');
+            break;
+        case 'breaches':
+            $html = $pdfGenerator->generateBreachesPDF($itemId);
+            $result = $pdfGenerator->generatePDFFile($html, 'brechas');
+            break;
+        case 'trainings':
+            $html = $pdfGenerator->generateTrainingsPDF($itemId);
+            $result = $pdfGenerator->generatePDFFile($html, 'capacitaciones');
+            break;
+        case 'pseudonymization':
+            $html = $pdfGenerator->generatePseudonymizationPDF($itemId);
+            $result = $pdfGenerator->generatePDFFile($html, 'seudonimizacion');
+            break;
+        case 'arco-requests':
+            $html = $pdfGenerator->generateARCORequestsPDF($itemId);
+            $result = $pdfGenerator->generatePDFFile($html, 'solicitudes-arco');
+            break;
+        default:
+            json_error('Recurso no soportado para generación de PDF', 400);
+    }
+    
+    json_response([
+        'success' => true,
+        'pdfUrl' => $result['pdfUrl'],
+        'html' => $result['html'],
+        'message' => $result['message']
+    ]);
 }

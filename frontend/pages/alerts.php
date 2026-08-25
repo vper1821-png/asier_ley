@@ -17,6 +17,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (isset($_POST['dismiss_alert'])) {
         $res = api_post_form('/api/alerts/dismiss', ['token' => $token, 'alertId' => $_POST['alert_id']]);
         if (!empty($res['success'])) $msg = 'Alerta descartada.'; else $err = $res['error'] ?? 'Error.';
+    } elseif (isset($_POST['mark_read'])) {
+        $res = api_post_form('/api/alerts/read', ['token' => $token, 'alertId' => $_POST['alert_id']]);
+        if (!empty($res['success'])) $msg = 'Alerta marcada como leída.'; else $err = $res['error'] ?? 'Error.';
     } elseif (isset($_POST['delete_all'])) {
         $res = api_post_form('/api/alerts/delete-all', ['token' => $token]);
         if (!empty($res['success'])) $msg = 'Alertas eliminadas.'; else $err = $res['error'] ?? 'Error.';
@@ -495,88 +498,112 @@ function cIcon($name, $cls = 'w-4 h-4') {
                 <?php else: ?>
                 <!-- Vista: Lista (default) -->
                 <div id="view-list-container" class="<?= $viewMode === 'list' ? '' : 'hidden' ?>">
-                    <div class="rounded-xl border border-border-theme bg-bg-panel/60 overflow-hidden">
-                        <div class="divide-y divide-border-theme">
-                            <?php foreach ($filtered as $ai => $alert):
-                                $sev = sevBadge($alert['severity'] ?? 'low');
-                                $resolvedAlert = !empty($alert['resolved']) || !empty($alert['dismissed']);
-                                $read = !empty($alert['read']);
-                                $cat = $alert['category'] ?? 'general';
-                                $src = $alert['source'] ?? 'unknown';
-                                $art = $alert['lawArticle'] ?? '';
-                                $deadline = $alert['deadline'] ?? '';
-                                $requiresAPDP = !empty($alert['requiresAPDPNotification']);
-                                $requiresSubject = !empty($alert['requiresSubjectNotification']);
-                            ?>
-                            <div class="px-4 md:px-5 py-3.5 md:py-4 flex items-start gap-3 hover:bg-white/[0.01] transition-colors <?= $resolvedAlert ? 'opacity-60' : '' ?> <?= !$read ? 'bg-blue-500/[0.02]' : '' ?>" data-alert-id="<?= h($alert['_id'] ?? '') ?>" data-alert-index="<?= $ai ?>">
-                                <!-- Checkbox para selección múltiple -->
-                                <input type="checkbox" class="alert-checkbox w-4 h-4 mt-0.5 rounded border-border-theme text-primary-600 focus:ring-primary-500" onchange="toggleSelection(this)" value="<?= h($alert['_id'] ?? '') ?>">
-
-                                <!-- Severity dot + ley indicator -->
-                                <div class="flex flex-col items-center gap-1 flex-shrink-0">
-                                    <span class="w-2.5 h-2.5 rounded-full <?= $sev[2] ?>"></span>
-                                    <?php if ($art): ?>
-                                    <span class="text-[7px] font-bold text-indigo-300 bg-indigo-500/10 px-1 py-0.5 rounded"><?= h(str_replace('Ley 21.719', '', $art)) ?></span>
-                                    <?php endif; ?>
-                                </div>
-
-                                <!-- Content -->
-                                <div class="flex-1 min-w-0">
-                                    <div class="flex items-center gap-2 flex-wrap mb-1">
-                                        <p class="text-[12px] md:text-[13px] font-medium text-white truncate flex-1"><?= h($alert['title'] ?? $alert['message'] ?? 'Alerta') ?></p>
-                                        <span class="text-[9px] px-2 py-0.5 rounded-full border <?= $sev[1] ?> font-medium flex-shrink-0"><?= h($sev[0]) ?></span>
-                                        <?php if ($requiresAPDP): ?>
-                                        <span class="text-[8px] px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/20 font-medium flex-shrink-0" title="Requiere notificación APDP (Art. 26)"><?= cIcon('alert', 'w-2.5 h-2.5') ?> APDP</span>
-                                        <?php endif; ?>
-                                        <?php if ($requiresSubject): ?>
-                                        <span class="text-[8px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/20 font-medium flex-shrink-0" title="Requiere notificación a titulares (Art. 26.4)"><?= cIcon('users', 'w-2.5 h-2.5') ?> Titulares</span>
-                                        <?php endif; ?>
-                                        <?php if ($deadline): ?>
-                                        <span class="text-[8px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/20 font-medium flex-shrink-0" title="Plazo legal"><?= cIcon('calendar', 'w-2.5 h-2.5') ?> <?= h(substr($deadline, 0, 10)) ?></span>
-                                        <?php endif; ?>
+                    <div class="space-y-2">
+                        <?php foreach ($filtered as $ai => $alert):
+                            $sev = sevBadge($alert['severity'] ?? 'low');
+                            $resolvedAlert = !empty($alert['resolved']) || !empty($alert['dismissed']);
+                            $read = !empty($alert['read']);
+                            $cat = $alert['category'] ?? 'general';
+                            $src = $alert['source'] ?? 'unknown';
+                            $art = $alert['lawArticle'] ?? '';
+                            $deadline = $alert['deadline'] ?? '';
+                            $requiresAPDP = !empty($alert['requiresAPDPNotification']);
+                            $requiresSubject = !empty($alert['requiresSubjectNotification']);
+                            
+                            // Color de borde según severidad
+                            $borderColor = [
+                                'critical' => 'border-red-500/30 hover:border-red-500/50',
+                                'high' => 'border-orange-500/30 hover:border-orange-500/50',
+                                'medium' => 'border-amber-500/30 hover:border-amber-500/50',
+                                'low' => 'border-sky-500/30 hover:border-sky-500/50'
+                            ][$alert['severity'] ?? 'low'] ?? 'border-sky-500/30 hover:border-sky-500/50';
+                            
+                            // Fondo sutil según severidad
+                            $bgColor = [
+                                'critical' => 'bg-red-500/[0.03] hover:bg-red-500/[0.06]',
+                                'high' => 'bg-orange-500/[0.03] hover:bg-orange-500/[0.06]',
+                                'medium' => 'bg-amber-500/[0.03] hover:bg-amber-500/[0.06]',
+                                'low' => 'bg-sky-500/[0.03] hover:bg-sky-500/[0.06]'
+                            ][$alert['severity'] ?? 'low'] ?? 'bg-sky-500/[0.03] hover:bg-sky-500/[0.06]';
+                        ?>
+                            <div class="px-5 py-4 rounded-xl border <?= $borderColor ?> <?= $bgColor ?> <?= $resolvedAlert ? 'opacity-50' : '' ?> <?= !$read ? 'ring-1 ring-blue-500/20' : '' ?> transition-all duration-200 hover:shadow-lg" data-alert-id="<?= h($alert['_id'] ?? '') ?>" data-alert-index="<?= $ai ?>">
+                                <div class="flex items-start gap-4">
+                                    <!-- Status icon -->
+                                    <div class="flex-shrink-0 mt-1">
                                         <?php if ($resolvedAlert): ?>
-                                        <span class="text-[8px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 font-medium flex-shrink-0"><?= !empty($alert['resolved']) ? 'Resuelta' : 'Descartada' ?></span>
-                                        <?php endif; ?>
-                                        <?php if (!$read): ?>
-                                        <span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" title="No leída"></span>
-                                        <?php endif; ?>
-                                    </div>
-                                    <p class="text-[10px] md:text-[11px] text-text-muted truncate pr-4"><?= h($alert['message'] ?? $alert['description'] ?? $alert['detail'] ?? '') ?></p>
-                                    <div class="flex items-center gap-2.5 mt-1.5 flex-wrap">
-                                        <span class="text-[9px] text-text-subtle font-mono"><?= h(substr($alert['createdAt'] ?? '', 0, 16)) ?></span>
-                                        <?php if (!empty($alert['source'])): ?>
-                                        <span class="text-[9px] px-1.5 py-0.5 rounded text-blue-400/70 bg-blue-500/10"><?= h(srcLabel($alert['source'])) ?></span>
-                                        <?php endif; ?>
-                                        <?php if (!empty($alert['agentId'])): ?>
-                                        <span class="text-[9px] text-text-subtle font-mono">· <?= h(substr($alert['agentId'], -8)) ?></span>
-                                        <?php endif; ?>
-                                        <?php if ($cat !== 'general'): ?>
-                                        <span class="text-[9px] px-1.5 py-0.5 rounded text-indigo-400/70 bg-indigo-500/10"><?= h(catLabel($cat)) ?></span>
-                                        <?php endif; ?>
-                                        <?php if ($art): ?>
-                                        <span class="text-[9px] px-1.5 py-0.5 rounded text-purple-400/70 bg-purple-500/10"><?= h($art) ?></span>
+                                        <div class="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
+                                            <?= cIcon('check', 'w-4 h-4 text-emerald-400') ?>
+                                        </div>
+                                        <?php else: ?>
+                                        <div class="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center">
+                                            <?= cIcon('alert', 'w-4 h-4 text-amber-400') ?>
+                                        </div>
                                         <?php endif; ?>
                                     </div>
-                                </div>
 
-                                <!-- Actions -->
-                                <div class="flex items-center gap-1 flex-shrink-0">
-                                    <button onclick="openAlertModal(<?= $ai ?>)" title="Ver detalle completo" class="p-1.5 rounded-lg text-[11px] text-text-muted hover:text-indigo-400 hover:bg-bg-elevated transition-all">
-                                        <?= cIcon('eye', 'w-3.5 h-3.5') ?>
-                                    </button>
-                                    <?php if (!$resolvedAlert): ?>
-                                    <button onclick="resolveSingle('<?= h($alert['_id'] ?? '') ?>')" title="Resolver" class="p-1.5 rounded-lg text-[11px] text-text-muted hover:text-emerald-400 hover:bg-emerald-500/10 transition-all">
-                                        <?= cIcon('check', 'w-3.5 h-3.5') ?>
-                                    </button>
-                                    <button onclick="dismissSingle('<?= h($alert['_id'] ?? '') ?>')" title="Descartar" class="p-1.5 rounded-lg text-[11px] text-text-muted hover:text-amber-400 hover:bg-amber-500/10 transition-all">
-                                        <?= cIcon('xmark', 'w-3.5 h-3.5') ?>
-                                    </button>
-                                    <?php endif; ?>
+                                    <!-- Main content -->
+                                    <div class="flex-1 min-w-0">
+                                        <!-- Title row -->
+                                        <div class="flex items-center gap-2 mb-2 flex-wrap">
+                                            <h3 class="text-[13px] font-semibold text-text-heading"><?= h($alert['source'] ?? 'Auditoria') ?>: <?= h($alert['title'] ?? $alert['message'] ?? 'Alerta') ?></h3>
+                                        </div>
+                                        
+                                        <!-- Badges row -->
+                                        <div class="flex items-center gap-2 mb-2 flex-wrap">
+                                            <span class="text-[8px] px-2 py-1 rounded-full border <?= $sev[1] ?> font-medium"><?= h($sev[0]) ?></span>
+                                            <?php if ($art): ?>
+                                            <span class="text-[8px] px-2 py-1 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 font-medium"><?= h($art) ?></span>
+                                            <?php endif; ?>
+                                            <?php if ($resolvedAlert): ?>
+                                            <span class="text-[8px] px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-medium">Resuelta</span>
+                                            <?php endif; ?>
+                                        </div>
+                                        
+                                        <!-- Details -->
+                                        <div class="text-[10px] text-text-muted space-y-1">
+                                            <?php if (!empty($alert['resource'])): ?>
+                                            <p>Recurso: <?= h($alert['resource']) ?></p>
+                                            <?php endif; ?>
+                                            <?php if (!empty($alert['user'])): ?>
+                                            <p>Usuario: <?= h($alert['user']) ?></p>
+                                            <?php endif; ?>
+                                            <?php if (!empty($alert['ip'])): ?>
+                                            <p>IP: <?= h($alert['ip']) ?></p>
+                                            <?php endif; ?>
+                                        </div>
+                                        
+                                        <!-- Footer -->
+                                        <div class="flex items-center gap-2 text-[9px] text-text-subtle mt-2">
+                                            <span><?= date('H:i', strtotime($alert['createdAt'] ?? '')) ?></span>
+                                            <span>·</span>
+                                            <span><?= h($alert['source'] ?? 'Auditoria') ?></span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Actions -->
+                                    <div class="flex flex-col gap-2 flex-shrink-0">
+                                        <?php if (!$read): ?>
+                                        <button onclick="event.stopPropagation(); markAsRead('<?= h($alert['_id'] ?? '') ?>')" class="p-2 rounded-lg text-blue-400 hover:bg-blue-500/10 transition-all z-10 relative" title="Marcar como leída">
+                                            <?= cIcon('eye', 'w-4 h-4') ?>
+                                        </button>
+                                        <?php endif; ?>
+                                        <?php if (!$resolvedAlert): ?>
+                                        <button onclick="event.stopPropagation(); openAlertModal(<?= $ai ?>)" class="p-2 rounded-lg text-indigo-400 hover:bg-indigo-500/10 transition-all z-10 relative" title="Ver detalles">
+                                            <?= cIcon('info', 'w-4 h-4') ?>
+                                        </button>
+                                        <button onclick="event.stopPropagation(); resolveSingle('<?= h($alert['_id'] ?? '') ?>')" class="p-2 rounded-lg text-emerald-400 hover:bg-emerald-500/10 transition-all z-10 relative" title="Resolver">
+                                            <?= cIcon('check', 'w-4 h-4') ?>
+                                        </button>
+                                        <button onclick="event.stopPropagation(); dismissSingle('<?= h($alert['_id'] ?? '') ?>')" class="p-2 rounded-lg text-amber-400 hover:bg-amber-500/10 transition-all z-10 relative" title="Descartar">
+                                            <?= cIcon('xmark', 'w-4 h-4') ?>
+                                        </button>
+                                        <?php endif; ?>
+                                    </div>
                                 </div>
                             </div>
                             <?php endforeach; ?>
-                        </div>
                     </div>
+                </div>
                 </div>
 
                 <!-- Vista: Tarjetas -->
@@ -590,8 +617,24 @@ function cIcon($name, $cls = 'w-4 h-4') {
                             $src = $alert['source'] ?? 'unknown';
                             $art = $alert['lawArticle'] ?? '';
                             $deadline = $alert['deadline'] ?? '';
+                            
+                            // Color de borde según severidad
+                            $borderColor = [
+                                'critical' => 'border-red-500/30 hover:border-red-500/50',
+                                'high' => 'border-orange-500/30 hover:border-orange-500/50',
+                                'medium' => 'border-amber-500/30 hover:border-amber-500/50',
+                                'low' => 'border-sky-500/30 hover:border-sky-500/50'
+                            ][$alert['severity'] ?? 'low'] ?? 'border-sky-500/30 hover:border-sky-500/50';
+                            
+                            // Fondo sutil según severidad
+                            $bgColor = [
+                                'critical' => 'bg-red-500/[0.03] hover:bg-red-500/[0.06]',
+                                'high' => 'bg-orange-500/[0.03] hover:bg-orange-500/[0.06]',
+                                'medium' => 'bg-amber-500/[0.03] hover:bg-amber-500/[0.06]',
+                                'low' => 'bg-sky-500/[0.03] hover:bg-sky-500/[0.06]'
+                            ][$alert['severity'] ?? 'low'] ?? 'bg-sky-500/[0.03] hover:bg-sky-500/[0.06]';
                         ?>
-                        <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-4 hover:border-border-theme/60 transition-colors <?= $resolvedAlert ? 'opacity-60' : '' ?> <?= !$read ? 'ring-1 ring-blue-500/30' : '' ?>" data-alert-id="<?= h($alert['_id'] ?? '') ?>" data-alert-index="<?= $ai ?>">
+                        <div class="rounded-xl border <?= $borderColor ?> <?= $bgColor ?> p-4 <?= $resolvedAlert ? 'opacity-50' : '' ?> <?= !$read ? 'ring-1 ring-blue-500/20' : '' ?> transition-all duration-200" data-alert-id="<?= h($alert['_id'] ?? '') ?>" data-alert-index="<?= $ai ?>">
                             <div class="flex items-start justify-between gap-2 mb-2">
                                 <div class="flex items-center gap-2">
                                     <span class="w-2.5 h-2.5 rounded-full <?= $sev[2] ?>"></span>
@@ -793,6 +836,14 @@ function bulkAction(action) {
     form.method = 'POST';
     form.innerHTML = '<input type="hidden" name="alert_ids" value=\'' + JSON.stringify(ids) + '\'>' +
                      '<input type="hidden" name="bulk_' + action + '" value="1">';
+    document.body.appendChild(form);
+    form.submit();
+}
+
+function markAsRead(id) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.innerHTML = '<input type="hidden" name="alert_id" value="' + id + '"><input type="hidden" name="mark_read" value="1">';
     document.body.appendChild(form);
     form.submit();
 }

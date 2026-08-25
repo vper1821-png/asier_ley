@@ -507,6 +507,19 @@ if (preg_match('#^/api/agent/download/([a-zA-Z0-9_-]+)$#', $uri, $m)) {
     exit;
 }
 
+// ── Data Reset (superadmin only) ──
+if (preg_match('#^/api/admin/data-reset/backup$#', $uri) && $method === 'POST') {
+    require_once __DIR__ . '/routes/admin.php';
+    dataResetBackup();
+    exit;
+}
+
+if (preg_match('#^/api/admin/data-reset/execute$#', $uri) && $method === 'POST') {
+    require_once __DIR__ . '/routes/admin.php';
+    dataResetExecute();
+    exit;
+}
+
 if (preg_match('#^/api/databases/client/([a-zA-Z0-9-]+)$#', $uri, $m) && $method === 'POST') {
     $_GET['action'] = $m[1];
     require_once __DIR__ . '/routes/databases.php';
@@ -610,6 +623,91 @@ if (preg_match('#^/api/db-logs$#', $uri)) {
 if (preg_match('#^/api/generate-incident-response-pdf$#', $uri) && $method === 'POST') {
     require_once __DIR__ . '/generate-incident-response-pdf.php';
     exit;
+}
+
+// Serve PDF files from reports directory
+if (preg_match('#^/backend/reports/(.+\.pdf)$#', $uri, $matches) && $method === 'GET') {
+    $filename = basename($matches[1]);
+    $filePath = __DIR__ . '/reports/' . $filename;
+    
+    // Security check: ensure the file is in the reports directory
+    $realPath = realpath($filePath);
+    $reportsDir = realpath(__DIR__ . '/reports');
+    
+    if ($realPath === false || strpos($realPath, $reportsDir) !== 0) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Access denied']);
+        exit;
+    }
+    
+    if (file_exists($filePath) && is_file($filePath) && is_readable($filePath)) {
+        // Verify it's a PDF file
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mimeType = finfo_file($finfo, $filePath);
+        finfo_close($finfo);
+        
+        if ($mimeType === 'application/pdf') {
+            header('Content-Type: application/pdf');
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            header('Content-Length: ' . filesize($filePath));
+            header('Cache-Control: no-cache, must-revalidate');
+            header('Pragma: no-cache');
+            header('Expires: Sat, 26 Jul 1997 05:00:00 GMT');
+            
+            readfile($filePath);
+            exit;
+        } else {
+            http_response_code(403);
+            echo json_encode(['error' => 'File is not a PDF']);
+            exit;
+        }
+    } else {
+        http_response_code(404);
+        echo json_encode(['error' => 'File not found']);
+        exit;
+    }
+}
+
+// Alternative endpoint to serve PDFs through API (public access for generated files)
+if (preg_match('#^/api/reports/download/(.+\.pdf)$#', $uri, $matches) && $method === 'GET') {
+    $filename = basename($matches[1]);
+    $filePath = __DIR__ . '/reports/' . $filename;
+    
+    // Security check: ensure the file is in the reports directory
+    $realPath = realpath($filePath);
+    $reportsDir = realpath(__DIR__ . '/reports');
+    
+    if ($realPath === false || strpos($realPath, $reportsDir) !== 0) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Access denied']);
+        exit;
+    }
+    
+    if (file_exists($filePath) && is_file($filePath) && is_readable($filePath)) {
+        // Verify it's a PDF file
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mimeType = finfo_file($finfo, $filePath);
+        finfo_close($finfo);
+        
+        if ($mimeType === 'application/pdf') {
+            header('Content-Type: application/pdf');
+            header('Content-Disposition: inline; filename="' . $filename . '"');
+            header('Content-Length: ' . filesize($filePath));
+            header('Cache-Control: public, max-age=3600');
+            header('Access-Control-Allow-Origin: *');
+            
+            readfile($filePath);
+            exit;
+        } else {
+            http_response_code(403);
+            echo json_encode(['error' => 'File is not a PDF']);
+            exit;
+        }
+    } else {
+        http_response_code(404);
+        echo json_encode(['error' => 'File not found']);
+        exit;
+    }
 }
 
 // 404

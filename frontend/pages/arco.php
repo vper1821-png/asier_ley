@@ -87,6 +87,12 @@ function arcoRut($r) {
                 </div>
             </div>
             <div class="flex items-center gap-2.5">
+                <button onclick="generateCompliancePDF('arco-requests')" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-semibold shadow-theme-sm hover:shadow-emerald-500/20 transition-all duration-200">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    Descargar PDF
+                </button>
                 <a href="/arco-solicitud" target="_blank"
                         class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold shadow-theme-sm hover:shadow-blue-500/20 transition-all duration-200">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -402,6 +408,49 @@ function setArcoStatusFilter(status) {
 function toggleArcoResp(id) {
     const el = document.getElementById('arco-resp-' + id);
     if (el) el.classList.toggle('hidden');
+}
+
+async function generateCompliancePDF(resource) {
+    const token = '<?= $token ?>';
+    const btn = event.target.closest('button');
+    const originalText = btn.innerHTML;
+
+    try {
+        btn.disabled = true;
+        btn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Generando...';
+
+        const response = await fetch(`/api/compliance/${resource}/pdf?token=${encodeURIComponent(token)}`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            if (data.pdfUrl) {
+                window.open(data.pdfUrl, '_blank');
+                alert('PDF generado exitosamente');
+            } else if (data.html) {
+                const printWindow = window.open('', '_blank');
+                printWindow.document.write(data.html);
+                printWindow.document.close();
+                printWindow.onload = function() {
+                    printWindow.print();
+                };
+                alert('PDF no disponible. Se abrirá una ventana para imprimir el documento.');
+            }
+        } else {
+            alert('Error al generar PDF: ' + (data.error || 'Error desconocido'));
+        }
+    } catch (error) {
+        console.error('Error generating PDF:', error);
+        alert('Error al generar PDF: ' + error.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
 }
 </script>
 

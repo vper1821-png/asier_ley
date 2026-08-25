@@ -2,6 +2,241 @@
 require_once __DIR__ . '/../config.php';
 require_login();
 
+// Add enhanced CSS for wizard animations
+$wizardCSS = '
+<style>
+.wizard-step-transition {
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.wizard-step-content {
+    animation: slideIn 0.4s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.wizard-step-content.slide-left {
+    animation: slideInLeft 0.4s ease-out;
+}
+
+@keyframes slideInLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.wizard-input:focus {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+}
+
+.wizard-btn {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.wizard-btn:hover {
+    transform: translateY(-2px);
+}
+
+.wizard-btn:active {
+    transform: translateY(0);
+}
+
+.progress-glow {
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+}
+
+.step-pulse {
+    animation: stepPulse 2s ease-in-out infinite;
+}
+
+@keyframes stepPulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+    }
+}
+
+/* Validation styles */
+.input-invalid {
+    border-color: #ef4444 !important;
+    animation: shake 0.5s ease-in-out;
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+}
+
+.input-valid {
+    border-color: #22c55e !important;
+}
+
+.validation-message {
+    font-size: 10px;
+    color: #ef4444;
+    margin-top: 4px;
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* Mobile responsive improvements */
+@media (max-width: 768px) {
+    .dpd-step-indicator span,
+    .measure-step-indicator span {
+        font-size: 8px;
+    }
+    
+    .wizard-btn {
+        padding: 0.5rem 1rem;
+        font-size: 10px;
+    }
+}
+
+/* Toast notifications */
+.toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.toast {
+    min-width: 300px;
+    padding: 16px 20px;
+    border-radius: 12px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-theme);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    animation: toastSlideIn 0.3s ease-out;
+}
+
+.toast.success {
+    border-color: rgba(34, 197, 94, 0.3);
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(20, 83, 45, 0.1));
+}
+
+.toast.error {
+    border-color: rgba(239, 68, 68, 0.3);
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(127, 29, 29, 0.1));
+}
+
+.toast.info {
+    border-color: rgba(59, 130, 246, 0.3);
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(30, 58, 138, 0.1));
+}
+
+.toast-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.toast.success .toast-icon {
+    background: rgba(34, 197, 94, 0.2);
+    color: #22c55e;
+}
+
+.toast.error .toast-icon {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+}
+
+.toast.info .toast-icon {
+    background: rgba(59, 130, 246, 0.2);
+    color: #3b82f6;
+}
+
+.toast-content {
+    flex: 1;
+}
+
+.toast-title {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text-heading);
+    margin-bottom: 2px;
+}
+
+.toast-message {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.toast-close {
+    background: none;
+    border: none;
+    color: var(--text-subtle);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.toast-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-heading);
+}
+
+@keyframes toastSlideIn {
+    from {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes toastSlideOut {
+    from {
+        opacity: 1;
+        transform: translateX(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+}
+
+.toast.hiding {
+    animation: toastSlideOut 0.3s ease-out forwards;
+}
+</style>
+';
+
 $user = $_SESSION['user'] ?? [];
 $token = $_SESSION['token'] ?? '';
 $tab = $_GET['tab'] ?? 'measures';
@@ -289,6 +524,7 @@ $tabs = [
 $pageTitle = 'Hardening';
 $currentPage = 'hardening';
 require_once __DIR__ . '/../includes/header.php';
+echo $wizardCSS;
 ?>
 
 <div class="flex h-screen bg-bg-base text-[13px] text-text-body overflow-hidden">
@@ -523,7 +759,7 @@ require_once __DIR__ . '/../includes/header.php';
                         <div class="bg-bg-base/40 border border-border-theme/25 rounded-lg p-5">
                             <div class="flex items-center justify-between mb-3">
                                 <h4 class="text-[12px] font-semibold text-text-heading">Información del DPD</h4>
-                                <button onclick="document.getElementById('dpd-modal').classList.remove('hidden')"
+                                <button onclick="openDpdWizard()"
                                     class="flex items-center gap-1 text-[10px] text-accent hover:text-primary-300 font-medium">
                                     <?= hIcon('pen', 'w-3 h-3') ?> Registrar / Editar
                                 </button>
@@ -647,336 +883,515 @@ require_once __DIR__ . '/../includes/header.php';
         <?php endif; ?>
         </div>
 
-        <!-- Modal DPD Profesional (Art. 28 Ley 21.719) -->
-        <div id="dpd-modal" class="hidden fixed inset-0 bg-black/65 flex items-center justify-center z-50 p-3 md:p-4">
-            <div class="w-full max-w-2xl mx-auto bg-bg-panel border border-border-theme rounded-xl shadow-xl max-h-[90vh] overflow-y-auto scrollbar-custom">
-                <div class="flex items-center justify-between px-5 py-4 border-b border-white/[0.04]">
-                    <h3 class="text-[13px] font-semibold text-text-heading flex items-center gap-2">
-                        <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                        Registrar / Editar DPD (Art. 28 Ley 21.719)
-                    </h3>
-                    <button onclick="document.getElementById('dpd-modal').classList.add('hidden')" class="text-text-muted hover:text-text-heading transition-colors p-1 hover:bg-bg-elevated rounded-lg"><?= hIcon('xmark') ?></button>
+        <!-- Modal DPD Profesional (Art. 28 Ley 21.719) - Wizard Style -->
+        <div id="dpd-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-3 md:p-4">
+            <div class="w-full max-w-3xl mx-auto bg-gradient-to-br from-bg-panel to-bg-elevated border border-border-theme rounded-2xl shadow-2xl max-h-[90vh] overflow-hidden flex flex-col animate-fade-in-up">
+                <!-- Wizard Header with Progress -->
+                <div class="flex-shrink-0 bg-gradient-to-r from-indigo-900/20 via-purple-900/20 to-indigo-900/20 border-b border-white/[0.08]">
+                    <div class="px-6 py-5">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 border border-emerald-500/30 flex items-center justify-center">
+                                    <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.0 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                                </div>
+                                <div>
+                                    <h3 class="text-[14px] font-bold text-text-heading">Asistente de Configuración DPD</h3>
+                                    <p class="text-[11px] text-text-muted">Art. 28 Ley 21.719 - Delegado de Protección de Datos</p>
+                                </div>
+                            </div>
+                            <button onclick="closeDpdWizard()" class="text-text-muted hover:text-text-heading transition-all p-2 hover:bg-white/[0.1] rounded-xl">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                            </button>
+                        </div>
+                        
+                        <!-- Progress Steps -->
+                        <div class="flex items-center justify-between relative">
+                            <div class="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-0.5 bg-white/[0.1]"></div>
+                            <div id="dpd-progress-line" class="absolute left-0 top-1/2 -translate-y-1/2 h-0.5 bg-gradient-to-r from-emerald-500 to-teal-500 transition-all duration-500" style="width: 0%"></div>
+                            
+                            <div class="dpd-step-indicator flex flex-col items-center relative z-10" data-step="1">
+                                <div class="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 border-2 border-emerald-400 flex items-center justify-center text-white font-bold text-[11px] shadow-lg shadow-emerald-500/25 transition-all duration-300">1</div>
+                                <span class="text-[9px] text-emerald-400 mt-1.5 font-medium whitespace-nowrap">Identificación</span>
+                            </div>
+                            <div class="dpd-step-indicator flex flex-col items-center relative z-10" data-step="2">
+                                <div class="w-8 h-8 rounded-full bg-bg-elevated border-2 border-border-theme flex items-center justify-center text-text-subtle font-bold text-[11px] transition-all duration-300">2</div>
+                                <span class="text-[9px] text-text-subtle mt-1.5 font-medium whitespace-nowrap">Empresa</span>
+                            </div>
+                            <div class="dpd-step-indicator flex flex-col items-center relative z-10" data-step="3">
+                                <div class="w-8 h-8 rounded-full bg-bg-elevated border-2 border-border-theme flex items-center justify-center text-text-subtle font-bold text-[11px] transition-all duration-300">3</div>
+                                <span class="text-[9px] text-text-subtle mt-1.5 font-medium whitespace-nowrap">Registro APDP</span>
+                            </div>
+                            <div class="dpd-step-indicator flex flex-col items-center relative z-10" data-step="4">
+                                <div class="w-8 h-8 rounded-full bg-bg-elevated border-2 border-border-theme flex items-center justify-center text-text-subtle font-bold text-[11px] transition-all duration-300">4</div>
+                                <span class="text-[9px] text-text-subtle mt-1.5 font-medium whitespace-nowrap">Obligaciones</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <form method="POST" class="p-5 space-y-4">
+                <!-- Wizard Content -->
+                <form method="POST" id="dpd-form" class="flex-1 overflow-y-auto scrollbar-custom">
                     <input type="hidden" name="save_dpd" value="1">
+                    
+                    <div class="p-6">
+                        <!-- Step 1: Identificación -->
+                        <div class="dpd-step-content" data-step="1">
+                            <div class="mb-5">
+                                <h4 class="text-[13px] font-semibold text-text-heading flex items-center gap-2">
+                                    <span class="w-6 h-6 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400 text-[10px]">1</span>
+                                    Identificación del DPD
+                                </h4>
+                                <p class="text-[11px] text-text-muted mt-1">Complete la información personal del Delegado de Protección de Datos</p>
+                            </div>
+                            
+                            <div class="bg-gradient-to-br from-emerald-500/[0.03] to-transparent border border-emerald-500/10 rounded-xl p-5 space-y-4">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body flex items-center gap-1">
+                                            Nombre completo <span class="text-red-400">*</span>
+                                        </label>
+                                        <input name="dpdName" value="<?= h($config['dpdName'] ?? '') ?>" required placeholder="Juan Pérez González"
+                                            class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 transition-all placeholder-text-subtle">
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body flex items-center gap-1">
+                                            RUT <span class="text-red-400">*</span>
+                                        </label>
+                                        <input name="dpdRut" id="dpdRut" value="<?= h($config['dpdRut'] ?? '') ?>" required placeholder="12.345.678-9"
+                                            class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 transition-all placeholder-text-subtle font-mono" pattern="[0-9]{1,2}\.[0-9]{3}\.[0-9]{3}-[0-9kK]{1}">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body flex items-center gap-1">
+                                            Email <span class="text-red-400">*</span>
+                                        </label>
+                                        <input name="dpdEmail" value="<?= h($config['dpdEmail'] ?? '') ?>" required placeholder="dpd@empresa.cl" type="email"
+                                            class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 transition-all placeholder-text-subtle">
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body flex items-center gap-1">
+                                            Teléfono <span class="text-red-400">*</span>
+                                        </label>
+                                        <input name="dpdPhone" value="<?= h($config['dpdPhone'] ?? '') ?>" required placeholder="+56 9 1234 5678"
+                                            class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 transition-all placeholder-text-subtle font-mono">
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body">Cargo oficial</label>
+                                        <select name="dpdTitle" class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 transition-all">
+                                            <option value="dpd">Delegado de Protección de Datos (DPD)</option>
+                                            <option value="dpd_adjunto">DPD Adjunto / Suplente</option>
+                                            <option value="privacy_officer">Privacy Officer / Chief Privacy Officer</option>
+                                            <option value="legal_counsel">Abogado / Asesor Legal</option>
+                                            <option value="ciso">CISO / Jefe Seguridad Información</option>
+                                            <option value="otro">Otro</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
 
-                    <!-- Identificación -->
-                    <fieldset class="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.02] p-4">
-                        <legend class="text-[11px] font-medium text-emerald-300 px-2">Identificación del DPD</legend>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <div>
-                                <label class="label-premium">Nombre completo *</label>
-                                <input name="dpdName" value="<?= h($config['dpdName'] ?? '') ?>" required placeholder="Juan Pérez González"
-                                    class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all placeholder-text-subtle">
+                        <!-- Step 2: Empresa y Contacto -->
+                        <div class="dpd-step-content hidden" data-step="2">
+                            <div class="mb-5">
+                                <h4 class="text-[13px] font-semibold text-text-heading flex items-center gap-2">
+                                    <span class="w-6 h-6 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-400 text-[10px]">2</span>
+                                    Empresa y Contacto Oficial
+                                </h4>
+                                <p class="text-[11px] text-text-muted mt-1">Art. 28.3 - Información para publicación de datos de contacto</p>
                             </div>
-                            <div>
-                                <label class="label-premium">RUT *</label>
-                                <input name="dpdRut" id="dpdRut" value="<?= h($config['dpdRut'] ?? '') ?>" required placeholder="12.345.678-9"
-                                    class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all placeholder-text-subtle" pattern="[0-9]{1,2}\.[0-9]{3}\.[0-9]{3}-[0-9kK]{1}">
+                            
+                            <div class="bg-gradient-to-br from-blue-500/[0.03] to-transparent border border-blue-500/10 rounded-xl p-5 space-y-4">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body flex items-center gap-1">
+                                            Empresa / Responsable <span class="text-red-400">*</span>
+                                        </label>
+                                        <input name="companyName" value="<?= h($config['companyName'] ?? '') ?>" required placeholder="Nombre legal de la empresa"
+                                            class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all placeholder-text-subtle">
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body">RUT Empresa</label>
+                                        <input name="companyRut" id="companyRut" value="<?= h($config['companyRut'] ?? '') ?>" placeholder="76.123.456-7"
+                                            class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all placeholder-text-subtle font-mono">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body">Dirección sede DPD</label>
+                                        <input name="dpdAddress" value="<?= h($config['dpdAddress'] ?? '') ?>" placeholder="Calle 123, Oficina 456, Santiago"
+                                            class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all placeholder-text-subtle">
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body">URL publicación DPD</label>
+                                        <input name="dpdPublicUrl" value="<?= h($config['dpdPublicUrl'] ?? '') ?>" placeholder="https://empresa.cl/dpd"
+                                            class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all placeholder-text-subtle font-mono">
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
-                            <div>
-                                <label class="label-premium">Email *</label>
-                                <input name="dpdEmail" value="<?= h($config['dpdEmail'] ?? '') ?>" required placeholder="dpd@empresa.cl" type="email"
-                                    class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all placeholder-text-subtle">
-                            </div>
-                            <div>
-                                <label class="label-premium">Teléfono *</label>
-                                <input name="dpdPhone" value="<?= h($config['dpdPhone'] ?? '') ?>" required placeholder="+56 9 1234 5678"
-                                    class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all placeholder-text-subtle">
-                            </div>
-                            <div>
-                                <label class="label-premium">Cargo oficial</label>
-                                <select name="dpdTitle" class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all">
-                                    <option value="dpd">Delegado de Protección de Datos (DPD)</option>
-                                    <option value="dpd_adjunto">DPD Adjunto / Suplente</option>
-                                    <option value="privacy_officer">Privacy Officer / Chief Privacy Officer</option>
-                                    <option value="legal_counsel">Abogado / Asesor Legal</option>
-                                    <option value="ciso">CISO / Jefe Seguridad Información</option>
-                                    <option value="otro">Otro</option>
-                                </select>
-                            </div>
-                        </div>
-                    </fieldset>
 
-                    <!-- Empresa y contacto -->
-                    <fieldset class="rounded-lg border border-blue-500/20 bg-blue-500/[0.02] p-4">
-                        <legend class="text-[11px] font-medium text-blue-300 px-2">Empresa y Contacto Oficial (Art. 28.3 - Publicación de datos de contacto)</legend>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <div>
-                                <label class="label-premium">Empresa / Responsable *</label>
-                                <input name="companyName" value="<?= h($config['companyName'] ?? '') ?>" required placeholder="Nombre legal de la empresa"
-                                    class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all placeholder-text-subtle">
+                        <!-- Step 3: Registro APDP -->
+                        <div class="dpd-step-content hidden" data-step="3">
+                            <div class="mb-5">
+                                <h4 class="text-[13px] font-semibold text-text-heading flex items-center gap-2">
+                                    <span class="w-6 h-6 rounded-lg bg-amber-500/20 flex items-center justify-center text-amber-400 text-[10px]">3</span>
+                                    Registro APDP y Nivel de Cumplimiento
+                                </h4>
+                                <p class="text-[11px] text-text-muted mt-1">Art. 31 - Inscripción obligatoria en Registro APDP</p>
                             </div>
-                            <div>
-                                <label class="label-premium">RUT Empresa</label>
-                                <input name="companyRut" id="companyRut" value="<?= h($config['companyRut'] ?? '') ?>" placeholder="76.123.456-7"
-                                    class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all placeholder-text-subtle">
+                            
+                            <div class="bg-gradient-to-br from-amber-500/[0.03] to-transparent border border-amber-500/10 rounded-xl p-5 space-y-4">
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body flex items-center gap-1">
+                                            ¿Registrado en APDP? <span class="text-red-400">*</span>
+                                        </label>
+                                        <select name="apdpRegistered" required class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 transition-all">
+                                            <option value="1" <?= !empty($config['apdpRegistered']) ? 'selected' : '' ?>>Sí - Registrado</option>
+                                            <option value="0" <?= empty($config['apdpRegistered']) ? 'selected' : '' ?>>No - Pendiente registro</option>
+                                            <option value="en_proceso">En proceso de registro</option>
+                                        </select>
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body">Nº Registro APDP</label>
+                                        <input name="apdpRegistrationNumber" value="<?= h($config['apdpRegistrationNumber'] ?? '') ?>" placeholder="APDP-2024-001234"
+                                            class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 transition-all placeholder-text-subtle font-mono">
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body">Fecha registro</label>
+                                        <input name="apdpRegistrationDate" value="<?= h($config['apdpRegistrationDate'] ?? '') ?>" type="date"
+                                            class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 transition-all">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body flex items-center gap-1">
+                                            Nivel de cumplimiento <span class="text-red-400">*</span>
+                                        </label>
+                                        <select name="complianceLevel" required class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 transition-all">
+                                            <option value="basico" <?= ($config['complianceLevel'] ?? '') === 'basico' ? 'selected' : '' ?>>Básico</option>
+                                            <option value="intermedio" <?= ($config['complianceLevel'] ?? '') === 'intermedio' ? 'selected' : '' ?>>Intermedio</option>
+                                            <option value="avanzado" <?= ($config['complianceLevel'] ?? '') === 'avanzado' ? 'selected' : '' ?>>Avanzado</option>
+                                            <option value="certificado" <?= ($config['complianceLevel'] ?? '') === 'certificado' ? 'selected' : '' ?>>Certificado (Modelo Prevención)</option>
+                                        </select>
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body">Fecha certificación</label>
+                                        <input name="preventionModelDate" value="<?= h($config['preventionModelDate'] ?? '') ?>" type="date"
+                                            class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 transition-all">
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body">Certificado por</label>
+                                        <input name="preventionModelCertifier" value="<?= h($config['preventionModelCertifier'] ?? '') ?>" placeholder="Entidad certificadora"
+                                            class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 transition-all placeholder-text-subtle">
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                            <div>
-                                <label class="label-premium">Dirección sede DPD</label>
-                                <input name="dpdAddress" value="<?= h($config['dpdAddress'] ?? '') ?>" placeholder="Calle 123, Oficina 456, Santiago"
-                                    class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all placeholder-text-subtle">
-                            </div>
-                            <div>
-                                <label class="label-premium">URL publicación DPD (web corporativa)</label>
-                                <input name="dpdPublicUrl" value="<?= h($config['dpdPublicUrl'] ?? '') ?>" placeholder="https://empresa.cl/dpd"
-                                    class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all placeholder-text-subtle">
-                            </div>
-                        </div>
-                    </fieldset>
 
-                    <!-- Registro APDP y cumplimiento -->
-                    <fieldset class="rounded-lg border border-amber-500/20 bg-amber-500/[0.02] p-4">
-                        <legend class="text-[11px] font-medium text-amber-300 px-2">Registro APDP y Nivel de Cumplimiento (Art. 31)</legend>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                            <div>
-                                <label class="label-premium">¿Registrado en APDP? *</label>
-                                <select name="apdpRegistered" required class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all">
-                                    <option value="1" <?= !empty($config['apdpRegistered']) ? 'selected' : '' ?>>Sí - Registrado</option>
-                                    <option value="0" <?= empty($config['apdpRegistered']) ? 'selected' : '' ?>>No - Pendiente registro</option>
-                                    <option value="en_proceso">En proceso de registro</option>
-                                </select>
-                                <p class="text-[8px] text-text-subtle mt-0.5">Art. 31: inscripción obligatoria en Registro APDP.</p>
+                        <!-- Step 4: Obligaciones -->
+                        <div class="dpd-step-content hidden" data-step="4">
+                            <div class="mb-5">
+                                <h4 class="text-[13px] font-semibold text-text-heading flex items-center gap-2">
+                                    <span class="w-6 h-6 rounded-lg bg-purple-500/20 flex items-center justify-center text-purple-400 text-[10px]">4</span>
+                                    Obligaciones del DPD y Evidencia
+                                </h4>
+                                <p class="text-[11px] text-text-muted mt-1">Art. 28 - Seleccione las obligaciones cumplidas y adjunte evidencias</p>
                             </div>
-                            <div>
-                                <label class="label-premium">Nº Registro APDP</label>
-                                <input name="apdpRegistrationNumber" value="<?= h($config['apdpRegistrationNumber'] ?? '') ?>" placeholder="Ej: APDP-2024-001234"
-                                    class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all placeholder-text-subtle">
-                            </div>
-                            <div>
-                                <label class="label-premium">Fecha registro</label>
-                                <input name="apdpRegistrationDate" value="<?= h($config['apdpRegistrationDate'] ?? '') ?>" type="date"
-                                    class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all">
+                            
+                            <div class="bg-gradient-to-br from-purple-500/[0.03] to-transparent border border-purple-500/10 rounded-xl p-5 space-y-4">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <label class="flex items-center gap-3 p-3 rounded-lg bg-bg-base/40 border border-border-theme hover:border-purple-500/30 hover:bg-bg-base/60 transition-all cursor-pointer group">
+                                        <input type="checkbox" name="obligations[]" value="supervision" <?= (!empty($config['obligation_supervision']) || !empty($config['dpdEmail'])) ? 'checked' : '' ?> class="w-4 h-4 rounded border-border-theme text-purple-500 focus:ring-purple-500/20 transition-all">
+                                        <span class="text-[11px] text-text-body group-hover:text-text-heading transition-colors">Supervisar cumplimiento normativo</span>
+                                    </label>
+                                    <label class="flex items-center gap-3 p-3 rounded-lg bg-bg-base/40 border border-border-theme hover:border-purple-500/30 hover:bg-bg-base/60 transition-all cursor-pointer group">
+                                        <input type="checkbox" name="obligations[]" value="eipd_advice" <?= !empty($config['obligation_eipd']) ? 'checked' : '' ?> class="w-4 h-4 rounded border-border-theme text-purple-500 focus:ring-purple-500/20 transition-all">
+                                        <span class="text-[11px] text-text-body group-hover:text-text-heading transition-colors">Asesorar en EIPD (Art. 29)</span>
+                                    </label>
+                                    <label class="flex items-center gap-3 p-3 rounded-lg bg-bg-base/40 border border-border-theme hover:border-purple-500/30 hover:bg-bg-base/60 transition-all cursor-pointer group">
+                                        <input type="checkbox" name="obligations[]" value="arco_attention" <?= !empty($config['obligation_arco']) ? 'checked' : '' ?> class="w-4 h-4 rounded border-border-theme text-purple-500 focus:ring-purple-500/20 transition-all">
+                                        <span class="text-[11px] text-text-body group-hover:text-text-heading transition-colors">Atender solicitudes ARCO (Art. 8-13)</span>
+                                    </label>
+                                    <label class="flex items-center gap-3 p-3 rounded-lg bg-bg-base/40 border border-border-theme hover:border-purple-500/30 hover:bg-bg-base/60 transition-all cursor-pointer group">
+                                        <input type="checkbox" name="obligations[]" value="apdp_coordination" <?= !empty($config['apdpRegistered']) ? 'checked' : '' ?> class="w-4 h-4 rounded border-border-theme text-purple-500 focus:ring-purple-500/20 transition-all">
+                                        <span class="text-[11px] text-text-body group-hover:text-text-heading transition-colors">Coordinar con APDP (Art. 28.2)</span>
+                                    </label>
+                                    <label class="flex items-center gap-3 p-3 rounded-lg bg-bg-base/40 border border-border-theme hover:border-purple-500/30 hover:bg-bg-base/60 transition-all cursor-pointer group">
+                                        <input type="checkbox" name="obligations[]" value="training" <?= !empty($config['obligation_training']) ? 'checked' : '' ?> class="w-4 h-4 rounded border-border-theme text-purple-500 focus:ring-purple-500/20 transition-all">
+                                        <span class="text-[11px] text-text-body group-hover:text-text-heading transition-colors">Capacitar al personal (Art. 28.c)</span>
+                                    </label>
+                                    <label class="flex items-center gap-3 p-3 rounded-lg bg-bg-base/40 border border-border-theme hover:border-purple-500/30 hover:bg-bg-base/60 transition-all cursor-pointer group">
+                                        <input type="checkbox" name="obligations[]" value="register_activities" <?= !empty($config['obligation_register']) ? 'checked' : '' ?> class="w-4 h-4 rounded border-border-theme text-purple-500 focus:ring-purple-500/20 transition-all">
+                                        <span class="text-[11px] text-text-body group-hover:text-text-heading transition-colors">Mantener RAT (Art. 14)</span>
+                                    </label>
+                                    <label class="flex items-center gap-3 p-3 rounded-lg bg-bg-base/40 border border-border-theme hover:border-purple-500/30 hover:bg-bg-base/60 transition-all cursor-pointer group">
+                                        <input type="checkbox" name="obligations[]" value="breach_reporting" <?= !empty($config['obligation_breach']) ? 'checked' : '' ?> class="w-4 h-4 rounded border-border-theme text-purple-500 focus:ring-purple-500/20 transition-all">
+                                        <span class="text-[11px] text-text-body group-hover:text-text-heading transition-colors">Reportar brechas a APDP (Art. 26)</span>
+                                    </label>
+                                    <label class="flex items-center gap-3 p-3 rounded-lg bg-bg-base/40 border border-border-theme hover:border-purple-500/30 hover:bg-bg-base/60 transition-all cursor-pointer group">
+                                        <input type="checkbox" name="obligations[]" value="audits" <?= !empty($config['obligation_audits']) ? 'checked' : '' ?> class="w-4 h-4 rounded border-border-theme text-purple-500 focus:ring-purple-500/20 transition-all">
+                                        <span class="text-[11px] text-text-body group-hover:text-text-heading transition-colors">Auditorías periódicas</span>
+                                    </label>
+                                </div>
+                                <div class="space-y-1.5">
+                                    <label class="block text-[11px] font-medium text-text-body">URL de evidencias</label>
+                                    <input name="dpdEvidenceUrl" value="<?= h($config['dpdEvidenceUrl'] ?? '') ?>" placeholder="https://drive.empresa.cl/dpd-evidencias"
+                                        class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/20 transition-all placeholder-text-subtle font-mono">
+                                    <p class="text-[10px] text-text-subtle">Certificados, actas, reportes y documentación de cumplimiento</p>
+                                </div>
                             </div>
                         </div>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
-                            <div>
-                                <label class="label-premium">Nivel de cumplimiento *</label>
-                                <select name="complianceLevel" required class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all">
-                                    <option value="basico" <?= ($config['complianceLevel'] ?? '') === 'basico' ? 'selected' : '' ?>>Básico</option>
-                                    <option value="intermedio" <?= ($config['complianceLevel'] ?? '') === 'intermedio' ? 'selected' : '' ?>>Intermedio</option>
-                                    <option value="avanzado" <?= ($config['complianceLevel'] ?? '') === 'avanzado' ? 'selected' : '' ?>>Avanzado</option>
-                                    <option value="certificado" <?= ($config['complianceLevel'] ?? '') === 'certificado' ? 'selected' : '' ?>>Certificado (Modelo Prevención Art. 28)</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="label-premium">Fecha certificación modelo prevención</label>
-                                <input name="preventionModelDate" value="<?= h($config['preventionModelDate'] ?? '') ?>" type="date"
-                                    class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all">
-                            </div>
-                            <div>
-                                <label class="label-premium">Certificado por</label>
-                                <input name="preventionModelCertifier" value="<?= h($config['preventionModelCertifier'] ?? '') ?>" placeholder="Entidad certificadora / APDP"
-                                    class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all placeholder-text-subtle">
-                            </div>
-                        </div>
-                    </fieldset>
+                    </div>
 
-                    <!-- Obligaciones y evidencia -->
-                    <fieldset class="rounded-lg border border-purple-500/20 bg-purple-500/[0.02] p-4">
-                        <legend class="text-[11px] font-medium text-purple-300 px-2">Obligaciones del DPD (Art. 28) y Evidencia</legend>
-                        <div class="space-y-2">
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                <label class="flex items-center gap-2 cursor-pointer">
-                                    <input type="checkbox" name="obligations[]" value="supervision" <?= (!empty($config['obligation_supervision']) || !empty($config['dpdEmail'])) ? 'checked' : '' ?> class="w-4 h-4 rounded border-border-theme text-primary-600 focus:ring-primary-500">
-                                    <span class="text-[11px] text-text-body">Supervisar cumplimiento normativo</span>
-                                </label>
-                                <label class="flex items-center gap-2 cursor-pointer">
-                                    <input type="checkbox" name="obligations[]" value="eipd_advice" <?= !empty($config['obligation_eipd']) ? 'checked' : '' ?> class="w-4 h-4 rounded border-border-theme text-primary-600 focus:ring-primary-500">
-                                    <span class="text-[11px] text-text-body">Asesorar en EIPD (Art. 29)</span>
-                                </label>
-                                <label class="flex items-center gap-2 cursor-pointer">
-                                    <input type="checkbox" name="obligations[]" value="arco_attention" <?= !empty($config['obligation_arco']) ? 'checked' : '' ?> class="w-4 h-4 rounded border-border-theme text-primary-600 focus:ring-primary-500">
-                                    <span class="text-[11px] text-text-body">Atender solicitudes ARCO (Art. 8-13)</span>
-                                </label>
-                                <label class="flex items-center gap-2 cursor-pointer">
-                                    <input type="checkbox" name="obligations[]" value="apdp_coordination" <?= !empty($config['apdpRegistered']) ? 'checked' : '' ?> class="w-4 h-4 rounded border-border-theme text-primary-600 focus:ring-primary-500">
-                                    <span class="text-[11px] text-text-body">Coordinar con APDP (Art. 28.2)</span>
-                                </label>
-                                <label class="flex items-center gap-2 cursor-pointer">
-                                    <input type="checkbox" name="obligations[]" value="training" <?= !empty($config['obligation_training']) ? 'checked' : '' ?> class="w-4 h-4 rounded border-border-theme text-primary-600 focus:ring-primary-500">
-                                    <span class="text-[11px] text-text-body">Capacitar al personal (Art. 28.c)</span>
-                                </label>
-                                <label class="flex items-center gap-2 cursor-pointer">
-                                    <input type="checkbox" name="obligations[]" value="register_activities" <?= !empty($config['obligation_register']) ? 'checked' : '' ?> class="w-4 h-4 rounded border-border-theme text-primary-600 focus:ring-primary-500">
-                                    <span class="text-[11px] text-text-body">Mantener RAT (Art. 14)</span>
-                                </label>
-                                <label class="flex items-center gap-2 cursor-pointer">
-                                    <input type="checkbox" name="obligations[]" value="breach_reporting" <?= !empty($config['obligation_breach']) ? 'checked' : '' ?> class="w-4 h-4 rounded border-border-theme text-primary-600 focus:ring-primary-500">
-                                    <span class="text-[11px] text-text-body">Reportar brechas a APDP (Art. 26)</span>
-                                </label>
-                                <label class="flex items-center gap-2 cursor-pointer">
-                                    <input type="checkbox" name="obligations[]" value="audits" <?= !empty($config['obligation_audits']) ? 'checked' : '' ?> class="w-4 h-4 rounded border-border-theme text-primary-600 focus:ring-primary-500">
-                                    <span class="text-[11px] text-text-body">Auditorías periódicas</span>
-                                </label>
+                    <!-- Wizard Footer -->
+                    <div class="flex-shrink-0 px-6 py-4 bg-bg-elevated/50 border-t border-white/[0.08]">
+                        <div class="flex items-center justify-between">
+                            <button type="button" onclick="closeDpdWizard()" id="dpd-cancel-btn"
+                                class="px-5 py-2.5 text-[11px] font-medium rounded-xl bg-bg-base text-text-body border border-border-theme hover:bg-bg-elevated hover:border-surface-600 hover:text-text-heading transition-all flex items-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                                Cancelar
+                            </button>
+                            <div class="flex items-center gap-3">
+                                <button type="button" onclick="prevDpdStep()" id="dpd-prev-btn" class="hidden px-5 py-2.5 text-[11px] font-medium rounded-xl bg-bg-base text-text-body border border-border-theme hover:bg-bg-elevated hover:border-surface-600 hover:text-text-heading transition-all flex items-center gap-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                                    Anterior
+                                </button>
+                                <button type="button" onclick="nextDpdStep()" id="dpd-next-btn" class="px-6 py-2.5 text-[11px] font-semibold rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white transition-all flex items-center gap-2 shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/35">
+                                    Siguiente
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                                </button>
+                                <button type="submit" id="dpd-submit-btn" class="hidden px-6 py-2.5 text-[11px] font-semibold rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/35">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                    Guardar Configuración
+                                </button>
                             </div>
                         </div>
-                        <div class="mt-3">
-                            <label class="label-premium">URL de evidencias (certificados, actas, reportes)</label>
-                            <input name="dpdEvidenceUrl" value="<?= h($config['dpdEvidenceUrl'] ?? '') ?>" placeholder="https://drive.empresa.cl/dpd-evidencias"
-                                class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all placeholder-text-subtle">
-                        </div>
-                    </fieldset>
-
-                    <div class="flex justify-end gap-2 pt-2 border-t border-border-theme">
-                        <button type="button" onclick="document.getElementById('dpd-modal').classList.add('hidden')"
-                            class="px-4 py-2 text-[11px] font-medium rounded-lg bg-bg-elevated text-text-body border border-border-theme transition-all">Cancelar</button>
-                        <button type="submit" class="px-5 py-2.5 text-[12px] font-semibold rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white transition-all flex items-center gap-2">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                            Guardar DPD (Art. 28 Ley 21.719)
-                        </button>
                     </div>
                 </form>
             </div>
         </div>
 
-        <!-- Modal Medida Profesional (Art. 25 Ley 21.719 - Medidas de Seguridad) -->
-        <div id="measure-modal" class="hidden fixed inset-0 bg-black/65 flex items-center justify-center z-50 p-3 md:p-4">
-            <div class="w-full max-w-3xl mx-auto bg-bg-panel border border-border-theme rounded-xl shadow-xl max-h-[90vh] overflow-y-auto scrollbar-custom">
-                <div class="flex items-center justify-between px-5 py-4 border-b border-white/[0.04] sticky top-0 bg-bg-panel z-10">
-                    <div class="flex items-center gap-2.5">
-                        <span class="text-indigo-400 flex-shrink-0" id="measure-modal-icon"></span>
-                        <div>
-                            <h3 class="text-[13px] font-semibold text-text-heading" id="measure-modal-title"></h3>
-                            <p class="text-[10px] text-text-muted mt-0.5">Implementar medida de seguridad técnica/organizativa — Art. 25 Ley 21.719</p>
+        <!-- Modal Medida Profesional (Art. 25 Ley 21.719 - Medidas de Seguridad) - Wizard Style -->
+        <div id="measure-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-3 md:p-4">
+            <div class="w-full max-w-4xl mx-auto bg-gradient-to-br from-bg-panel to-bg-elevated border border-border-theme rounded-2xl shadow-2xl max-h-[90vh] overflow-hidden flex flex-col animate-fade-in-up">
+                <!-- Wizard Header with Progress -->
+                <div class="flex-shrink-0 bg-gradient-to-r from-indigo-900/20 via-purple-900/20 to-cyan-900/20 border-b border-white/[0.08]">
+                    <div class="px-6 py-5">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 flex items-center justify-center" id="measure-modal-icon">
+                                </div>
+                                <div>
+                                    <h3 class="text-[14px] font-bold text-text-heading" id="measure-modal-title"></h3>
+                                    <p class="text-[11px] text-text-muted">Implementar medida de seguridad — Art. 25 Ley 21.719</p>
+                                </div>
+                            </div>
+                            <button onclick="closeMeasureModal()" class="text-text-muted hover:text-text-heading transition-all p-2 hover:bg-white/[0.1] rounded-xl">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                            </button>
                         </div>
-                    </div>
-                    <button onclick="closeMeasureModal()" class="text-text-muted hover:text-text-heading transition-colors p-1 hover:bg-bg-elevated rounded-lg flex-shrink-0"><?= hIcon('xmark') ?></button>
-                </div>
-                <form method="POST" class="p-5 space-y-4">
-                    <input type="hidden" name="measure_id" id="measure-modal-id">
-                    <div class="rounded-lg bg-indigo-500/[0.04] border border-indigo-500/15 px-3 py-2.5">
-                        <p class="text-[11px] text-text-muted leading-relaxed" id="measure-modal-desc"></p>
-                    </div>
-
-                    <div class="space-y-3" id="measure-modal-fields">
-                        <p class="text-[10px] font-semibold text-text-subtle uppercase tracking-widest">Detalles de la implementación</p>
                         
-                        <!-- Campos estáticos para incident_response -->
-                        <div id="incident-response-fields" class="hidden space-y-3">
-                            <div>
-                                <label class="block text-[10px] text-text-muted font-semibold uppercase tracking-widest mb-1.5">Estado del plan</label>
-                                <select name="field_planStatus" class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all">
-                                    <option value="">Seleccionar...</option>
-                                    <option value="Documentado y probado">Documentado y probado</option>
-                                    <option value="Documentado sin probar">Documentado sin probar</option>
-                                    <option value="En desarrollo">En desarrollo</option>
-                                    <option value="No existe">No existe</option>
-                                </select>
+                        <!-- Progress Steps -->
+                        <div class="flex items-center justify-between relative">
+                            <div class="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-0.5 bg-white/[0.1]"></div>
+                            <div id="measure-progress-line" class="absolute left-0 top-1/2 -translate-y-1/2 h-0.5 bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-500" style="width: 0%"></div>
+                            
+                            <div class="measure-step-indicator flex flex-col items-center relative z-10" data-step="1">
+                                <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 border-2 border-indigo-400 flex items-center justify-center text-white font-bold text-[11px] shadow-lg shadow-indigo-500/25 transition-all duration-300">1</div>
+                                <span class="text-[9px] text-indigo-400 mt-1.5 font-medium whitespace-nowrap">Detalles</span>
                             </div>
-                            <div>
-                                <label class="block text-[10px] text-text-muted font-semibold uppercase tracking-widest mb-1.5">Fecha último simulacro (drill)</label>
-                                <input type="date" name="field_lastDrill" class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all">
+                            <div class="measure-step-indicator flex flex-col items-center relative z-10" data-step="2">
+                                <div class="w-8 h-8 rounded-full bg-bg-elevated border-2 border-border-theme flex items-center justify-center text-text-subtle font-bold text-[11px] transition-all duration-300">2</div>
+                                <span class="text-[9px] text-text-subtle mt-1.5 font-medium whitespace-nowrap">Evidencia</span>
                             </div>
-                            <div>
-                                <label class="block text-[10px] text-text-muted font-semibold uppercase tracking-widest mb-1.5">Tamaño del equipo de respuesta</label>
-                                <select name="field_teamSize" class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all">
-                                    <option value="">Seleccionar...</option>
-                                    <option value="1-3 personas">1-3 personas</option>
-                                    <option value="4-10 personas">4-10 personas</option>
-                                    <option value="Más de 10">Más de 10</option>
-                                </select>
+                            <div class="measure-step-indicator flex flex-col items-center relative z-10" data-step="3">
+                                <div class="w-8 h-8 rounded-full bg-bg-elevated border-2 border-border-theme flex items-center justify-center text-text-subtle font-bold text-[11px] transition-all duration-300">3</div>
+                                <span class="text-[9px] text-text-subtle mt-1.5 font-medium whitespace-nowrap">Verificación</span>
                             </div>
-                            <div>
-                                <label class="block text-[10px] text-text-muted font-semibold uppercase tracking-widest mb-1.5">URL del plan de respuesta a incidentes</label>
-                                <input type="url" name="field_evidenceUrl" placeholder="https://empresa.cl/plan-incidentes" class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all">
+                        </div>
+                    </div>
+                </div>
+                <form method="POST" id="measure-form" class="flex-1 overflow-y-auto scrollbar-custom">
+                    <input type="hidden" name="measure_id" id="measure-modal-id">
+                    
+                    <div class="p-6">
+                        <!-- Description -->
+                        <div class="mb-5 rounded-xl bg-gradient-to-br from-indigo-500/[0.05] to-transparent border border-indigo-500/10 px-4 py-3">
+                            <p class="text-[11px] text-text-body leading-relaxed" id="measure-modal-desc"></p>
+                        </div>
+
+                        <!-- Step 1: Detalles de Implementación -->
+                        <div class="measure-step-content" data-step="1">
+                            <div class="mb-5">
+                                <h4 class="text-[13px] font-semibold text-text-heading flex items-center gap-2">
+                                    <span class="w-6 h-6 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-400 text-[10px]">1</span>
+                                    Detalles de la Implementación
+                                </h4>
+                                <p class="text-[11px] text-text-muted mt-1">Configure los parámetros técnicos de la medida de seguridad</p>
+                            </div>
+                            
+                            <div class="bg-gradient-to-br from-indigo-500/[0.03] to-transparent border border-indigo-500/10 rounded-xl p-5 space-y-4" id="measure-modal-fields">
+                                <p class="text-[10px] font-semibold text-text-subtle uppercase tracking-widest">Complete la información requerida</p>
+                                
+                                <!-- Campos estáticos para incident_response -->
+                                <div id="incident-response-fields" class="hidden space-y-4">
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body">Estado del plan</label>
+                                        <select name="field_planStatus" class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 transition-all">
+                                            <option value="">Seleccionar...</option>
+                                            <option value="Documentado y probado">Documentado y probado</option>
+                                            <option value="Documentado sin probar">Documentado sin probar</option>
+                                            <option value="En desarrollo">En desarrollo</option>
+                                            <option value="No existe">No existe</option>
+                                        </select>
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body">Fecha último simulacro (drill)</label>
+                                        <input type="date" name="field_lastDrill" class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 transition-all">
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body">Tamaño del equipo de respuesta</label>
+                                        <select name="field_teamSize" class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 transition-all">
+                                            <option value="">Seleccionar...</option>
+                                            <option value="1-3 personas">1-3 personas</option>
+                                            <option value="4-10 personas">4-10 personas</option>
+                                            <option value="Más de 10">Más de 10</option>
+                                        </select>
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body">URL del plan de respuesta a incidentes</label>
+                                        <input type="url" name="field_evidenceUrl" placeholder="https://empresa.cl/plan-incidentes" class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 transition-all font-mono">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Step 2: Evidencia y Validación -->
+                        <div class="measure-step-content hidden" data-step="2">
+                            <div class="mb-5">
+                                <h4 class="text-[13px] font-semibold text-text-heading flex items-center gap-2">
+                                    <span class="w-6 h-6 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400 text-[10px]">2</span>
+                                    Evidencia y Validación
+                                </h4>
+                                <p class="text-[11px] text-text-muted mt-1">Art. 25 - Demostrabilidad de la implementación</p>
+                            </div>
+                            
+                            <div class="bg-gradient-to-br from-emerald-500/[0.03] to-transparent border border-emerald-500/10 rounded-xl p-5 space-y-4">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body flex items-center gap-1">
+                                            URL de evidencia <span class="text-red-400">*</span>
+                                        </label>
+                                        <input type="url" name="field_evidenceUrl" placeholder="https://gitlab.empresa.cl/seguridad/politica-cifrado" class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 transition-all font-mono" required>
+                                        <p class="text-[10px] text-text-subtle">Políticas, configs, logs, certificados, reportes</p>
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body">Tipo de evidencia</label>
+                                        <select name="field_evidenceType" class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 transition-all">
+                                            <option value="politica">Política / Procedimiento documentado</option>
+                                            <option value="config">Configuración técnica (screenshot, export)</option>
+                                            <option value="log">Logs de auditoría / SIEM</option>
+                                            <option value="certificado">Certificación externa (ISO 27001, SOC 2)</option>
+                                            <option value="test">Resultado de prueba / Pen test</option>
+                                            <option value="contrato">Contrato con proveedor / Encargado</option>
+                                            <option value="otro">Otro</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body">Responsable implementación</label>
+                                        <input type="text" name="field_implementer" placeholder="Nombre / Cargo / Equipo" class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 transition-all">
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body">Fecha implementación</label>
+                                        <input type="date" name="field_implementedAt" class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 transition-all" value="<?= date('Y-m-d') ?>">
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body">Próxima revisión</label>
+                                        <input type="date" name="field_nextReview" class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 transition-all" placeholder="Recomendado: 12 meses">
+                                    </div>
+                                </div>
+                                <div class="space-y-1.5">
+                                    <label class="block text-[11px] font-medium text-text-body">Notas adicionales</label>
+                                    <textarea name="notes" placeholder="Comentarios, limitaciones, excepciones, riesgos residuales..." rows="3" class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 transition-all resize-none"></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Step 3: Verificación de Efectividad -->
+                        <div class="measure-step-content hidden" data-step="3">
+                            <div class="mb-5">
+                                <h4 class="text-[13px] font-semibold text-text-heading flex items-center gap-2">
+                                    <span class="w-6 h-6 rounded-lg bg-cyan-500/20 flex items-center justify-center text-cyan-400 text-[10px]">3</span>
+                                    Verificación de Efectividad
+                                </h4>
+                                <p class="text-[11px] text-text-muted mt-1">Art. 25.2 - Revisión periódica de la medida</p>
+                            </div>
+                            
+                            <div class="bg-gradient-to-br from-cyan-500/[0.03] to-transparent border border-cyan-500/10 rounded-xl p-5 space-y-4">
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body">¿Probada/Verificada?</label>
+                                        <select name="field_verified" class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/20 transition-all">
+                                            <option value="no">No verificada</option>
+                                            <option value="si_interna">Sí - Verificación interna</option>
+                                            <option value="si_externa">Sí - Auditoría externa</option>
+                                            <option value="continua">Monitoreo continuo (SIEM/SOC)</option>
+                                        </select>
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body">Fecha última verificación</label>
+                                        <input type="date" name="field_lastVerified" class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/20 transition-all">
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body">Resultado verificación</label>
+                                        <select name="field_verificationResult" class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/20 transition-all">
+                                            <option value="exitosa">Exitosa - Cumple objetivo</option>
+                                            <option value="parcial">Parcial - Mejoras necesarias</option>
+                                            <option value="fallida">Fallida - No cumple</option>
+                                            <option value="pendiente">Pendiente</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body">Hallazgos / Observaciones</label>
+                                        <textarea name="field_findings" rows="2" placeholder="Hallazgos de la verificación, acciones correctivas..." class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/20 transition-all resize-none"></textarea>
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[11px] font-medium text-text-body">Próxima verificación programada</label>
+                                        <input type="date" name="field_nextVerification" class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/20 transition-all">
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Evidencia y validación -->
-                    <fieldset class="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.02] p-4">
-                        <legend class="text-[11px] font-medium text-emerald-300 px-2">Evidencia y Validación (Art. 25 - Demostrabilidad)</legend>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <div>
-                                <label class="label-premium">URL de evidencia *</label>
-                                <input type="url" name="field_evidenceUrl" placeholder="https://gitlab.empresa.cl/seguridad/politica-cifrado" class="input-premium w-full" required>
-                                <p class="text-[8px] text-text-subtle mt-0.5">Evidencia documental: políticas, configs, logs, certificados, reportes de auditoría.</p>
-                            </div>
-                            <div>
-                                <label class="label-premium">Tipo de evidencia</label>
-                                <select name="field_evidenceType" class="input-premium w-full">
-                                    <option value="politica">Política / Procedimiento documentado</option>
-                                    <option value="config">Configuración técnica (screenshot, export)</option>
-                                    <option value="log">Logs de auditoría / SIEM</option>
-                                    <option value="certificado">Certificación externa (ISO 27001, SOC 2)</option>
-                                    <option value="test">Resultado de prueba / Pen test</option>
-                                    <option value="contrato">Contrato con proveedor / Encargado</option>
-                                    <option value="otro">Otro</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
-                            <div>
-                                <label class="label-premium">Responsable implementación</label>
-                                <input type="text" name="field_implementer" placeholder="Nombre / Cargo / Equipo" class="input-premium w-full">
-                            </div>
-                            <div>
-                                <label class="label-premium">Fecha implementación</label>
-                                <input type="date" name="field_implementedAt" class="input-premium w-full" value="<?= date('Y-m-d') ?>">
-                            </div>
-                            <div>
-                                <label class="label-premium">Próxima revisión</label>
-                                <input type="date" name="field_nextReview" class="input-premium w-full" placeholder="Recomendado: 12 meses">
+                    <!-- Wizard Footer -->
+                    <div class="flex-shrink-0 px-6 py-4 bg-bg-elevated/50 border-t border-white/[0.08]">
+                        <div class="flex items-center justify-between">
+                            <button type="button" onclick="closeMeasureModal()"
+                                class="px-5 py-2.5 text-[11px] font-medium rounded-xl bg-bg-base text-text-body border border-border-theme hover:bg-bg-elevated hover:border-surface-600 hover:text-text-heading transition-all flex items-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                                Cancelar
+                            </button>
+                            <div class="flex items-center gap-3">
+                                <button type="button" onclick="prevMeasureStep()" id="measure-prev-btn" class="hidden px-5 py-2.5 text-[11px] font-medium rounded-xl bg-bg-base text-text-body border border-border-theme hover:bg-bg-elevated hover:border-surface-600 hover:text-text-heading transition-all flex items-center gap-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                                    Anterior
+                                </button>
+                                <button type="button" onclick="nextMeasureStep()" id="measure-next-btn" class="px-6 py-2.5 text-[11px] font-semibold rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white transition-all flex items-center gap-2 shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/35">
+                                    Siguiente
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                                </button>
+                                <button type="submit" name="save_measure" value="1" id="measure-submit-btn" class="hidden px-6 py-2.5 text-[11px] font-semibold rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/35">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                    Marcar como Implementada
+                                </button>
                             </div>
                         </div>
-                        <div class="mt-3">
-                            <label class="label-premium">Notas adicionales</label>
-                            <textarea name="notes" placeholder="Comentarios, limitaciones, excepciones, riesgos residuales..." rows="3" class="input-premium w-full"></textarea>
-                        </div>
-                    </fieldset>
-
-                    <!-- Verificación de efectividad -->
-                    <fieldset class="rounded-lg border border-blue-500/20 bg-blue-500/[0.02] p-4">
-                        <legend class="text-[11px] font-medium text-blue-300 px-2">Verificación de Efectividad (Art. 25.2 - Revisión periódica)</legend>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                            <div>
-                                <label class="label-premium">¿Probada/Verificada?</label>
-                                <select name="field_verified" class="input-premium w-full">
-                                    <option value="no">No verificada</option>
-                                    <option value="si_interna">Sí - Verificación interna</option>
-                                    <option value="si_externa">Sí - Auditoría externa</option>
-                                    <option value="continua">Monitoreo continuo (SIEM/SOC)</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="label-premium">Fecha última verificación</label>
-                                <input type="date" name="field_lastVerified" class="input-premium w-full">
-                            </div>
-                            <div>
-                                <label class="label-premium">Resultado verificación</label>
-                                <select name="field_verificationResult" class="input-premium w-full">
-                                    <option value="exitosa">Exitosa - Cumple objetivo</option>
-                                    <option value="parcial">Parcial - Mejoras necesarias</option>
-                                    <option value="fallida">Fallida - No cumple</option>
-                                    <option value="pendiente">Pendiente</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                            <div>
-                                <label class="label-premium">Hallazgos / Observaciones</label>
-                                <textarea name="field_findings" rows="2" placeholder="Hallazgos de la verificación, acciones correctivas..." class="input-premium w-full"></textarea>
-                            </div>
-                            <div>
-                                <label class="label-premium">Próxima verificación programada</label>
-                                <input type="date" name="field_nextVerification" class="input-premium w-full">
-                            </div>
-                        </div>
-                    </fieldset>
-
-                    <div class="flex justify-end gap-2 pt-2 border-t border-border-theme">
-                        <button type="button" onclick="closeMeasureModal()"
-                            class="px-4 py-2 text-[11px] font-medium rounded-lg bg-bg-elevated text-text-body border border-border-theme transition-all">Cancelar</button>
-                        <button type="submit" name="save_measure" value="1"
-                            class="px-5 py-2.5 text-[12px] font-semibold rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white transition-all flex items-center gap-2">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                            Marcar como Implementada y Verificada (Art. 25)
-                        </button>
                     </div>
                 </form>
             </div>
@@ -985,55 +1400,390 @@ require_once __DIR__ . '/../includes/header.php';
         <script>
         const MEASURE_DEFS = <?= json_encode(array_map(fn($d) => ['id' => $d['id'], 'label' => $d['label'], 'desc' => $d['desc'], 'fields' => $d['fields']], $HARDENING_DEFS), JSON_UNESCAPED_UNICODE) ?>;
 
+        // ===== DPD Wizard Functions =====
+        let currentDpdStep = 1;
+        const totalDpdSteps = 4;
+
+        function openDpdWizard() {
+            document.getElementById('dpd-modal').classList.remove('hidden');
+            currentDpdStep = 1;
+            updateDpdWizardUI();
+        }
+
+        function closeDpdWizard() {
+            document.getElementById('dpd-modal').classList.add('hidden');
+            currentDpdStep = 1;
+            updateDpdWizardUI();
+            clearValidationErrors('dpd-form');
+        }
+
+        function validateDpdStep(step) {
+            const currentStepEl = document.querySelector(`.dpd-step-content[data-step="${step}"]`);
+            const requiredInputs = currentStepEl.querySelectorAll('input[required], select[required]');
+            let isValid = true;
+
+            requiredInputs.forEach(input => {
+                const value = input.value.trim();
+                if (!value) {
+                    isValid = false;
+                    input.classList.add('input-invalid');
+                    input.classList.remove('input-valid');
+                    
+                    // Add validation message if not exists
+                    let msg = input.parentElement.querySelector('.validation-message');
+                    if (!msg) {
+                        msg = document.createElement('div');
+                        msg.className = 'validation-message';
+                        msg.textContent = 'Este campo es requerido';
+                        input.parentElement.appendChild(msg);
+                    }
+                } else {
+                    input.classList.remove('input-invalid');
+                    input.classList.add('input-valid');
+                    const msg = input.parentElement.querySelector('.validation-message');
+                    if (msg) msg.remove();
+                }
+            });
+
+            return isValid;
+        }
+
+        function clearValidationErrors(formId) {
+            const form = document.getElementById(formId);
+            if (!form) return;
+            
+            form.querySelectorAll('.input-invalid').forEach(el => {
+                el.classList.remove('input-invalid', 'input-valid');
+            });
+            form.querySelectorAll('.validation-message').forEach(el => {
+                el.remove();
+            });
+        }
+
+        function nextDpdStep() {
+            if (validateDpdStep(currentDpdStep)) {
+                if (currentDpdStep < totalDpdSteps) {
+                    currentDpdStep++;
+                    updateDpdWizardUI();
+                }
+            }
+        }
+
+        function prevDpdStep() {
+            if (currentDpdStep > 1) {
+                currentDpdStep--;
+                updateDpdWizardUI();
+            }
+        }
+
+        function updateDpdWizardUI() {
+            // Update step indicators
+            const indicators = document.querySelectorAll('.dpd-step-indicator');
+            indicators.forEach((ind, idx) => {
+                const step = idx + 1;
+                const circle = ind.querySelector('div');
+                const label = ind.querySelector('span');
+                
+                if (step < currentDpdStep) {
+                    // Completed step
+                    circle.className = 'w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 border-2 border-emerald-400 flex items-center justify-center text-white font-bold text-[11px] shadow-lg shadow-emerald-500/25 transition-all duration-300';
+                    circle.innerHTML = '✓';
+                    label.className = 'text-[9px] text-emerald-400 mt-1.5 font-medium whitespace-nowrap';
+                } else if (step === currentDpdStep) {
+                    // Active step
+                    circle.className = 'w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 border-2 border-emerald-400 flex items-center justify-center text-white font-bold text-[11px] shadow-lg shadow-emerald-500/25 transition-all duration-300';
+                    circle.innerHTML = step;
+                    label.className = 'text-[9px] text-emerald-400 mt-1.5 font-medium whitespace-nowrap';
+                } else {
+                    // Future step
+                    circle.className = 'w-8 h-8 rounded-full bg-bg-elevated border-2 border-border-theme flex items-center justify-center text-text-subtle font-bold text-[11px] transition-all duration-300';
+                    circle.innerHTML = step;
+                    label.className = 'text-[9px] text-text-subtle mt-1.5 font-medium whitespace-nowrap';
+                }
+            });
+
+            // Update progress line
+            const progress = ((currentDpdStep - 1) / (totalDpdSteps - 1)) * 100;
+            document.getElementById('dpd-progress-line').style.width = progress + '%';
+
+            // Show/hide step content
+            const contents = document.querySelectorAll('.dpd-step-content');
+            contents.forEach((content, idx) => {
+                const step = idx + 1;
+                if (step === currentDpdStep) {
+                    content.classList.remove('hidden');
+                    content.classList.add('animate-fade-in-up');
+                } else {
+                    content.classList.add('hidden');
+                    content.classList.remove('animate-fade-in-up');
+                }
+            });
+
+            // Update navigation buttons
+            document.getElementById('dpd-prev-btn').classList.toggle('hidden', currentDpdStep === 1);
+            document.getElementById('dpd-next-btn').classList.toggle('hidden', currentDpdStep === totalDpdSteps);
+            document.getElementById('dpd-submit-btn').classList.toggle('hidden', currentDpdStep !== totalDpdSteps);
+        }
+
+        // ===== Measure Wizard Functions =====
+        let currentMeasureStep = 1;
+        const totalMeasureSteps = 3;
+
+        function validateMeasureStep(step) {
+            const currentStepEl = document.querySelector(`.measure-step-content[data-step="${step}"]`);
+            if (!currentStepEl) return true;
+            
+            const requiredInputs = currentStepEl.querySelectorAll('input[required], select[required]');
+            let isValid = true;
+
+            requiredInputs.forEach(input => {
+                const value = input.value.trim();
+                if (!value) {
+                    isValid = false;
+                    input.classList.add('input-invalid');
+                    input.classList.remove('input-valid');
+                    
+                    let msg = input.parentElement.querySelector('.validation-message');
+                    if (!msg) {
+                        msg = document.createElement('div');
+                        msg.className = 'validation-message';
+                        msg.textContent = 'Este campo es requerido';
+                        input.parentElement.appendChild(msg);
+                    }
+                } else {
+                    input.classList.remove('input-invalid');
+                    input.classList.add('input-valid');
+                    const msg = input.parentElement.querySelector('.validation-message');
+                    if (msg) msg.remove();
+                }
+            });
+
+            return isValid;
+        }
+
         function openMeasureModal(id) {
             const def = MEASURE_DEFS.find(d => d.id === id);
             if (!def) return;
-            document.getElementById('measure-modal-id').value = def.id;
-            document.getElementById('measure-modal-title').textContent = def.label;
-            document.getElementById('measure-modal-desc').textContent = def.desc;
+            
+            const modalId = document.getElementById('measure-modal-id');
+            const modalTitle = document.getElementById('measure-modal-title');
+            const modalDesc = document.getElementById('measure-modal-desc');
+            const modal = document.getElementById('measure-modal');
+            
+            if (modalId) modalId.value = def.id;
+            if (modalTitle) modalTitle.textContent = def.label;
+            if (modalDesc) modalDesc.textContent = def.desc;
+            
+            // Set icon
+            const iconMap = {
+                'encryption': '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>',
+                'access_control': '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.0 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>',
+                'backup': '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/>',
+                'logging': '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>',
+                'patching': '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>',
+                'ids_ips': '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>',
+                'dlp': '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>',
+                'waf': '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/>',
+                'pseudonymization': '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>',
+                'incident_response': '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>',
+            };
+            const modalIcon = document.getElementById('measure-modal-icon');
+            if (modalIcon) {
+                modalIcon.innerHTML = '<svg class="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">' + (iconMap[def.id] || iconMap['shield']) + '</svg>';
+            }
+
             const wrap = document.getElementById('measure-modal-fields');
             
             // Para incident_response, mostrar campos estáticos
             if (id === 'incident_response') {
                 const staticFields = document.getElementById('incident-response-fields');
-                staticFields.classList.remove('hidden');
-                // Ocultar título dinámico
-                wrap.querySelector('p').classList.add('hidden');
-                document.getElementById('measure-modal').classList.remove('hidden');
-                return;
-            }
-            
-            // Para otras medidas, ocultar campos estáticos y generar campos dinámicos
-            const staticFields = document.getElementById('incident-response-fields');
-            staticFields.classList.add('hidden');
-            wrap.querySelector('p').classList.remove('hidden');
-            
-            wrap.innerHTML = '<p class="text-[10px] font-semibold text-text-subtle uppercase tracking-widest">Detalles de la implementacion</p>';
-            def.fields.forEach(f => {
-                const div = document.createElement('div');
-                let inputHtml = '';
-                const cls = 'w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all placeholder-text-subtle';
-                if (f.type === 'select') {
-                    inputHtml = '<select name="field_' + f.key + '" class="' + cls + '"><option value="">Seleccionar...</option>' +
-                        f.options.map(o => '<option value="' + o + '">' + o + '</option>').join('') + '</select>';
-                } else if (f.type === 'date') {
-                    inputHtml = '<input type="date" name="field_' + f.key + '" class="' + cls + '">';
-                } else if (f.type === 'url') {
-                    inputHtml = '<input type="url" name="field_' + f.key + '" placeholder="https://..." class="' + cls + '">';
-                } else {
-                    inputHtml = '<input type="text" name="field_' + f.key + '" class="' + cls + '">';
+                if (staticFields) {
+                    staticFields.classList.remove('hidden');
                 }
-                div.innerHTML = '<label class="block text-[10px] text-text-muted font-semibold uppercase tracking-widest mb-1.5">' + f.label + '</label>' + inputHtml;
-                wrap.appendChild(div);
-            });
-            document.getElementById('measure-modal').classList.remove('hidden');
+                if (wrap) {
+                    const p = wrap.querySelector('p');
+                    if (p) p.classList.add('hidden');
+                }
+            } else {
+                // Para otras medidas, ocultar campos estáticos y generar campos dinámicos
+                const staticFields = document.getElementById('incident-response-fields');
+                if (staticFields) {
+                    staticFields.classList.add('hidden');
+                }
+                if (wrap) {
+                    const p = wrap.querySelector('p');
+                    if (p) p.classList.remove('hidden');
+                    
+                    wrap.innerHTML = '<p class="text-[10px] font-semibold text-text-subtle uppercase tracking-widest">Complete la información requerida</p>';
+                    def.fields.forEach(f => {
+                    const div = document.createElement('div');
+                    div.className = 'space-y-1.5';
+                    let inputHtml = '';
+                    const cls = 'w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 transition-all';
+                    if (f.type === 'select') {
+                        inputHtml = '<select name="field_' + f.key + '" class="' + cls + '"><option value="">Seleccionar...</option>' +
+                            f.options.map(o => '<option value="' + o + '">' + o + '</option>').join('') + '</select>';
+                    } else if (f.type === 'date') {
+                        inputHtml = '<input type="date" name="field_' + f.key + '" class="' + cls + '">';
+                    } else if (f.type === 'url') {
+                        inputHtml = '<input type="url" name="field_' + f.key + '" placeholder="https://..." class="' + cls + ' font-mono">';
+                    } else {
+                        inputHtml = '<input type="text" name="field_' + f.key + '" class="' + cls + '">';
+                    }
+                    div.innerHTML = '<label class="block text-[11px] font-medium text-text-body">' + f.label + '</label>' + inputHtml;
+                    if (wrap) wrap.appendChild(div);
+                });
+                }
+            }
+
+            if (modal) {
+                modal.classList.remove('hidden');
+            }
+            currentMeasureStep = 1;
+            updateMeasureWizardUI();
         }
 
         function closeMeasureModal() {
-            document.getElementById('measure-modal').classList.add('hidden');
-            // Ocultar campos estáticos de incident_response
+            const modal = document.getElementById('measure-modal');
+            if (modal) {
+                modal.classList.add('hidden');
+            }
+            
             const staticFields = document.getElementById('incident-response-fields');
-            staticFields.classList.add('hidden');
+            if (staticFields) {
+                staticFields.classList.add('hidden');
+            }
+            
+            currentMeasureStep = 1;
+            updateMeasureWizardUI();
+            clearValidationErrors('measure-form');
+            
+            // Reset form completely
+            const form = document.getElementById('measure-form');
+            if (form) {
+                form.reset();
+                // Clear all input fields
+                const inputs = form.querySelectorAll('input, select, textarea');
+                inputs.forEach(input => {
+                    input.value = '';
+                    input.classList.remove('input-invalid', 'input-valid');
+                });
+                // Remove validation messages
+                const messages = form.querySelectorAll('.validation-message');
+                messages.forEach(msg => msg.remove());
+            }
+            
+            // Reset modal fields
+            const modalId = document.getElementById('measure-modal-id');
+            const modalTitle = document.getElementById('measure-modal-title');
+            const modalDesc = document.getElementById('measure-modal-desc');
+            
+            if (modalId) modalId.value = '';
+            if (modalTitle) modalTitle.textContent = '';
+            if (modalDesc) modalDesc.textContent = '';
+            
+            // Remove any overlay or blocking elements
+            const overlays = document.querySelectorAll('[class*="overlay"], [class*="blocking"]');
+            overlays.forEach(overlay => overlay.remove());
+        }
+
+        function nextMeasureStep() {
+            if (validateMeasureStep(currentMeasureStep)) {
+                if (currentMeasureStep < totalMeasureSteps) {
+                    currentMeasureStep++;
+                    updateMeasureWizardUI();
+                }
+            }
+        }
+
+        function prevMeasureStep() {
+            if (currentMeasureStep > 1) {
+                currentMeasureStep--;
+                updateMeasureWizardUI();
+            }
+        }
+
+        function updateMeasureWizardUI() {
+            // Update step indicators
+            const indicators = document.querySelectorAll('.measure-step-indicator');
+            indicators.forEach((ind, idx) => {
+                const step = idx + 1;
+                const circle = ind.querySelector('div');
+                const label = ind.querySelector('span');
+                
+                if (step < currentMeasureStep) {
+                    circle.className = 'w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 border-2 border-indigo-400 flex items-center justify-center text-white font-bold text-[11px] shadow-lg shadow-indigo-500/25 transition-all duration-300';
+                    circle.innerHTML = '✓';
+                    label.className = 'text-[9px] text-indigo-400 mt-1.5 font-medium whitespace-nowrap';
+                } else if (step === currentMeasureStep) {
+                    circle.className = 'w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 border-2 border-indigo-400 flex items-center justify-center text-white font-bold text-[11px] shadow-lg shadow-indigo-500/25 transition-all duration-300';
+                    circle.innerHTML = step;
+                    label.className = 'text-[9px] text-indigo-400 mt-1.5 font-medium whitespace-nowrap';
+                } else {
+                    circle.className = 'w-8 h-8 rounded-full bg-bg-elevated border-2 border-border-theme flex items-center justify-center text-text-subtle font-bold text-[11px] transition-all duration-300';
+                    circle.innerHTML = step;
+                    label.className = 'text-[9px] text-text-subtle mt-1.5 font-medium whitespace-nowrap';
+                }
+            });
+
+            // Update progress line
+            const progress = ((currentMeasureStep - 1) / (totalMeasureSteps - 1)) * 100;
+            document.getElementById('measure-progress-line').style.width = progress + '%';
+
+            // Show/hide step content
+            const contents = document.querySelectorAll('.measure-step-content');
+            contents.forEach((content, idx) => {
+                const step = idx + 1;
+                if (step === currentMeasureStep) {
+                    content.classList.remove('hidden');
+                    content.classList.add('animate-fade-in-up');
+                } else {
+                    content.classList.add('hidden');
+                    content.classList.remove('animate-fade-in-up');
+                }
+            });
+
+            // Update navigation buttons
+            document.getElementById('measure-prev-btn').classList.toggle('hidden', currentMeasureStep === 1);
+            document.getElementById('measure-next-btn').classList.toggle('hidden', currentMeasureStep === totalMeasureSteps);
+            document.getElementById('measure-submit-btn').classList.toggle('hidden', currentMeasureStep !== totalMeasureSteps);
+        }
+
+        // ===== Toast Notification System =====
+        function showToast(type, title, message, duration = 4000) {
+            const container = document.querySelector('.toast-container');
+            if (!container) {
+                const toastContainer = document.createElement('div');
+                toastContainer.className = 'toast-container';
+                document.body.appendChild(toastContainer);
+            }
+
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            
+            const icons = {
+                success: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>',
+                error: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>',
+                info: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+            };
+
+            toast.innerHTML = `
+                <div class="toast-icon">${icons[type]}</div>
+                <div class="toast-content">
+                    <div class="toast-title">${title}</div>
+                    <div class="toast-message">${message}</div>
+                </div>
+                <button class="toast-close" onclick="this.parentElement.remove()">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            `;
+
+            document.querySelector('.toast-container').appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.add('hiding');
+                setTimeout(() => toast.remove(), 300);
+            }, duration);
         }
 
         // Auto-formateo de RUT
@@ -1067,7 +1817,7 @@ require_once __DIR__ . '/../includes/header.php';
 
         // Generar PDF del Plan de Respuesta a Incidentes
         function generateIncidentResponsePDF() {
-            const token = localStorage.getItem('token');
+            const token = '<?= h($token) ?>';
             if (!token) {
                 alert('No hay sesión activa');
                 return;
@@ -1081,13 +1831,25 @@ require_once __DIR__ . '/../includes/header.php';
                 },
                 body: JSON.stringify({ token: token })
             })
-            .then(response => response.json())
+            .then(response => {
+                // Verificar que la respuesta sea válida antes de intentar parsear JSON
+                if (!response.ok) {
+                    throw new Error('Error en la respuesta del servidor: ' + response.status);
+                }
+                return response.text().then(text => {
+                    try {
+                        return JSON.parse(text);
+                    } catch (e) {
+                        console.error('Error parsing JSON:', text);
+                        throw new Error('Respuesta no válida del servidor');
+                    }
+                });
+            })
             .then(data => {
                 if (data.success) {
                     if (data.pdfUrl) {
                         window.open(data.pdfUrl, '_blank');
                     } else if (data.html) {
-                        // Si no se puede generar PDF, abrir HTML en nueva ventana para impresión
                         const printWindow = window.open('', '_blank');
                         printWindow.document.write(data.html);
                         printWindow.document.close();
@@ -1103,6 +1865,84 @@ require_once __DIR__ . '/../includes/header.php';
                 alert('Error al generar PDF: ' + error.message);
             });
         }
+
+        // Initialize DPD modal trigger
+        document.addEventListener('DOMContentLoaded', function() {
+            const dpdButton = document.querySelector('button[onclick*="dpd-modal"]');
+            if (dpdButton) {
+                dpdButton.onclick = openDpdWizard;
+            }
+
+            // Form submission handlers with toast notifications
+            const dpdForm = document.getElementById('dpd-form');
+            if (dpdForm) {
+                dpdForm.addEventListener('submit', function(e) {
+                    if (validateDpdStep(totalDpdSteps)) {
+                        showToast('success', 'Configuración Guardada', 'La información del DPD se ha guardado correctamente.');
+                    } else {
+                        e.preventDefault();
+                        showToast('error', 'Error de Validación', 'Por favor complete todos los campos requeridos.');
+                    }
+                });
+            }
+
+            const measureForm = document.getElementById('measure-form');
+            if (measureForm) {
+                measureForm.addEventListener('submit', function(e) {
+                    if (validateMeasureStep(totalMeasureSteps)) {
+                        showToast('success', 'Medida Implementada', 'La medida de seguridad se ha marcado como implementada correctamente.');
+                    } else {
+                        e.preventDefault();
+                        showToast('error', 'Error de Validación', 'Por favor complete todos los campos requeridos.');
+                    }
+                });
+            }
+
+            // Keyboard navigation
+            document.addEventListener('keydown', function(e) {
+                // ESC to close modals
+                if (e.key === 'Escape') {
+                    closeDpdWizard();
+                    closeMeasureModal();
+                }
+                
+                // Arrow keys for DPD wizard
+                if (!document.getElementById('dpd-modal').classList.contains('hidden')) {
+                    if (e.key === 'ArrowRight' && e.ctrlKey) {
+                        e.preventDefault();
+                        nextDpdStep();
+                    }
+                    if (e.key === 'ArrowLeft' && e.ctrlKey) {
+                        e.preventDefault();
+                        prevDpdStep();
+                    }
+                }
+                
+                // Arrow keys for Measure wizard
+                if (!document.getElementById('measure-modal').classList.contains('hidden')) {
+                    if (e.key === 'ArrowRight' && e.ctrlKey) {
+                        e.preventDefault();
+                        nextMeasureStep();
+                    }
+                    if (e.key === 'ArrowLeft' && e.ctrlKey) {
+                        e.preventDefault();
+                        prevMeasureStep();
+                    }
+                }
+            });
+
+            // Real-time validation on input
+            document.querySelectorAll('input[required], select[required]').forEach(input => {
+                input.addEventListener('input', function() {
+                    if (this.value.trim()) {
+                        this.classList.remove('input-invalid');
+                        this.classList.add('input-valid');
+                        const msg = this.parentElement.querySelector('.validation-message');
+                        if (msg) msg.remove();
+                    }
+                });
+            });
+        });
         </script>
     </main>
 </div>

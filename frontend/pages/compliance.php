@@ -754,7 +754,7 @@ require_once __DIR__ . '/../includes/header.php';
             $cActive = count(array_filter($items, fn($it) => !empty($it['active']) && empty($it['revokedAt'])));
             $cRevoked = count($items) - $cActive;
             ?>
-            <?php renderSectionHeader('Consentimientos', 'Gestión de consentimientos de titulares de datos — Art. 12 de la Ley 21.719'); ?>
+            <?php renderSectionHeader('Consentimientos', 'Gestión de consentimientos de titulares de datos — Art. 12 de la Ley 21.719', 'consents'); ?>
             <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <?php renderComplianceStat('Total', count($items), 'text-white', cIcon('check')); ?>
                 <?php renderComplianceStat('Activos', $cActive, 'text-emerald-400', cIcon('check')); ?>
@@ -1199,7 +1199,8 @@ require_once __DIR__ . '/../includes/header.php';
 
             <?php renderSectionHeader('Inventario de Datos Personales (RAT)',
                 'Registro de todas las actividades de tratamiento de datos personales. ' .
-                'Este inventario es obligatorio según el Art. 14 de la Ley 21.719.'
+                'Este inventario es obligatorio según el Art. 14 de la Ley 21.719.',
+                'inventory'
             ); ?>
 
             <?php if ($msg): ?>
@@ -2488,7 +2489,7 @@ require_once __DIR__ . '/../includes/header.php';
             $sevBadge = ['critical' => 'bg-red-500/15 text-red-400 border-red-500/30', 'high' => 'bg-orange-500/15 text-orange-400 border-orange-500/30', 'medium' => 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30', 'low' => 'bg-green-500/15 text-green-400 border-green-500/30'];
             $sevLabel = ['critical' => 'Crítica', 'high' => 'Alta', 'medium' => 'Media', 'low' => 'Baja'];
             ?>
-            <?php renderSectionHeader('Brechas', 'Registro de incidentes de seguridad y violaciones de datos — Art. 26 de la Ley 21.719'); ?>
+            <?php renderSectionHeader('Brechas', 'Registro de incidentes de seguridad y violaciones de datos — Art. 26 de la Ley 21.719', 'breaches'); ?>
             <div class="px-4 py-3 rounded-lg bg-red-500/[0.06] border border-red-500/20 text-[11px] text-text-body">
                 <b class="text-red-300">Ley 21.719 Art. 26:</b> Notificación a APDP sin dilación indebida (máx. 72h tras conocimiento) y a titulares si hay riesgo alto para sus derechos. Multas hasta 20.000 UTM.
             </div>
@@ -3788,7 +3789,7 @@ require_once __DIR__ . '/../includes/header.php';
             $pPending = count($items) - $pExecuted;
             $pRules = count($items);
             ?>
-            <?php renderSectionHeader('Seudonimización', 'Reemplazo de identificadores directos por seudónimos — Art. 30 de la Ley 21.719'); ?>
+            <?php renderSectionHeader('Seudonimización', 'Reemplazo de identificadores directos por seudónimos — Art. 30 de la Ley 21.719', 'pseudonymization'); ?>
             <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <?php renderComplianceStat('Total reglas', $pRules, 'text-white', cIcon('search')); ?>
                 <?php renderComplianceStat('Ejecutadas', $pExecuted, 'text-emerald-400', cIcon('check')); ?>
@@ -4165,7 +4166,7 @@ require_once __DIR__ . '/../includes/header.php';
             $tDone = count(array_filter($items, fn($it) => !empty($it['completed'])));
             $tPending = count($items) - $tDone;
             ?>
-            <?php renderSectionHeader('Capacitaciones Ley 21.719', 'Registro de capacitación en protección de datos personales — Art. 28 letra c) (DPD debe capacitar al personal)'); ?>
+            <?php renderSectionHeader('Capacitaciones Ley 21.719', 'Registro de capacitación en protección de datos personales — Art. 28 letra c) (DPD debe capacitar al personal)', 'trainings'); ?>
             <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <?php renderComplianceStat('Total', count($items), 'text-white', cIcon('info')); ?>
                 <?php renderComplianceStat('Completadas', $tDone, 'text-emerald-400', cIcon('check')); ?>
@@ -5335,11 +5336,21 @@ require_once __DIR__ . '/../includes/header.php';
 </div>
 
 <?php
-function renderSectionHeader($title, $desc) {
+function renderSectionHeader($title, $desc, $pdfResource = null) {
     echo '<div class="compliance-section-header">';
     echo '<div><p class="workspace-kicker">Área de gestión</p><h2 class="compliance-section-title mt-1">' . h($title) . '</h2>';
     echo '<p class="compliance-section-desc">' . h($desc) . '</p></div>';
-    echo '<span class="hidden md:inline-flex px-2.5 py-1.5 rounded-lg border border-border-theme bg-bg-panel text-[9px] font-semibold uppercase tracking-wider text-text-subtle">Evidencia y control</span>';
+    if ($pdfResource) {
+        echo '<div class="flex items-center gap-2">';
+        echo '<button onclick="generateCompliancePDF(\'' . h($pdfResource) . '\')" class="inline-flex items-center gap-1.5 min-h-8 px-3 rounded-lg text-[10px] font-semibold bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white border border-blue-500/20 transition-all shadow-sm">';
+        echo '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>';
+        echo 'Descargar PDF';
+        echo '</button>';
+        echo '<span class="hidden md:inline-flex px-2.5 py-1.5 rounded-lg border border-border-theme bg-bg-panel text-[9px] font-semibold uppercase tracking-wider text-text-subtle">Evidencia y control</span>';
+        echo '</div>';
+    } else {
+        echo '<span class="hidden md:inline-flex px-2.5 py-1.5 rounded-lg border border-border-theme bg-bg-panel text-[9px] font-semibold uppercase tracking-wider text-text-subtle">Evidencia y control</span>';
+    }
     echo '</div>';
 }
 
@@ -5742,6 +5753,84 @@ async function deleteTraining(trainingId) {
         }
     } catch (e) {
         alert('Error al eliminar: ' + e.message);
+    }
+}
+
+// ═══ PDF Generation Functions ═══
+async function generateCompliancePDF(resource) {
+    const token = '<?= $token ?>';
+    
+    // Encontrar el botón que disparó el evento
+    let btn = event?.target?.closest('button');
+    
+    // Si no se encontró el botón mediante el evento, buscarlo manualmente
+    if (!btn) {
+        const buttons = document.querySelectorAll('button[onclick*="generateCompliancePDF"]');
+        buttons.forEach(button => {
+            if (button.getAttribute('onclick')?.includes(resource)) {
+                btn = button;
+            }
+        });
+    }
+    
+    if (!btn) {
+        alert('Error: No se pudo encontrar el botón de descarga');
+        return;
+    }
+    
+    const originalText = btn.innerHTML;
+    
+    try {
+        btn.disabled = true;
+        btn.innerHTML = '<svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Generando...';
+        
+        const response = await fetch(`/api/compliance/${resource}/pdf?token=${encodeURIComponent(token)}`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            if (data.pdfUrl && data.pdfUrl !== null && data.pdfUrl !== '') {
+                // Open PDF in new tab
+                window.open(data.pdfUrl, '_blank');
+                alert('PDF generado exitosamente');
+            } else if (data.html && data.html.trim().length > 100) {
+                // Download HTML as file for printing
+                const blob = new Blob([data.html], { type: 'text/html' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'certificado-compliance-' + resource + '-' + new Date().toISOString().slice(0,10) + '.html';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                alert('Documento HTML descargado. Ábrelo en tu navegador para imprimirlo como PDF.');
+            } else {
+                alert('Error: No se pudo generar el documento. No hay contenido disponible.');
+            }
+        } else {
+            alert('Error al generar PDF: ' + (data.error || 'Error desconocido'));
+        }
+    } catch (error) {
+        console.error('Error generating PDF:', error);
+        console.error('Error details:', error.message, error.stack);
+        alert('Error al generar PDF: ' + error.message);
+        
+        // Si el error es por no encontrar el botón, intentar continuar sin modificarlo
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
     }
 }
 </script>

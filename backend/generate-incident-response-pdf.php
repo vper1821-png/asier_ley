@@ -4,21 +4,49 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/Database.php';
 require_once __DIR__ . '/Auth.php';
 
+// Asegurar que siempre devolvamos JSON
 header('Content-Type: application/json');
+
+// Verificar que el autoloader de vendor existe
+if (!file_exists(__DIR__ . '/vendor/autoload.php')) {
+    error_log('[PDF] Vendor autoloader not found');
+    echo json_encode(['error' => 'Vendor autoloader not found']);
+    exit;
+}
+
+require_once __DIR__ . '/vendor/autoload.php';
+
+// Verificar que dompdf esté disponible
+if (!class_exists('Dompdf\Dompdf')) {
+    error_log('[PDF] Dompdf class not available');
+    echo json_encode(['error' => 'Dompdf class not available']);
+    exit;
+}
+
+use Dompdf\Dompdf;
+use Dompdf\Options;
 
 // Verificar autenticación
 $token = $_SERVER['HTTP_AUTHORIZATION'] ?? $_GET['token'] ?? $_POST['token'] ?? '';
 if (empty($token)) {
-    http_response_code(401);
-    echo json_encode(['error' => 'Unauthorized']);
+    echo json_encode(['error' => 'Unauthorized', 'message' => 'Token no proporcionado']);
     exit;
 }
 
+// Extract Bearer token if present
+if (str_starts_with($token, 'Bearer ')) {
+    $token = substr($token, 7);
+}
+
 try {
-    $payload = JWT::decode($token, JWT_SECRET, ['HS256']);
+    $payload = Auth::verifyToken($token);
+    if (!$payload) {
+        http_response_code(401);
+        echo json_encode(['error' => 'Invalid token']);
+        exit;
+    }
 } catch (Exception $e) {
-    http_response_code(401);
-    echo json_encode(['error' => 'Invalid token']);
+    echo json_encode(['error' => 'Invalid token', 'message' => 'Token inválido: ' . $e->getMessage()]);
     exit;
 }
 
@@ -64,48 +92,90 @@ $html = generateIncidentResponsePDF([
     'generatedAt' => date('d/m/Y H:i:s'),
 ]);
 
-// Guardar HTML temporal
-$tempFile = tempnam(sys_get_temp_dir(), 'incident_response_');
-$htmlFile = $tempFile . '.html';
-file_put_contents($htmlFile, $html);
-
-// Generar PDF usando wkhtmltopdf (si está disponible) o guardar HTML
-$pdfUrl = null;
-if (file_exists('/usr/bin/wkhtmltopdf')) {
-    $pdfFile = $tempFile . '.pdf';
-    exec("/usr/bin/wkhtmltopdf --page-size A4 --orientation portrait --margin-top 10mm --margin-bottom 10mm --margin-left 10mm --margin-right 10mm '{$htmlFile}' '{$pdfFile}' 2>&1", $output, $returnCode);
-
-    if ($returnCode === 0 && file_exists($pdfFile)) {
-        // Mover PDF a directorio público
-        $publicDir = __DIR__ . '/../frontend/public/docs';
-        if (!is_dir($publicDir)) {
-            mkdir($publicDir, 0755, true);
-        }
-        $pdfFilename = 'plan-respuesta-incidentes-' . date('Y-m-d-His') . '.pdf';
-        $pdfPath = $publicDir . '/' . $pdfFilename;
-        rename($pdfFile, $pdfPath);
-        $pdfUrl = '/frontend/public/docs/' . $pdfFilename;
+// Generar PDF usando dompdf
+try {
+    // Verificar que dompdf esté disponible
+    if (!class_exists('Dompdf\Dompdf')) {
+        throw new Exception('Dompdf no está disponible');
     }
-}
-
-// Limpiar archivos temporales
-@unlink($htmlFile);
-@unlink($tempFile);
-
-if ($pdfUrl) {
+    
+    // Configurar opciones de dompdf
+    $options = new Options();
+    $options->set('isHtml5ParserEnabled', true);
+    $options->set('isRemoteEnabled', false); // Deshabilitar remote para evitar errores
+    $options->set('defaultFont', 'Arial');
+    $options->set('tempDir', sys_get_temp_dir());
+    
+    // Crear instancia de Dompdf
+    $dompdf = new Dompdf($options);
+    $dompdf->loadHtml($html);
+    $dompdf->setPaper('A4', 'portrait');
+    $dompdf->render();
+    
+    // Obtener el contenido del PDF
+    $pdfContent = $dompdf->output();
+    
+    if (empty($pdfContent)) {
+        throw new Exception('El contenido del PDF está vacío');
+    }
+    
+    // Asegurar que el directorio de reportes existe con permisos correctos
+    $reportsDir = __DIR__ . '/../frontend/public/reports';
+    if (!is_dir($reportsDir)) {
+        mkdir($reportsDir, 0755, true);
+    }
+    
+    // Asegurar permisos del directorio
+    chmod($reportsDir, 0755);
+    
+    // Generar nombre de archivo único
+    $pdfFilename = 'plan-respuesta-incidentes-' . date('Y-m-d-His') . '.pdf';
+    $pdfPath = $reportsDir . '/' . $pdfFilename;
+    
+    // Guardar el PDF
+    if (file_put_contents($pdfPath, $pdfContent) === false) {
+        throw new Exception('Failed to save PDF file');
+    }
+    
+    // Establecer permisos correctos
+    chmod($pdfPath, 0644);
+    
+    // Asegurar ownership correcto (si es posible)
+    if (function_exists('chown') && function_exists('posix_getpwuid')) {
+        $wwwData = posix_getpwuid(posix_geteuid());
+        if ($wwwData['name'] === 'root') {
+            // Si estamos ejecutando como root, intentar cambiar a www-data
+            @chown($pdfPath, 'www-data');
+            @chgrp($pdfPath, 'www-data');
+        }
+    }
+    
+    // Construir URL completa para descargar (URL pública)
+    $baseUrl = API_BASE_URL;
+    $pdfUrl = $baseUrl . '/public/reports/' . $pdfFilename;
+    
     echo json_encode([
         'success' => true,
         'pdfUrl' => $pdfUrl,
-        'html' => $html
+        'pdfFilename' => $pdfFilename,
+        'html' => $html,
+        'message' => 'PDF generado exitosamente'
     ]);
-} else {
-    // Si no se puede generar PDF, devolver el HTML para que el usuario lo imprima
+    
+} catch (Exception $e) {
+    error_log('[PDF Generation Error] ' . $e->getMessage());
+    error_log('[PDF Generation Error] Trace: ' . $e->getTraceAsString());
+    
+    // Asegurar que siempre devolvemos JSON válido
+    header('Content-Type: application/json');
     echo json_encode([
-        'success' => true,
+        'success' => false,
         'pdfUrl' => null,
         'html' => $html,
+        'error' => 'Error generando PDF: ' . $e->getMessage(),
         'message' => 'PDF no disponible, se devuelve HTML para impresión'
     ]);
+    exit;
 }
 
 function generateIncidentResponsePDF($data) {
@@ -128,38 +198,45 @@ function generateIncidentResponsePDF($data) {
     <title>Plan de Respuesta a Incidentes - {$companyName}</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Times New Roman', Times, serif;
             font-size: 12px;
             line-height: 1.6;
-            color: #333;
+            color: #000;
             max-width: 800px;
             margin: 0 auto;
-            padding: 20px;
+            padding: 40px;
         }
         .header {
             text-align: center;
-            border-bottom: 2px solid #1e40af;
+            border-bottom: 3px solid #000;
             padding-bottom: 20px;
             margin-bottom: 30px;
         }
         .header h1 {
-            color: #1e40af;
-            font-size: 24px;
+            color: #000;
+            font-size: 20px;
             margin: 0 0 10px 0;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
         .header p {
-            color: #666;
-            margin: 0;
+            color: #333;
+            margin: 5px 0;
+            font-size: 11px;
         }
         .section {
             margin-bottom: 25px;
+            page-break-inside: avoid;
         }
         .section h2 {
-            color: #1e40af;
-            font-size: 16px;
-            border-bottom: 1px solid #e5e7eb;
+            color: #000;
+            font-size: 14px;
+            border-bottom: 2px solid #000;
             padding-bottom: 8px;
             margin-bottom: 15px;
+            font-weight: bold;
+            text-transform: uppercase;
         }
         .info-grid {
             display: grid;
@@ -168,63 +245,64 @@ function generateIncidentResponsePDF($data) {
             margin-bottom: 20px;
         }
         .info-item {
-            background: #f9fafb;
+            background: #fff;
             padding: 10px;
-            border-left: 3px solid #1e40af;
+            border-left: 3px solid #000;
         }
         .info-item label {
             font-weight: bold;
-            color: #374151;
+            color: #000;
             display: block;
             margin-bottom: 5px;
+            font-size: 11px;
         }
         .info-item span {
-            color: #6b7280;
+            color: #333;
         }
         .status-box {
-            background: #f0fdf4;
-            border: 2px solid #22c55e;
+            background: #fff;
+            border: 2px solid #000;
             padding: 15px;
-            border-radius: 8px;
             text-align: center;
             margin-bottom: 20px;
         }
         .status-box h3 {
-            color: #16a34a;
+            color: #000;
             margin: 0 0 10px 0;
-            font-size: 18px;
+            font-size: 16px;
+            font-weight: bold;
         }
         .checklist {
-            background: #f9fafb;
+            background: #fff;
             padding: 15px;
-            border-radius: 8px;
+            border: 1px solid #000;
         }
         .checklist-item {
             display: flex;
             align-items: center;
             margin-bottom: 10px;
             padding: 8px;
-            background: white;
-            border-radius: 4px;
+            background: #fff;
+            border-bottom: 1px solid #ccc;
         }
         .checklist-item:last-child {
+            border-bottom: none;
             margin-bottom: 0;
         }
         .checklist-item input[type="checkbox"] {
             margin-right: 10px;
+            accent-color: #000;
         }
         .breaches-section {
-            background: #fef2f2;
-            border: 1px solid #fecaca;
+            background: #fff;
+            border: 1px solid #000;
             padding: 15px;
-            border-radius: 8px;
         }
         .breach-item {
-            background: white;
+            background: #fff;
             padding: 10px;
             margin-bottom: 10px;
-            border-radius: 4px;
-            border-left: 3px solid #ef4444;
+            border-left: 3px solid #000;
         }
         .breach-item:last-child {
             margin-bottom: 0;
@@ -232,22 +310,36 @@ function generateIncidentResponsePDF($data) {
         .footer {
             margin-top: 40px;
             padding-top: 20px;
-            border-top: 1px solid #e5e7eb;
+            border-top: 2px solid #000;
             text-align: center;
-            color: #9ca3af;
+            color: #333;
             font-size: 10px;
         }
         .legal-notice {
-            background: #fffbeb;
-            border: 1px solid #fcd34d;
+            background: #fff;
+            border: 1px solid #000;
             padding: 15px;
-            border-radius: 8px;
             margin-top: 20px;
+            page-break-inside: avoid;
         }
         .legal-notice h3 {
-            color: #92400e;
+            color: #000;
             margin: 0 0 10px 0;
-            font-size: 14px;
+            font-size: 13px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .legal-notice ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .legal-notice li {
+            margin-bottom: 5px;
+        }
+        @media print {
+            body { padding: 20px; }
+            .section { page-break-inside: avoid; }
+            .legal-notice { page-break-inside: avoid; }
         }
     </style>
 </head>
@@ -332,11 +424,11 @@ function generateIncidentResponsePDF($data) {
     <div class="section">
         <h2>3. Evidencia de Incidentes Gestionados</h2>
         <p><strong>Total de incidentes resueltos: {$resolvedCount}</strong></p>
-        {$resolvedCount > 0 ? '<div class="breaches-section">' : '<div class="checklist">'}
-        {$resolvedCount > 0 ? '<p>Incidentes resueltos anteriormente:</p>' : '<div class="checklist-item"><input type="checkbox" checked disabled><span>No hay incidentes resueltos registrados</span></div>'}
 HTML;
 
     if ($resolvedCount > 0) {
+        $html .= '<div class="breaches-section">';
+        $html .= '<p>Incidentes resueltos anteriormente:</p>';
         foreach ($data['resolvedBreaches'] as $breach) {
             $breachTitle = htmlspecialchars($breach['title'] ?? 'Sin título');
             $breachDate = $breach['resolvedAt'] ? date('d/m/Y H:i', strtotime($breach['resolvedAt'])) : 'No registrado';
@@ -351,6 +443,8 @@ HTML;
         }
         $html .= '</div>';
     } else {
+        $html .= '<div class="checklist">';
+        $html .= '<div class="checklist-item"><input type="checkbox" checked disabled><span>No hay incidentes resueltos registrados</span></div>';
         $html .= '</div>';
     }
 
