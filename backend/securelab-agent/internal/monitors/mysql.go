@@ -201,7 +201,7 @@ func (m *MySQLMonitor) detectLogMode(db *sql.DB) {
 	}
 
 	// Probar slow_query_log con TABLE
-	var slowLogName, slowLog, longQueryTime string
+	var slowLogName, slowLog, longQueryName, longQueryTime string
 	_ = db.QueryRow("SHOW VARIABLES LIKE 'slow_query_log'").Scan(&slowLogName, &slowLog)
 	_ = db.QueryRow("SHOW VARIABLES LIKE 'long_query_time'").Scan(&longQueryName, &longQueryTime)
 	
