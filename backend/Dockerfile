@@ -73,8 +73,8 @@ WORKDIR /var/www/html
 COPY . .
 
 # Instalar dependencias PHP (composer)
-RUN composer install --no-dev --no-interaction --prefer-source --optimize-autoloader --no-security-blocking --ignore-platform-req=ext-gd --ignore-platform-req=ext-mongodb
-
+RUN composer update --lock --no-interaction --ignore-platform-req=ext-gd --ignore-platform-req=ext-mongodb && \
+    composer install --no-dev --no-interaction --prefer-source --optimize-autoloader --no-security-blocking --ignore-platform-req=ext-gd --ignore-platform-req=ext-mongodb
 # Copiar solo los binarios del agente (no el código fuente completo)
 COPY --from=agent-builder /out/ /var/www/html/agent-bin/
 
