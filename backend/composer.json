@@ -2,7 +2,8 @@
     "require": {
         "cboden/ratchet": "^0.4.4",
         "mongodb/mongodb": "^2.0",
-        "dompdf/dompdf": "3.1.6"
+        "dompdf/dompdf": "3.1.6",
+        "phpoffice/phpword": "^1.0"
     },
     "config": {
         "optimize-autoloader": true

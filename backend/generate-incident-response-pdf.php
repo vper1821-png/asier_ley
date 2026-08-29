@@ -120,7 +120,7 @@ try {
     }
     
     // Asegurar que el directorio de reportes existe con permisos correctos
-    $reportsDir = __DIR__ . '/../frontend/public/reports';
+    $reportsDir = '/var/www/asier_ley-main/frontend/public/reports';
     if (!is_dir($reportsDir)) {
         mkdir($reportsDir, 0755, true);
     }
@@ -132,9 +132,15 @@ try {
     $pdfFilename = 'plan-respuesta-incidentes-' . date('Y-m-d-His') . '.pdf';
     $pdfPath = $reportsDir . '/' . $pdfFilename;
     
+    // Verificar permisos del directorio
+    if (!is_writable($reportsDir)) {
+        chmod($reportsDir, 0777);
+    }
+    
     // Guardar el PDF
-    if (file_put_contents($pdfPath, $pdfContent) === false) {
-        throw new Exception('Failed to save PDF file');
+    $writeResult = file_put_contents($pdfPath, $pdfContent);
+    if ($writeResult === false) {
+        throw new Exception('Failed to save PDF file to ' . $pdfPath . '. Directory writable: ' . (is_writable($reportsDir) ? 'yes' : 'no'));
     }
     
     // Establecer permisos correctos

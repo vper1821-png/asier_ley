@@ -1129,32 +1129,43 @@ class PDFGenerator {
     }
 
     public function generatePDFFile($html, $filename) {
-        $tempFile = tempnam(sys_get_temp_dir(), 'compliance_pdf_');
-        $htmlFile = $tempFile . '.html';
-        file_put_contents($htmlFile, $html);
-
         $pdfUrl = null;
-        if (file_exists('/usr/bin/wkhtmltopdf')) {
-            $pdfFile = $tempFile . '.pdf';
-            exec("/usr/bin/wkhtmltopdf --page-size A4 --orientation portrait --margin-top 10mm --margin-bottom 10mm --margin-left 10mm --margin-right 10mm '{$htmlFile}' '{$pdfFile}' 2>&1", $output, $returnCode);
-
-            if ($returnCode === 0 && file_exists($pdfFile)) {
+        
+        try {
+            // Use dompdf instead of wkhtmltopdf
+            $options = new \Dompdf\Options();
+            $options->set('isHtml5ParserEnabled', true);
+            $options->set('isRemoteEnabled', true);
+            $options->set('defaultFont', 'Times New Roman');
+            $options->set('paperSize', 'A4');
+            $options->set('orientation', 'portrait');
+            
+            $dompdf = new \Dompdf\Dompdf($options);
+            $dompdf->loadHtml($html);
+            $dompdf->setPaper('A4', 'portrait');
+            $dompdf->render();
+            
+            // Get PDF content
+            $pdfContent = $dompdf->output();
+            
+            if (!empty($pdfContent)) {
                 $reportsDir = __DIR__ . '/../frontend/public/reports';
                 if (!is_dir($reportsDir)) {
                     mkdir($reportsDir, 0755, true);
                 }
                 $pdfFilename = $filename . '-' . date('Y-m-d-His') . '.pdf';
                 $pdfPath = $reportsDir . '/' . $pdfFilename;
-                rename($pdfFile, $pdfPath);
                 
-                // Use API_BASE_URL for the frontend URL
-                $baseUrl = defined('API_BASE_URL') ? API_BASE_URL : 'http://leysecurelab.sytes.net';
-                $pdfUrl = $baseUrl . '/public/reports/' . $pdfFilename;
+                if (file_put_contents($pdfPath, $pdfContent) !== false) {
+                    chmod($pdfPath, 0644);
+                    $baseUrl = defined('API_BASE_URL') ? API_BASE_URL : 'http://leysecurelab.sytes.net';
+                    $pdfUrl = $baseUrl . '/public/reports/' . $pdfFilename;
+                }
             }
+        } catch (Exception $e) {
+            // Log error but continue with HTML fallback
+            error_log('PDF generation error: ' . $e->getMessage());
         }
-
-        @unlink($htmlFile);
-        @unlink($tempFile);
 
         return [
             'pdfUrl' => $pdfUrl,

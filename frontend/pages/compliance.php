@@ -82,18 +82,18 @@ if (!in_array($tab, ['overview', 'violations'])) {
     $items = $fetchList($tab);
 }
 
-// ── Checklist (mismo criterio que React) ──
+// ── Checklist (criterios mejorados para cálculo real) ──
 $CHECKLIST = [
-    ['id' => 'dpd', 'label' => 'DPD Designado', 'desc' => 'Aplicable cuando la naturaleza o escala del tratamiento exige esta función', 'icon' => 'users', 'done' => !empty($config['dpdEmail'])],
-    ['id' => 'apdp', 'label' => 'Modelo certificado', 'desc' => 'Registro o evidencia de un modelo de prevención certificado, cuando corresponda', 'icon' => 'shield', 'done' => ($config['apdpRegistered'] === '1' || $config['apdpRegistered'] === true) && !empty($config['apdpRegistrationNumber'])],
-    ['id' => 'inventory', 'label' => 'Inventario de Datos', 'desc' => 'Registro documentado para sustentar información y transparencia del tratamiento', 'icon' => 'database', 'done' => count(array_filter($inventory, fn($i) => !empty($i['name']) && !empty($i['legalBasis']) && !empty($i['dataCategories']))) > 0],
-    ['id' => 'privacy', 'label' => 'Política de Privacidad', 'desc' => 'Política actualizada y accesible para los titulares', 'icon' => 'fileText', 'done' => !empty($config['privacyPolicyUrl'])],
-    ['id' => 'consents', 'label' => 'Consentimientos', 'desc' => 'Consentimientos activos y trazables cuando sean la base de licitud', 'icon' => 'check', 'done' => count(array_filter($consents, fn($c) => empty($c['revokedAt']))) > 0],
-    ['id' => 'breach_protocol', 'label' => 'Protocolo de Brechas', 'desc' => 'Procedimiento documentado de gestión y notificación de incidentes', 'icon' => 'alert', 'done' => !empty($config['breachProtocolUrl']) || count(array_filter($breaches, fn($b) => ($b['status'] ?? '') === 'resolved')) > 0],
-    ['id' => 'arco', 'label' => 'Canal de derechos', 'desc' => 'Canal operativo para acceso, rectificación, supresión, oposición y portabilidad', 'icon' => 'users', 'done' => count($arcoRequests) > 0],
-    ['id' => 'pseudonymization', 'label' => 'Seudonimización', 'desc' => 'Medida de seguridad aplicada según la naturaleza y riesgo del tratamiento', 'icon' => 'search', 'done' => count(array_filter($pseudoRules, fn($r) => ($r['status'] ?? '') === 'executed' || !empty($r['executed']))) > 0],
-    ['id' => 'incident_response', 'label' => 'Plan de Respuesta a Incidentes', 'desc' => 'Plan documentado o evidencia de incidentes gestionados', 'icon' => 'alert', 'done' => !empty($config['incidentResponsePlan']) || count(array_filter($breaches, fn($b) => ($b['status'] ?? '') === 'resolved')) > 0],
-    ['id' => 'training', 'label' => 'Capacitación', 'desc' => 'Formación completada y respaldada con evidencia', 'icon' => 'info', 'done' => count(array_filter($trainings, fn($t) => !empty($t['completed']))) > 0],
+    ['id' => 'dpd', 'label' => 'DPD Designado', 'desc' => 'Aplicable cuando la naturaleza o escala del tratamiento exige esta función', 'icon' => 'users', 'done' => !empty($config['dpdName']) && !empty($config['dpdEmail']), 'section' => 'privacy'],
+    ['id' => 'apdp', 'label' => 'Modelo certificado', 'desc' => 'Registro o evidencia de un modelo de prevención certificado, cuando corresponda', 'icon' => 'shield', 'done' => !empty($config['apdpRegistered']) && !empty($config['apdpRegistrationNumber']), 'section' => 'privacy'],
+    ['id' => 'inventory', 'label' => 'Inventario de Datos', 'desc' => 'Registro documentado para sustentar información y transparencia del tratamiento', 'icon' => 'database', 'done' => count($inventory) > 0 && count(array_filter($inventory, fn($i) => !empty($i['name']) && !empty($i['legalBasis']))) > 0, 'section' => 'inventory'],
+    ['id' => 'privacy', 'label' => 'Política de Privacidad', 'desc' => 'Política actualizada y accesible para los titulares', 'icon' => 'fileText', 'done' => !empty($config['privacyPolicyUrl']) || !empty($config['privacyPolicyContent']), 'section' => 'privacy'],
+    ['id' => 'consents', 'label' => 'Consentimientos', 'desc' => 'Consentimientos activos y trazables cuando sean la base de licitud', 'icon' => 'check', 'done' => count($consents) > 0 && count(array_filter($consents, fn($c) => empty($c['revokedAt']))) > 0, 'section' => 'consents'],
+    ['id' => 'breach_protocol', 'label' => 'Protocolo de Brechas', 'desc' => 'Procedimiento documentado de gestión y notificación de incidentes', 'icon' => 'alert', 'done' => !empty($config['breachProtocolUrl']) || !empty($config['breachProtocolContent']), 'section' => 'breaches'],
+    ['id' => 'arco', 'label' => 'Canal de derechos', 'desc' => 'Canal operativo para acceso, rectificación, supresión, oposición y portabilidad', 'icon' => 'users', 'done' => count($arcoRequests) > 0 || !empty($config['arcoChannelUrl']), 'section' => 'privacy'],
+    ['id' => 'pseudonymization', 'label' => 'Seudonimización', 'desc' => 'Medida de seguridad aplicada según la naturaleza y riesgo del tratamiento', 'icon' => 'search', 'done' => count($pseudoRules) > 0 && count(array_filter($pseudoRules, fn($r) => ($r['status'] ?? '') === 'executed' || !empty($r['executed']))) > 0, 'section' => 'pseudonymization'],
+    ['id' => 'incident_response', 'label' => 'Plan de Respuesta a Incidentes', 'desc' => 'Plan documentado o evidencia de incidentes gestionados', 'icon' => 'alert', 'done' => !empty($config['incidentResponsePlan']) || !empty($config['incidentResponsePlanUrl']), 'section' => 'breaches'],
+    ['id' => 'training', 'label' => 'Capacitación', 'desc' => 'Formación completada y respaldada con evidencia', 'icon' => 'info', 'done' => count($trainings) > 0 && count(array_filter($trainings, fn($t) => !empty($t['completed']))) > 0, 'section' => 'trainings'],
 ];
 $checklistDone = count(array_filter($CHECKLIST, fn($c) => $c['done']));
 $checklistTotal = count($CHECKLIST);
@@ -137,6 +137,7 @@ function cIcon($name, $cls = 'w-4 h-4') {
         'settings' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>',
         'info' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>',
         'pen' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>',
+        'arrowRight' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>',
     ];
     return '<svg class="' . $cls . '" fill="none" viewBox="0 0 24 24" stroke="currentColor">' . ($paths[$name] ?? '') . '</svg>';
 }
@@ -521,6 +522,9 @@ require_once __DIR__ . '/../includes/header.php';
                                 <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-emerald-500/10 text-emerald-400 border-emerald-500/20"><?= cIcon('check', 'w-3 h-3') ?> Cumple</span>
                                 <?php else: ?>
                                 <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-red-500/10 text-red-400 border-red-500/20"><?= cIcon('xmark', 'w-3 h-3') ?> Pendiente</span>
+                                <?php if (!empty($item['section'])): ?>
+                                <a href="/compliance?tab=<?= h($item['section']) ?>" class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-blue-500/10 text-blue-400 border-blue-500/20 hover:bg-blue-500/20 transition-all"><?= cIcon('arrowRight', 'w-3 h-3') ?> Completar</a>
+                                <?php endif; ?>
                                 <?php endif; ?>
                             </div>
                             <p class="text-[11px] text-text-subtle mt-1"><?= h($item['desc']) ?></p>
@@ -4759,7 +4763,7 @@ require_once __DIR__ . '/../includes/header.php';
                 <p class="text-[12px] font-semibold text-white mb-4">Subir nuevo archivo</p>
                 <form id="upload-form" enctype="multipart/form-data" class="flex flex-col md:flex-row gap-3">
                     <input type="file" name="file" id="file-input" required
-                           accept=".xlsx,.xls,.csv,.txt"
+                           accept=".xlsx,.xls,.csv,.txt,.docx,.doc"
                            class="flex-1 bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-[11px] file:font-medium file:bg-primary-500/10 file:text-primary-400 hover:file:bg-primary-500/20">
                     <button type="submit" id="upload-btn"
                             class="px-4 py-2 rounded-lg text-[11px] font-medium bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white transition-all flex items-center gap-2">
@@ -5795,9 +5799,14 @@ async function generateCompliancePDF(resource) {
         
         if (data.success) {
             if (data.pdfUrl && data.pdfUrl !== null && data.pdfUrl !== '') {
-                // Open PDF in new tab
-                window.open(data.pdfUrl, '_blank');
-                alert('PDF generado exitosamente');
+                // Download PDF directly
+                const a = document.createElement('a');
+                a.href = data.pdfUrl;
+                a.download = 'certificado-compliance-' + resource + '-' + new Date().toISOString().slice(0,10) + '.pdf';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                alert('PDF generado y descargado exitosamente');
             } else if (data.html && data.html.trim().length > 100) {
                 // Download HTML as file for printing
                 const blob = new Blob([data.html], { type: 'text/html' });

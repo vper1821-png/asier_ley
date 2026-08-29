@@ -59,7 +59,7 @@ func (m *MSSQLMonitor) Start(ctx context.Context) error {
 	}
 	m.mu.Unlock()
 
-	dsn := fmt.Sprintf("sqlserver://%s:%s@%s:%d?database=%s&connection+timeout=5&encrypt=disable&trustservercertificate=true",
+	dsn := fmt.Sprintf("sqlserver://%s:%s@%s:%d?database=%s&connection+timeout=5",
 		m.conn.Username, m.conn.Password, m.conn.Host, m.conn.Port, m.conn.Database)
 	db, err := sql.Open("sqlserver", dsn)
 	if err != nil {
@@ -139,20 +139,29 @@ func (m *MSSQLMonitor) checkActivity() {
 		if err := rows.Scan(&sessionID, &loginName, &hostName, &command, &status, &dbName, &queryText, &startTime); err != nil {
 			continue
 		}
-		// Loguear todas las consultas activas, incluidas las del usuario sa.
-		if loginName == "" || queryText == "" {
+		if loginName == "" || loginName == "sa" {
 			continue
 		}
-		entry := audit.DBQueryEntry{
-			Timestamp: time.Now(),
-			Engine:    "mssql",
-			Database:  dbName,
-			User:      loginName,
-			Host:      hostName,
-			Query:     queryText,
-			Operation: command, // MSSQL devuelve el tipo de comando real
+		if queryText != "" {
+			categories := m.piiScanner.AnalyzeQuery(queryText)
+			if len(categories) > 0 {
+				m.log.Warn("PII detectada en consulta MSSQL de %s", loginName)
+				m.wsClient.SendEvent("PII Detectada (MSSQL)",
+					fmt.Sprintf("Usuario %s ejecutó consulta con datos personales", loginName),
+					"db_activity", "high")
+			}
+			entry := audit.DBQueryEntry{
+				Timestamp: time.Now(),
+				Engine:    "mssql",
+				Database:  dbName,
+				User:      loginName,
+				Host:      hostName,
+				Query:     queryText,
+				Operation: command,
+				RiskScore: float64(len(categories)),
+			}
+			m.store.SaveDBQuery(entry)
 		}
-		reportDBQuery(m.store, m.wsClient, m.piiScanner, m.log, entry)
 	}
 	// Verificar errores después del bucle
 	if err := rows.Err(); err != nil {

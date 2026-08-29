@@ -5,8 +5,9 @@
 
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Shared\Date;
+use PhpOffice\PhpWord\IOFactory as WordIOFactory;
 
-const ALLOWED_EXTENSIONS = ['xlsx', 'xls', 'csv', 'txt'];
+const ALLOWED_EXTENSIONS = ['xlsx', 'xls', 'csv', 'txt', 'docx', 'doc'];
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
 const UPLOAD_DIR = __DIR__ . '/../uploads/';
 
@@ -110,6 +111,8 @@ function analyze() {
             $data = analyzeCsv($filePath);
         } elseif ($ext === 'txt') {
             $data = analyzeTxt($filePath);
+        } elseif (in_array($ext, ['docx', 'doc'])) {
+            $data = analyzeDocx($filePath);
         } else {
             throw new Exception('Extensión no soportada para análisis');
         }
@@ -194,6 +197,55 @@ function analyzeTxt($filePath) {
         return $parts;
     }, $sample);
     return ['headers' => $headers, 'sample' => $sample, 'rowCount' => $rowCount];
+}
+
+function analyzeDocx($filePath) {
+    try {
+        $phpWord = WordIOFactory::load($filePath);
+        $text = '';
+        
+        foreach ($phpWord->getSections() as $section) {
+            foreach ($section->getElements() as $element) {
+                if (method_exists($element, 'getText')) {
+                    $text .= $element->getText() . "\n";
+                }
+            }
+        }
+        
+        if (empty(trim($text))) {
+            throw new Exception('El archivo DOCX está vacío');
+        }
+        
+        $lines = explode("\n", trim($text));
+        $lines = array_filter($lines, 'trim');
+        $lines = array_values($lines);
+        
+        if (empty($lines)) {
+            throw new Exception('No se pudo extraer texto del archivo DOCX');
+        }
+        
+        // Intentar detectar si es una tabla (buscando patrones de tabulación o múltiples columnas)
+        $firstLine = array_shift($lines);
+        $headers = preg_split('/[\t|;]+/', $firstLine);
+        
+        if (count($headers) < 2) {
+            $headers = ['contenido'];
+            $lines = array_merge([$firstLine], $lines);
+        }
+        
+        $sample = array_slice($lines, 0, 20);
+        $rowCount = count($lines);
+        
+        $sample = array_map(function($line) use ($headers) {
+            $parts = preg_split('/[\t|;]+/', $line);
+            while (count($parts) < count($headers)) $parts[] = '';
+            return array_slice($parts, 0, count($headers));
+        }, $sample);
+        
+        return ['headers' => $headers, 'sample' => $sample, 'rowCount' => $rowCount];
+    } catch (Exception $e) {
+        throw new Exception('Error al analizar DOCX: ' . $e->getMessage());
+    }
 }
 
 // ================================================================

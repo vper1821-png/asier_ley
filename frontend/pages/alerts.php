@@ -589,7 +589,7 @@ function cIcon($name, $cls = 'w-4 h-4') {
                                         <?php endif; ?>
                                         <?php if (!$resolvedAlert): ?>
                                         <button onclick="event.stopPropagation(); openAlertModal(<?= $ai ?>)" class="p-2 rounded-lg text-indigo-400 hover:bg-indigo-500/10 transition-all z-10 relative" title="Ver detalles">
-                                            <?= cIcon('info', 'w-4 h-4') ?>
+                                            <?= cIcon('eye', 'w-4 h-4') ?>
                                         </button>
                                         <button onclick="event.stopPropagation(); resolveSingle('<?= h($alert['_id'] ?? '') ?>')" class="p-2 rounded-lg text-emerald-400 hover:bg-emerald-500/10 transition-all z-10 relative" title="Resolver">
                                             <?= cIcon('check', 'w-4 h-4') ?>

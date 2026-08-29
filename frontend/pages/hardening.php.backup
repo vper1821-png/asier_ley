@@ -674,6 +674,10 @@ echo $wizardCSS;
                                     <?php if (!empty($item['override']['completedAt'])): ?>
                                     <span class="text-[8px] text-text-subtle"><?= date('d-m-Y', strtotime($item['override']['completedAt'])) ?></span>
                                     <?php endif; ?>
+                                    <button onclick="downloadMeasurePDF('<?= h($item['id']) ?>', '<?= h($item['label']) ?>')"
+                                        class="text-[9px] px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-all font-medium whitespace-nowrap">
+                                        PDF
+                                    </button>
                                 </div>
                                 <?php endif; ?>
                                 <?php else: ?>
@@ -681,15 +685,21 @@ echo $wizardCSS;
                                     <circle cx="18" cy="18" r="15" fill="none" class="stroke-surface-700" stroke-width="3"/>
                                     <circle cx="18" cy="18" r="15" fill="none" class="stroke-gray-600" stroke-width="3" stroke-dasharray="94.25" stroke-dashoffset="70.69" stroke-linecap="round" transform="rotate(-90 18 18)"/>
                                 </svg>
-                                <button onclick="openMeasureModal('<?= h($item['id']) ?>')"
-                                    class="text-[10px] px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 transition-all font-medium whitespace-nowrap">
-                                    Completar
-                                </button>
+                                <div class="flex flex-col gap-1">
+                                    <button onclick="openMeasureModal('<?= h($item['id']) ?>')"
+                                        class="text-[10px] px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-all font-medium whitespace-nowrap">
+                                        Completar
+                                    </button>
+                                    <button onclick="downloadMeasurePDF('<?= h($item['id']) ?>', '<?= h($item['label']) ?>')"
+                                        class="text-[9px] px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-all font-medium whitespace-nowrap">
+                                        PDF
+                                    </button>
+                                </div>
                                 <?php endif; ?>
 
                                 <?php if ($item['id'] === 'incident_response'): ?>
                                 <button onclick="generateIncidentResponsePDF()"
-                                    class="text-[9px] px-2 py-0.5 rounded-md bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all font-medium whitespace-nowrap flex items-center gap-1">
+                                    class="text-[9px] px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-all font-medium whitespace-nowrap flex items-center gap-1">
                                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                                     PDF
                                 </button>
@@ -1822,6 +1832,151 @@ echo $wizardCSS;
                 alert('No hay sesión activa');
                 return;
             }
+            
+            fetch('/api/generate-incident-response-pdf', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && data.pdfUrl) {
+                    window.open(data.pdfUrl, '_blank');
+                } else if (data.html) {
+                    const printWindow = window.open('', '_blank');
+                    printWindow.document.write(data.html);
+                    printWindow.document.close();
+                    printWindow.onload = function() {
+                        printWindow.print();
+                    };
+                } else {
+                    alert('Error: ' + (data.error || 'No se pudo generar el PDF'));
+                }
+            })
+            .catch(err => alert('Error: ' + err.message));
+        }
+
+        // Descargar PDF de una medida individual
+        function downloadMeasurePDF(measureId, measureLabel) {
+            const def = MEASURE_DEFS.find(d => d.id === measureId);
+            if (!def) return;
+            
+            const html = generateMeasurePDFHTML(def);
+            const blob = new Blob([html], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'medida-' + measureId + '-' + new Date().toISOString().slice(0,10) + '.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function generateMeasurePDFHTML(def) {
+            return `<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${def.label} - SecureLab Admin</title>
+    <style>
+        body {
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 12px;
+            line-height: 1.6;
+            color: #000;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px;
+        }
+        .header {
+            text-align: center;
+            border-bottom: 3px solid #000;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            color: #000;
+            font-size: 20px;
+            margin: 0 0 10px 0;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .section {
+            margin-bottom: 25px;
+            page-break-inside: avoid;
+        }
+        .section h2 {
+            color: #000;
+            font-size: 14px;
+            border-bottom: 2px solid #000;
+            padding-bottom: 8px;
+            margin-bottom: 15px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .info-item {
+            background: #fff;
+            padding: 10px;
+            border-left: 3px solid #000;
+        }
+        .info-item label {
+            font-weight: bold;
+            color: #000;
+            display: block;
+            margin-bottom: 5px;
+            font-size: 11px;
+        }
+        .footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 2px solid #000;
+            text-align: center;
+            color: #333;
+            font-size: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>${def.label}</h1>
+        <p>Ley 21.719 - Protección de Datos Personales</p>
+        <p><strong>SecureLab Admin</strong></p>
+    </div>
+
+    <div class="section">
+        <h2>Descripción</h2>
+        <p>${def.desc}</p>
+    </div>
+
+    <div class="section">
+        <h2>Campos de Configuración</h2>
+        <div class="info-grid">
+            ${def.fields.map(f => `
+                <div class="info-item">
+                    <label>${f.label}</label>
+                    <span>Tipo: ${f.type}</span>
+                </div>
+            `).join('')}
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>Este documento ha sido generado automáticamente por SecureLab</p>
+        <p>Fecha de generación: ${new Date().toLocaleString('es-CL')}</p>
+        <p>Este documento es válido como evidencia del cumplimiento de la Ley 21.719</p>
+    </div>
+</body>
+</html>`;
+        }
 
             fetch('/api/generate-incident-response-pdf', {
                 method: 'POST',
