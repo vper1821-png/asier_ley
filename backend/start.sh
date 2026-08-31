@@ -25,7 +25,7 @@ php /var/www/html/ws-server.php > /var/log/ws-server.log 2>&1 &
     TOKEN=""
     MAX_RETRIES=15
     COUNT=0
-    ENDPOINT_URL="http://localhost:3838/generate_agent_config.php"
+    ENDPOINT_URL="https://leysecurelab.sytes.net/generate_agent_config.php"
 
     while [ $COUNT -lt $MAX_RETRIES ]; do
         # Verificar que el endpoint responda con HTTP 200
