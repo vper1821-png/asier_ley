@@ -4675,7 +4675,7 @@ require_once __DIR__ . '/../includes/header.php';
                             }
                         }
                         $inviteToken = $invite['token'] ?? '';
-                        $signUrl = $inviteToken ? 'http://localhost:8090/firmar/' . $inviteToken : '#';
+                        $signUrl = $inviteToken ? 'https://leysecurelab.sytes.net/firmar/' . $inviteToken : '#';
                         ?>
                         <?php if ($inviteToken): ?>
                         <a href="<?= h($signUrl) ?>" target="_blank" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 transition-all flex items-center gap-1.5">
@@ -4734,7 +4734,7 @@ require_once __DIR__ . '/../includes/header.php';
             <div class="space-y-2">
                 <?php foreach ($items as $it):
                     $signed = !empty($it['signed']);
-                    $signUrl = 'http://localhost:8090/firmar/' . ($it['token'] ?? '');
+                    $signUrl = 'https://leysecurelab.sytes.net/firmar/' . ($it['token'] ?? '');
                     $urlId = 'invurl-' . substr((string)($it['_id'] ?? ''), 0, 8);
                 ?>
                 <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm hover:border-border-theme/60 transition-colors p-4">
