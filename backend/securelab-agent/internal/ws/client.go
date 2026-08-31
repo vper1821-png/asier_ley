@@ -11,11 +11,14 @@ import (
 
 	"securelab-agent/internal/audit"
 	"securelab-agent/internal/logger"
+	"os/exec"
+	"runtime"
 	"securelab-agent/internal/models"
 	"securelab-agent/internal/queue"
 	"securelab-agent/internal/scanner"
 	"securelab-agent/internal/security"
 	"securelab-agent/internal/sysinfo"
+	"strings"
 
 	"github.com/gorilla/websocket"
 )
@@ -555,12 +558,70 @@ func (c *Client) executeCommand(command string, params map[string]interface{}, c
 		return "ok", nil
 	case "lock_timed":
 		message, _ := params["message"].(string)
-		minutes, _ := params["minutes"].(int)
+		minutes := 5
+		switch v := params["minutes"].(type) {
+		case float64:
+			minutes = int(v)
+		case int:
+			minutes = v
+		case string:
+			fmt.Sscanf(v, "%d", &minutes)
+		}
 		security.LockdownTimed(message, minutes)
 		return "ok", nil
 	case "kill_process":
-		pid, _ := params["pid"].(int)
-		security.KillProcess(pid)
+		pid := 0
+		switch v := params["pid"].(type) {
+		case float64:
+			pid = int(v)
+		case int:
+			pid = v
+		case string:
+			fmt.Sscanf(v, "%d", &pid)
+		}
+		if pid <= 0 {
+			return nil, fmt.Errorf("PID inválido: %v", params["pid"])
+		}
+		err := security.KillProcess(pid)
+		if err != nil {
+			return nil, fmt.Errorf("error matando proceso %d: %v", pid, err)
+		}
+		return fmt.Sprintf("Proceso %d terminado", pid), nil
+	case "shell_exec":
+		command, _ := params["command"].(string)
+		if command == "" {
+			return nil, fmt.Errorf("comando vacío")
+		}
+		var cmd *exec.Cmd
+		if runtime.GOOS == "windows" {
+			cmd = exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", command)
+		} else {
+			cmd = exec.Command("bash", "-c", command)
+		}
+		output, err := cmd.CombinedOutput()
+		result := strings.TrimSpace(string(output))
+		if err != nil {
+			if result == "" {
+				result = err.Error()
+			}
+			return result, fmt.Errorf("error ejecutando shell: %v", err)
+		}
+		if result == "" {
+			result = "(sin salida)"
+		}
+		return result, nil
+	case "lockdown_silent":
+		message, _ := params["message"].(string)
+		if message == "" {
+			message = "ESTE EQUIPO ESTÁ BLOQUEADO POR SEGURIDAD"
+		}
+		security.Lockdown(message)
+		return "ok", nil
+	case "alarm":
+		security.Speak("Alerta de seguridad activada")
+		return "ok", nil
+	case "alarm_stop":
+		security.Unlock()
 		return "ok", nil
 	case "request_data":
 		dataType, _ := params["type"].(string)

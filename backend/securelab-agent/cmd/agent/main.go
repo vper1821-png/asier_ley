@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	// build refresh 2026-08-31 to force new agent binary
 	"securelab-agent/internal/api"
 	"securelab-agent/internal/assistant"
 	"securelab-agent/internal/audit"

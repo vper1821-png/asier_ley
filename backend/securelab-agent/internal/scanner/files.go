@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"archive/zip"
 	"bufio"
 	"encoding/csv"
 	"fmt"
@@ -127,10 +128,15 @@ func scanTXT(path string) (map[string][]string, error) {
 	defer f.Close()
 
 	scanner := bufio.NewScanner(f)
+	// Aumentar buffer para líneas largas (256KB)
+	scanner.Buffer(make([]byte, 0, 256*1024), 256*1024)
+
 	result := make(map[string][]string)
+	allText := ""
 	lineNum := 0
-	for scanner.Scan() && lineNum < 100 {
+	for scanner.Scan() && lineNum < 200 {
 		line := scanner.Text()
+		allText += line + "\n"
 		cats := DetectPersonalData(line)
 		for cat := range cats {
 			key := fmt.Sprintf("line_%d", lineNum)
@@ -140,7 +146,15 @@ func scanTXT(path string) (map[string][]string, error) {
 		}
 		lineNum++
 	}
-	// Verificar errores del scanner
+	// También detectar PII en el texto completo (cruza líneas)
+	if allText != "" {
+		cats := DetectPersonalData(allText)
+		for cat := range cats {
+			if !stringInSlice(cat, result["fulltext"]) {
+				result["fulltext"] = append(result["fulltext"], cat)
+			}
+		}
+	}
 	if err := scanner.Err(); err != nil {
 		return result, fmt.Errorf("error leyendo archivo TXT: %w", err)
 	}
@@ -229,20 +243,26 @@ func scanPDF(path string) (map[string][]string, error) {
 }
 
 func scanDOC(path string) (map[string][]string, error) {
-	// Leer como texto plano (limitado - DOC/DOCX binario)
+	ext := strings.ToLower(filepath.Ext(path))
+
+	// .docx es un ZIP con XML - extraer texto del word/document.xml
+	if ext == ".docx" {
+		return scanDOCX(path)
+	}
+
+	// .doc binario antiguo - leer bytes crudos y buscar patrones
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
 
-	// Leer primeros 10KB para detectar PII en metadata o texto plano
 	buf := make([]byte, 10240)
 	n, err := f.Read(buf)
 	if err != nil && err != io.EOF {
 		return nil, err
 	}
-	
+
 	content := string(buf[:n])
 	result := make(map[string][]string)
 	cats := DetectPersonalData(content)
@@ -252,6 +272,61 @@ func scanDOC(path string) (map[string][]string, error) {
 			result[key] = append(result[key], cat)
 		}
 	}
+	return result, nil
+}
+
+func scanDOCX(path string) (map[string][]string, error) {
+	r, err := zip.OpenReader(path)
+	if err != nil {
+		// Si no es un ZIP válido, intentar como binario
+		return scanDOC(path)
+	}
+	defer r.Close()
+
+	result := make(map[string][]string)
+	allText := ""
+
+	for _, f := range r.File {
+		// Leer solo archivos de documento XML y metadatos
+		name := strings.ToLower(f.Name)
+		if !strings.Contains(name, "document.xml") &&
+			!strings.Contains(name, "comments.xml") &&
+			!strings.Contains(name, "footnotes.xml") &&
+			!strings.Contains(name, "headers") &&
+			!strings.Contains(name, "footers") &&
+			!strings.Contains(name, "core.xml") &&
+			!strings.Contains(name, "app.xml") &&
+			!strings.Contains(name, "custom.xml") {
+			continue
+		}
+
+		rc, err := f.Open()
+		if err != nil {
+			continue
+		}
+
+		// Leer contenido (limitado a 50KB por archivo XML)
+		limitedReader := io.LimitReader(rc, 51200)
+		buf, readErr := io.ReadAll(limitedReader)
+		rc.Close()
+
+		if len(buf) > 0 && readErr == nil {
+			allText += string(buf) + " "
+		}
+	}
+
+	if allText == "" {
+		return result, nil
+	}
+
+	// Detectar PII en el texto extraído
+	cats := DetectPersonalData(allText)
+	for cat := range cats {
+		if !stringInSlice(cat, result["content"]) {
+			result["content"] = append(result["content"], cat)
+		}
+	}
+
 	return result, nil
 }
 

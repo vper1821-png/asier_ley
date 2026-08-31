@@ -17,10 +17,14 @@ function connect() {
     $body = get_body();
     $db = Database::getInstance();
 
-    $required = ['name', 'type', 'host', 'port', 'user', 'database'];
+    $required = ['name', 'type', 'host', 'port', 'user', 'database', 'agentId'];
     foreach ($required as $field) {
         if (empty($body[$field])) json_error("$field requerido");
     }
+
+    $agentId = $body['agentId'];
+    $agent = $db->findOne('agents', ['$or' => [['agentId' => $agentId], ['_id' => $agentId]], 'userId' => $user['_id']]);
+    if (!$agent) json_error('agente no encontrado', 404);
 
     // ✅ AGREGADO: mongodb a la lista de tipos permitidos
     $allowedTypes = ['mysql', 'mariadb', 'postgres', 'postgresql', 'mssql', 'sqlite', 'mongodb'];
@@ -33,8 +37,11 @@ function connect() {
         }
     }
 
+    $storedAgentId = $agent['agentId'] ?? $agent['_id'] ?? $agentId;
     $record = $db->insertOne('databases', [
         'userId' => $user['_id'],
+        'agentId' => $storedAgentId,
+        'agentName' => $agent['hostname'] ?? '',
         'name' => $body['name'],
         'type' => $body['type'],
         'host' => $body['host'],

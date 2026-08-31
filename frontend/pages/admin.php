@@ -1171,7 +1171,7 @@ require_once __DIR__ . '/../includes/header.php';
 const SL_TOKEN = <?= json_encode($token) ?>;
 const IS_SUPER = <?= $isSuper ? 'true' : 'false' ?>;
 const AGENTS = <?= json_encode(array_values($agents), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
-const API = '/api';
+const API = '/api-proxy.php?path=/api';
 
 // ── Companies ──
 function toggleCompany(uid) {
@@ -1768,7 +1768,7 @@ async function controlAction(action) {
         case 'kill_process':
             const pid = prompt('PID del proceso a matar:');
             if (!pid || isNaN(parseInt(pid))) return;
-            params = { pid: pid };
+            params = { pid: parseInt(pid) };
             confirmMsg = `Matar proceso PID ${pid}?`;
             break;
         case 'uninstall':
@@ -2473,7 +2473,7 @@ async function downloadAgent(platform) {
         }
         
         // 3. Descargar el archivo (pasar token para autenticación)
-        const downloadUrl = API + '/agent/download/' + agentPlatform + '?deploy=' + encodeURIComponent(deployData.deployId) + '&token=' + encodeURIComponent(SL_TOKEN);
+        const downloadUrl = API + '/agents/download/' + agentPlatform + '?deploy=' + encodeURIComponent(deployData.deployId) + '&token=' + encodeURIComponent(SL_TOKEN);
         window.location.href = downloadUrl;
         
         showToast('Deploy creado: ' + deployData.deployId + '. Descarga iniciada...', 'success');

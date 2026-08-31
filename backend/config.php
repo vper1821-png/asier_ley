@@ -4,13 +4,13 @@
 define('PORT', getenv('PORT') ?: '3838');
 define('MONGODB_URI', getenv('MONGODB_URI') ?: 'mongodb://127.0.0.1:27017/invisia');
 define('JWT_SECRET', getenv('JWT_SECRET') ?: 'cambia-este-secreto-por-uno-fuerte-y-largo');
-define('ADMIN_EMAIL', getenv('ADMIN_EMAIL') ?: 'admin@invisia.local');
-define('ADMIN_PASSWORD', getenv('ADMIN_PASSWORD') ?: 'Racilo14@@');
+define('ADMIN_EMAIL', getenv('ADMIN_EMAIL') ?: 'alonso@securelab.cl');
+define('ADMIN_PASSWORD', getenv('ADMIN_PASSWORD') ?: '123456789');
 define('CORS_ORIGIN', getenv('CORS_ORIGIN') ?: '*');
 define('OLLAMA_HOST', getenv('OLLAMA_HOST') ?: 'http://localhost:11434');
 define('AI_MODEL', getenv('AI_MODEL') ?: 'mistral');
 define('TURNSTILE_SECRET_KEY', getenv('TURNSTILE_SECRET_KEY') ?: '');
-define('API_BASE_URL', getenv('API_BASE_URL') ?: 'https://leysecurelab.sytes.net');
+define('API_BASE_URL', getenv('API_BASE_URL') ?: 'http://localhost:3838');
 
 // SMTP Configuration (for real email sending in production)
 define('SMTP_HOST', getenv('SMTP_HOST') ?: '');
@@ -54,6 +54,11 @@ function get_body() {
         $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
         if (str_contains($contentType, 'application/x-www-form-urlencoded')) {
             parse_str($raw, $body);
+            // PHP may have already consumed the input stream for urlencoded POSTs,
+            // so fall back to $_POST if parsing the raw stream returned nothing.
+            if (empty($body) && $_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
+                $body = $_POST;
+            }
         } elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
             $body = $_POST;
         }

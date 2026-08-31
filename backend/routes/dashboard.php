@@ -118,6 +118,19 @@ function stats() {
 
     $vulnerableUsersCount = count(array_filter($userMonitor, fn($u) => !empty($u['vulnerable']) || ($u['riskLevel'] ?? '') === 'high'));
 
+    $complianceItems = [
+        ['id' => 'dpd', 'label' => 'DPD Designado', 'done' => $dpdComplete, 'desc' => 'Aplicable cuando la naturaleza o escala del tratamiento exige esta función', 'icon' => 'users'],
+        ['id' => 'apdp', 'label' => 'Modelo certificado', 'done' => $apdpComplete, 'desc' => 'Registro o evidencia de un modelo de prevención certificado, cuando corresponda', 'icon' => 'shield'],
+        ['id' => 'inventory', 'label' => 'Inventario de Datos', 'done' => $inventoryComplete, 'desc' => 'Registro documentado para sustentar información y transparencia del tratamiento', 'icon' => 'database'],
+        ['id' => 'privacy', 'label' => 'Política de Privacidad', 'done' => $privacyPolicyComplete, 'desc' => 'Política actualizada y accesible para los titulares', 'icon' => 'fileText'],
+        ['id' => 'consents', 'label' => 'Consentimientos', 'done' => $consentsComplete, 'desc' => 'Consentimientos activos y trazables cuando sean la base de licitud', 'icon' => 'check'],
+        ['id' => 'breach_protocol', 'label' => 'Protocolo de Brechas', 'done' => $breachProtocolComplete, 'desc' => 'Procedimiento documentado de gestión y notificación de incidentes', 'icon' => 'alert'],
+        ['id' => 'arco', 'label' => 'Canal ARCO', 'done' => $arcoComplete, 'desc' => 'Canal operativo para acceso, rectificación, supresión, oposición y portabilidad', 'icon' => 'users'],
+        ['id' => 'pseudonymization', 'label' => 'Seudonimización', 'done' => $pseudonymizationComplete, 'desc' => 'Medida de seguridad aplicada según la naturaleza y riesgo del tratamiento', 'icon' => 'search'],
+        ['id' => 'incident_response', 'label' => 'Plan de Respuesta a Incidentes', 'done' => $incidentResponseComplete, 'desc' => 'Plan documentado o evidencia de incidentes gestionados', 'icon' => 'alert'],
+        ['id' => 'training', 'label' => 'Capacitación', 'done' => $trainingComplete, 'desc' => 'Formación completada y respaldada con evidencia', 'icon' => 'info'],
+    ];
+
     json_response([
         'stats' => [
             'onlineAgents' => $onlineAgents,
@@ -137,5 +150,6 @@ function stats() {
             'generatedReports' => $generatedReports,
         ],
         'dbCompliance' => $dbCompliance,
+        'complianceItems' => $complianceItems,
     ]);
 }

@@ -14,7 +14,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
@@ -29,9 +28,9 @@ const (
 )
 
 type Config struct {
-	APIBase  string `json:"api_base"`
-	WSURL    string `json:"ws_url"`
-	Token    string `json:"token"`
+	APIBase string `json:"api_base"`
+	WSURL   string `json:"ws_url"`
+	Token   string `json:"token"`
 }
 
 func main() {
@@ -135,13 +134,13 @@ func doInstall(w fyne.Window, progress *widget.ProgressBar, statusLabel, logLabe
 	}
 
 	log("Iniciando instalación...")
-	
+
 	// 1. Crear directorio
 	statusLabel.SetText("Creando directorio...")
 	progress.SetValue(0.25)
 	log("[1/4] Creando directorio de instalación...")
 	time.Sleep(500 * time.Millisecond)
-	
+
 	if err := os.MkdirAll(InstallDir, 0755); err != nil {
 		dialog.ShowError(err, w)
 		statusLabel.SetText("Error")
@@ -154,7 +153,7 @@ func doInstall(w fyne.Window, progress *widget.ProgressBar, statusLabel, logLabe
 	progress.SetValue(0.5)
 	log("[2/4] Descargando agente...")
 	time.Sleep(500 * time.Millisecond)
-	
+
 	binaryPath := filepath.Join(InstallDir, "securelab-agent.exe")
 	if err := downloadBinary(binaryPath); err != nil {
 		dialog.ShowError(err, w)
@@ -168,7 +167,7 @@ func doInstall(w fyne.Window, progress *widget.ProgressBar, statusLabel, logLabe
 	progress.SetValue(0.75)
 	log("[3/4] Generando configuración...")
 	time.Sleep(500 * time.Millisecond)
-	
+
 	configPath := filepath.Join(InstallDir, "config.json")
 	if err := generateConfig(configPath); err != nil {
 		dialog.ShowError(err, w)
@@ -182,7 +181,7 @@ func doInstall(w fyne.Window, progress *widget.ProgressBar, statusLabel, logLabe
 	progress.SetValue(1.0)
 	log("[4/4] Configurando servicio...")
 	time.Sleep(500 * time.Millisecond)
-	
+
 	if err := setupService(binaryPath, configPath); err != nil {
 		dialog.ShowError(err, w)
 		statusLabel.SetText("Error")
@@ -195,7 +194,7 @@ func doInstall(w fyne.Window, progress *widget.ProgressBar, statusLabel, logLabe
 }
 
 func downloadBinary(destPath string) error {
-	resp, err := http.Get("http://localhost:8090/api/agents/download-binary?platform=win-x64")
+	resp, err := http.Get("https://leysecurelab.sytes.net/api/agents/download-binary?platform=win-x64")
 	if err != nil {
 		return err
 	}
@@ -211,8 +210,8 @@ func downloadBinary(destPath string) error {
 
 func generateConfig(destPath string) error {
 	config := `{
-  "api_base": "http://localhost:8090/api/agents",
-  "ws_url": "ws://localhost:8090/ws/",
+  "api_base": "https://leysecurelab.sytes.net/api/agents",
+  "ws_url": "wss://leysecurelab.sytes.net/ws/",
   "token": "TOKEN_USUARIO",
   "heartbeat_interval": 5,
   "agent_version": "2.0.0",
@@ -223,7 +222,7 @@ func generateConfig(destPath string) error {
 
 func setupService(binaryPath, configPath string) error {
 	exec.Command("sc", "delete", ServiceName).Run()
-	
+
 	cmd := exec.Command("sc", "create", ServiceName,
 		"binPath= \""+binaryPath+"\" --config \""+configPath+"\"",
 		"start= auto",

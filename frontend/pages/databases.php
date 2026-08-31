@@ -20,6 +20,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'database' => $_POST['database'] ?? '',
             'user' => $_POST['user'] ?? '',
             'password' => $_POST['password'] ?? '',
+            'agentId' => $_POST['agentId'] ?? '',
         ]);
         if (!empty($res['success']) || !empty($res['_id'])) $msg = 'Base de datos conectada.';
         else $err = $res['error'] ?? 'Error al conectar.';
@@ -38,6 +39,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $dbsRes = api_post_form('/api/databases/list', ['token' => $token]);
 $databases = is_array($dbsRes) && empty($dbsRes['error']) ? ($dbsRes['databases'] ?? $dbsRes) : [];
 if (!is_array($databases)) $databases = [];
+
+$agentsRes = api_post_form('/api/agents/list', ['token' => $token]);
+$agents = is_array($agentsRes) && empty($agentsRes['error']) ? $agentsRes : [];
+if (!is_array($agents)) $agents = [];
 
 $connected = count(array_filter($databases, fn($d) => ($d['status'] ?? '') === 'connected'));
 $errored = count($databases) - $connected;
@@ -1412,7 +1417,26 @@ $formatDatabaseDate = static function ($value) {
                                 </fieldset>
 
                                 <fieldset class="db-fieldset">
-                                    <legend>2. Servidor y esquema</legend>
+                                    <legend>2. Agente asignado</legend>
+                                    <div class="db-fields-grid">
+                                        <div class="db-field db-field--full">
+                                            <label for="db-agent" class="db-label">Agente de monitoreo <span class="db-required" aria-hidden="true">*</span><span class="db-sr-only">obligatorio</span></label>
+                                            <select id="db-agent" name="agentId" class="db-control" required>
+                                                <option value="">Seleccione un agente...</option>
+                                                <?php foreach ($agents as $agent): ?>
+                                                <?php $agentValue = h($agent['agentId'] ?? $agent['_id'] ?? ''); ?>
+                                                <option value="<?= $agentValue ?>" <?= (isset($_POST['connect_db']) && ($_POST['agentId'] ?? '') === ($agent['agentId'] ?? $agent['_id'] ?? '')) ? 'selected' : '' ?>>
+                                                    <?= h(($agent['hostname'] ?? $agent['agentId'] ?? $agent['_id'] ?? 'Agente sin nombre') . ' (' . ($agent['status'] ?? 'desconocido') . ')') ?>
+                                                </option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                            <p class="db-field-help">Agente que ejecutará el escaneo y monitoreo sobre esta base de datos.</p>
+                                        </div>
+                                    </div>
+                                </fieldset>
+
+                                <fieldset class="db-fieldset">
+                                    <legend>3. Servidor y esquema</legend>
                                     <div class="db-fields-grid">
                                         <div class="db-field db-field--full">
                                             <label for="db-host" class="db-label">Host o dirección IP <span class="db-required" aria-hidden="true">*</span><span class="db-sr-only">obligatorio</span></label>
@@ -1433,7 +1457,7 @@ $formatDatabaseDate = static function ($value) {
                                 </fieldset>
 
                                 <fieldset class="db-fieldset">
-                                    <legend>3. Credenciales</legend>
+                                    <legend>4. Credenciales</legend>
                                     <div class="db-fields-grid">
                                         <div class="db-field db-field--full">
                                             <label for="db-user" class="db-label">Usuario de servicio <span class="db-required" aria-hidden="true">*</span><span class="db-sr-only">obligatorio</span></label>

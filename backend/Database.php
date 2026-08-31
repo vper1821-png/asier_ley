@@ -140,6 +140,9 @@ class Database {
     }
 
     public function updateOne($collection, $filter, $update) {
+        if (is_array($update)) {
+            unset($update['_id']);
+        }
         if ($this->useMongo) {
             $filter = $this->normalizeFilter($filter);
             error_log("[DB] updateOne on {$collection}: " . json_encode($filter) . " -> " . json_encode($update));

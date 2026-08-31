@@ -73,7 +73,7 @@ WORKDIR /var/www/html
 COPY . .
 
 # Instalar dependencias PHP (composer)
-RUN composer require phpoffice/phpword --no-interaction --ignore-platform-req=ext-gd --ignore-platform-req=ext-mongodb && \
+RUN composer require phpoffice/phpword dompdf/dompdf --no-interaction --ignore-platform-req=ext-gd --ignore-platform-req=ext-mongodb && \
     composer install --no-dev --no-interaction --prefer-source --optimize-autoloader --no-security-blocking --ignore-platform-req=ext-gd --ignore-platform-req=ext-mongodb
 
 

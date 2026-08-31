@@ -30,6 +30,11 @@ if (!empty($_SESSION['uf_cache']) && $_SESSION['uf_cache']['ts'] > time() - 2160
 }
 
 $complianceScore = (int)($s['complianceScore'] ?? 0);
+$complianceItems = $statsRes['complianceItems'] ?? [];
+$complianceDone = count(array_filter($complianceItems, fn($i) => $i['done'] ?? false));
+$complianceTotal = max(1, count($complianceItems));
+$pctColor = $complianceScore >= 70 ? 'text-emerald-400' : ($complianceScore >= 40 ? 'text-yellow-400' : 'text-red-400');
+$pctBar = $complianceScore >= 70 ? 'bg-emerald-500' : ($complianceScore >= 40 ? 'bg-yellow-500' : 'bg-red-500');
 $compliantDBs = (int)($s['compliantDBs'] ?? 0);
 $nonCompliantDBs = (int)($s['nonCompliantDBs'] ?? 0);
 $totalDBsForGauge = max(1, $compliantDBs + $nonCompliantDBs);
@@ -154,18 +159,17 @@ function kpi_card($label, $value, $sub, $color, $icon, $big = true) {
                     <!-- Gauge: Cumplimiento Global -->
                     <div class="rounded-xl border border-white/[0.04] bg-white/[0.01] p-5 flex flex-col items-center justify-center">
                         <p class="text-[10px] font-medium text-text-subtle uppercase tracking-widest mb-3 self-start">Cumplimiento Global</p>
-                        <?php $gaugeColor = $complianceScore >= 70 ? '#34d399' : '#f87171'; $gaugeCirc = M_PI * 60; ?>
+                        <?php $gaugeColor = $globalScore >= 70 ? '#34d399' : ($globalScore >= 40 ? '#facc15' : '#f87171'); $gaugeCirc = M_PI * 60; ?>
                         <div class="relative w-40 h-24">
                             <svg viewBox="0 0 160 90" class="w-full h-full">
                                 <path d="M 20 85 A 60 60 0 0 1 140 85" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10" stroke-linecap="round"/>
-                                <path d="M 20 85 A 60 60 0 0 1 140 85" fill="none" stroke="<?= $gaugeColor ?>" stroke-width="10" stroke-linecap="round" stroke-dasharray="<?= $gaugeCirc ?>" stroke-dashoffset="<?= $gaugeCirc * (1 - $complianceScore / 100) ?>"/>
+                                <path d="M 20 85 A 60 60 0 0 1 140 85" fill="none" stroke="<?= $gaugeColor ?>" stroke-width="10" stroke-linecap="round" stroke-dasharray="<?= $gaugeCirc ?>" stroke-dashoffset="<?= $gaugeCirc * (1 - $globalScore / 100) ?>"/>
                             </svg>
                             <div class="absolute inset-0 flex flex-col items-center justify-end pb-1">
-                                <span class="text-[22px] font-bold" style="color: <?= $gaugeColor ?>"><?= $complianceScore ?>%</span>
-                                <span class="text-[10px] text-text-subtle">Ley 21.719</span>
+                                <span class="text-[22px] font-bold" style="color: <?= $gaugeColor ?>"><?= $globalScore ?>%</span>
+                                <span class="text-[10px] text-text-subtle">Promedio de 3 áreas</span>
                             </div>
                         </div>
-                        <p class="text-[10px] text-text-subtle mt-2"><?= $compliantDBs ?> de <?= $compliantDBs + $nonCompliantDBs ?> DBs</p>
                         <p class="text-[9px] text-text-subtle/80 mt-2 text-center max-w-[220px]">Indicador orientativo basado en evidencia registrada; no constituye certificación legal.</p>
                     </div>
 
@@ -227,6 +231,66 @@ function kpi_card($label, $value, $sub, $color, $icon, $big = true) {
                     </div>
                 </div>
 
+                <!-- Desglose de cumplimiento por área -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <!-- Agente & DB -->
+                    <div class="rounded-xl border border-white/[0.04] bg-white/[0.01] p-5">
+                        <div class="flex items-center gap-2 mb-3">
+                            <div class="w-7 h-7 rounded-lg bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center text-yellow-400">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                            </div>
+                            <div>
+                                <p class="text-[11px] font-semibold text-text-heading">Agente &amp; Base de datos</p>
+                                <p class="text-[18px] font-bold text-yellow-400 leading-none mt-0.5"><?= $agentDBScore ?>%</p>
+                            </div>
+                        </div>
+                        <div class="h-1.5 rounded-full bg-white/[0.04] overflow-hidden mb-3"><div class="h-full rounded-full bg-yellow-400" style="width:<?= $agentDBScore ?>%"></div></div>
+                        <div class="space-y-1.5 text-[10px] text-text-subtle">
+                            <p class="flex items-center justify-between"><span>Agentes online</span><span class="text-text-body font-medium"><?= $onlineAgents ?> / <?= $totalAgents ?></span></p>
+                            <p class="flex items-center justify-between"><span>DBs cumplen</span><span class="text-text-body font-medium"><?= $compliantDBs ?> / <?= $totalDatabases ?></span></p>
+                            <p class="text-text-muted pt-1 border-t border-white/[0.04] mt-2">Mide la conectividad de agentes y el estado de cumplimiento de las bases de datos.</p>
+                        </div>
+                    </div>
+
+                    <!-- Compliance -->
+                    <div class="rounded-xl border border-white/[0.04] bg-white/[0.01] p-5">
+                        <div class="flex items-center gap-2 mb-3">
+                            <div class="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                            </div>
+                            <div>
+                                <p class="text-[11px] font-semibold text-text-heading">Compliance</p>
+                                <p class="text-[18px] font-bold text-emerald-400 leading-none mt-0.5"><?= $complianceScore ?>%</p>
+                            </div>
+                        </div>
+                        <div class="h-1.5 rounded-full bg-white/[0.04] overflow-hidden mb-3"><div class="h-full rounded-full bg-emerald-400" style="width:<?= $complianceScore ?>%"></div></div>
+                        <div class="space-y-1.5 text-[10px] text-text-subtle">
+                            <p class="flex items-center justify-between"><span>Tareas cumplidas</span><span class="text-text-body font-medium"><?= $checklistDone ?> / <?= $checklistTotal ?></span></p>
+                            <p class="flex items-center justify-between"><span>DBs cumplen</span><span class="text-text-body font-medium"><?= $compliantDBs ?> / <?= $totalDatabases ?></span></p>
+                            <p class="text-text-muted pt-1 border-t border-white/[0.04] mt-2">Avance en los requisitos legales de la Ley 21.719 y checklist de cumplimiento.</p>
+                        </div>
+                    </div>
+
+                    <!-- Hardening -->
+                    <div class="rounded-xl border border-white/[0.04] bg-white/[0.01] p-5">
+                        <div class="flex items-center gap-2 mb-3">
+                            <div class="w-7 h-7 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                            </div>
+                            <div>
+                                <p class="text-[11px] font-semibold text-text-heading">Hardening</p>
+                                <p class="text-[18px] font-bold text-red-400 leading-none mt-0.5"><?= $hardeningScore ?>%</p>
+                            </div>
+                        </div>
+                        <div class="h-1.5 rounded-full bg-white/[0.04] overflow-hidden mb-3"><div class="h-full rounded-full bg-red-400" style="width:<?= $hardeningScore ?>%"></div></div>
+                        <div class="space-y-1.5 text-[10px] text-text-subtle">
+                            <p class="flex items-center justify-between"><span>Medidas aplicadas</span><span class="text-text-body font-medium"><?= $hardeningDone ?> / <?= $hardeningTotal ?></span></p>
+                            <p class="flex items-center justify-between"><span>Medidas pendientes</span><span class="text-text-body font-medium"><?= $hardeningTotal - $hardeningDone ?></span></p>
+                            <p class="text-text-muted pt-1 border-t border-white/[0.04] mt-2">Implementación de medidas de seguridad técnicas y organizativas.</p>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Cumplimiento por DB detalle -->
                 <?php if (!empty($dbCompliance)): ?>
                 <div class="rounded-xl border border-white/[0.04] bg-white/[0.01] overflow-hidden">
@@ -273,10 +337,36 @@ function kpi_card($label, $value, $sub, $color, $icon, $big = true) {
 
             <!-- Tab: ley21719 -->
             <div id="dashtab-ley21719" class="dashtab-content hidden">
-                <div class="rounded-xl border border-white/[0.04] bg-white/[0.01] p-8 text-center">
-                    <p class="text-[12px] text-text-heading font-medium">Cumplimiento Ley 21.719: <?= $complianceScore ?>%</p>
-                    <p class="text-[11px] text-text-subtle mt-1">Consulta el módulo de Compliance para gestionar consentimientos, DPIAs, brechas e inventario.</p>
-                    <a href="/compliance" class="btn-primary text-[11px] inline-block mt-4">Ir a Compliance</a>
+                <div class="rounded-xl border border-white/[0.04] bg-white/[0.01] p-6">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                        <div>
+                            <h4 class="text-[14px] font-semibold text-text-heading">Checklist de Cumplimiento Ley 21.719</h4>
+                            <p class="text-[11px] text-text-subtle mt-1"><?= $complianceDone ?> de <?= $complianceTotal ?> requisitos cumplidos</p>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-[24px] font-bold <?= $pctColor ?>"><?= $complianceScore ?>%</span>
+                        </div>
+                    </div>
+                    <div class="w-full bg-bg-elevated/50 rounded-full h-2.5 mb-5">
+                        <div class="h-full rounded-full transition-all duration-700 <?= $pctBar ?>" style="width: <?= $complianceScore ?>%"></div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <?php foreach ($complianceItems as $item): ?>
+                        <div class="flex items-start gap-3 p-3 rounded-lg <?= $item['done'] ? 'bg-emerald-500/[0.04]' : 'bg-bg-base/40' ?> border border-white/[0.04]">
+                            <span class="mt-0.5 flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] <?= $item['done'] ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400' ?>">
+                                <?php if ($item['done']): ?>
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                <?php else: ?>
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                                <?php endif; ?>
+                            </span>
+                            <div>
+                                <p class="text-[12px] font-medium <?= $item['done'] ? 'text-emerald-300' : 'text-text-heading' ?>"><?= h($item['label']) ?></p>
+                                <p class="text-[10px] text-text-subtle mt-0.5"><?= h($item['desc']) ?></p>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
                 </div>
             </div>
         </div>

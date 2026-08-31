@@ -303,6 +303,11 @@ $breaches = api_get('/api/invisia/compliance/breaches', ['token' => $token]);
 if (!is_array($breaches) || isset($breaches['error'])) $breaches = [];
 $config = api_get('/api/invisia/compliance/config', ['token' => $token]);
 if (!is_array($config)) $config = [];
+$measureOverrides = [];
+if (!empty($config['measureOverrides'])) {
+    $measureOverrides = is_string($config['measureOverrides']) ? json_decode($config['measureOverrides'], true) : $config['measureOverrides'];
+    if (!is_array($measureOverrides)) $measureOverrides = [];
+}
 $alertsRes = api_post_form('/api/alerts/list', ['token' => $token, 'limit' => '50']);
 $alerts = $alertsRes['alerts'] ?? [];
 $pseudoRules = api_get('/api/invisia/compliance/pseudonymization', ['token' => $token]);
@@ -533,6 +538,16 @@ require_once __DIR__ . '/../includes/header.php';
 echo $wizardCSS;
 ?>
 
+<style>
+input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not([type="file"]),
+textarea,
+select { background-color: #0f0f14 !important; color: #f9fafb !important; border-color: rgba(255,255,255,0.12) !important; }
+::placeholder { color: #9ca3af !important; opacity: 1; }
+input:-webkit-autofill,
+textarea:-webkit-autofill,
+select:-webkit-autofill { -webkit-text-fill-color: #f9fafb !important; -webkit-box-shadow: 0 0 0px 1000px #0f0f14 inset !important; }
+</style>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
 <div class="flex h-screen bg-bg-base text-[13px] text-text-body overflow-hidden">
@@ -673,28 +688,34 @@ echo $wizardCSS;
                                     <circle cx="18" cy="18" r="15" fill="none" class="stroke-emerald-400" stroke-width="3" stroke-dasharray="94.25" stroke-dashoffset="0" stroke-linecap="round" transform="rotate(-90 18 18)"/>
                                     <path d="M12 18l4 4 8-8" fill="none" class="stroke-emerald-400" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
                                 </svg>
-                                <?php if ($item['override']): ?>
                                 <div class="flex flex-col items-center gap-1">
-                                    <form method="POST">
-                                        <input type="hidden" name="measure_id" value="<?= h($item['id']) ?>">
-                                        <button type="submit" name="revoke_measure" value="1" class="text-[9px] text-text-subtle hover:text-red-400 font-medium transition-colors">Desactivar</button>
-                                    </form>
+                                    <?php if ($item['override']): ?>
                                     <?php if (!empty($item['override']['completedAt'])): ?>
                                     <span class="text-[8px] text-text-subtle"><?= date('d-m-Y', strtotime($item['override']['completedAt'])) ?></span>
                                     <?php endif; ?>
-                                    <button onclick="downloadMeasurePDF('<?= h($item['id']) ?>', '<?= h($item['label']) ?>')"
-                                        class="text-[9px] px-2 py-0.5 rounded-md bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all font-medium whitespace-nowrap">
-                                        PDF
-                                    </button>
+                                    <?php endif; ?>
+                                    <div class="flex flex-col gap-1">
+                                        <button type="button" onclick="openMeasureModal('<?= h($item['id']) ?>')"
+                                            class="text-[10px] px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-all font-medium whitespace-nowrap">
+                                            Editar
+                                        </button>
+                                        <form method="POST" class="inline-block">
+                                            <input type="hidden" name="measure_id" value="<?= h($item['id']) ?>">
+                                            <button type="submit" name="revoke_measure" value="1" class="text-[10px] px-2 py-0.5 rounded-md bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all font-medium whitespace-nowrap">Eliminar</button>
+                                        </form>
+                                        <button onclick="downloadMeasurePDF('<?= h($item['id']) ?>', '<?= h($item['label']) ?>')"
+                                            class="text-[9px] px-2 py-0.5 rounded-md bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all font-medium whitespace-nowrap">
+                                            PDF
+                                        </button>
+                                    </div>
                                 </div>
-                                <?php endif; ?>
                                 <?php else: ?>
                                 <svg class="w-9 h-9" viewBox="0 0 36 36">
                                     <circle cx="18" cy="18" r="15" fill="none" class="stroke-surface-700" stroke-width="3"/>
                                     <circle cx="18" cy="18" r="15" fill="none" class="stroke-gray-600" stroke-width="3" stroke-dasharray="94.25" stroke-dashoffset="70.69" stroke-linecap="round" transform="rotate(-90 18 18)"/>
                                 </svg>
                                 <div class="flex flex-col gap-1">
-                                    <button onclick="openMeasureModal('<?= h($item['id']) ?>')"
+                                    <button type="button" onclick="openMeasureModal('<?= h($item['id']) ?>')"
                                         class="text-[10px] px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-all font-medium whitespace-nowrap">
                                         Completar
                                     </button>
@@ -704,8 +725,6 @@ echo $wizardCSS;
                                     </button>
                                 </div>
                                 <?php endif; ?>
-
-                                
                             </div>
                         </div>
                         <?php endforeach; ?>
@@ -1293,9 +1312,9 @@ echo $wizardCSS;
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div class="space-y-1.5">
                                         <label class="block text-[11px] font-medium text-text-body flex items-center gap-1">
-                                            URL de evidencia <span class="text-red-400">*</span>
+                                            URL de evidencia
                                         </label>
-                                        <input type="url" name="field_evidenceUrl" placeholder="https://gitlab.empresa.cl/seguridad/politica-cifrado" class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 transition-all font-mono" required>
+                                        <input type="url" name="field_evidenceUrl" placeholder="https://gitlab.empresa.cl/seguridad/politica-cifrado" class="w-full bg-bg-base/80 border border-border-theme text-[12px] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 transition-all font-mono">
                                         <p class="text-[10px] text-text-subtle">Políticas, configs, logs, certificados, reportes</p>
                                     </div>
                                     <div class="space-y-1.5">
@@ -1428,6 +1447,8 @@ try {
 
     console.log('MEASURE_DEFS loaded:', MEASURE_DEFS ? MEASURE_DEFS.length + ' measures' : 'ERROR');
 
+    window.MEASURE_OVERRIDES = <?= json_encode($measureOverrides, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?> || [];
+
     // Funciones globales definidas al final para asegurar disponibilidad
 window.currentMeasureStep = 1;
 window.totalMeasureSteps = 3;
@@ -1482,8 +1503,12 @@ window.openMeasureModal = function(id, fields) {
     
     console.log('Using def:', def);
     
+    // Load existing override data for editing
+    const overrides = (typeof window.MEASURE_OVERRIDES !== 'undefined' ? window.MEASURE_OVERRIDES : []);
+    const override = overrides.find(o => (o.measureId || '') === id) || null;
+    
     // Guardar datos actuales
-    window.currentMeasureData = { id: id, def: def };
+    window.currentMeasureData = { id: id, def: def, override: override };
     
     const modalTitle = document.getElementById('measure-modal-title');
     if (modalTitle) modalTitle.textContent = def ? def.label : id;
@@ -1497,9 +1522,49 @@ window.openMeasureModal = function(id, fields) {
     // Actualizar contenido del paso
     updateStepContent(1);
     
+    // Pre-fill saved values in all wizard steps
+    setTimeout(fillMeasureFields, 0);
+    
     window.currentMeasureStep = 1;
     window.updateMeasureWizardUI();
 };
+
+function fillMeasureFields() {
+    const data = window.currentMeasureData.override;
+    if (!data) return;
+    const form = document.getElementById('measure-form');
+    if (!form) return;
+    const fieldData = (typeof data.fieldData === 'string') ? JSON.parse(data.fieldData || '{}') : (data.fieldData || {});
+    if (data.notes) {
+        const notes = form.querySelector('[name="notes"]');
+        if (notes) notes.value = data.notes;
+    }
+    Object.keys(fieldData).forEach(key => {
+        const el = form.querySelector('[name="field_' + key + '"]');
+        if (!el) return;
+        if (el.type === 'checkbox') {
+            el.checked = fieldData[key] === '1' || fieldData[key] === true || fieldData[key] === 'on';
+        } else if (el.tagName === 'SELECT' && el.multiple) {
+            const values = Array.isArray(fieldData[key]) ? fieldData[key] : [fieldData[key]];
+            Array.from(el.options).forEach(opt => {
+                opt.selected = values.includes(opt.value);
+            });
+        } else if (el.tagName === 'SELECT') {
+            el.value = fieldData[key] || '';
+            if (el.value !== fieldData[key] && el.value === '') {
+                // Try matching case-insensitively for robustness
+                const val = String(fieldData[key]).toLowerCase();
+                Array.from(el.options).forEach(opt => {
+                    if (opt.value.toLowerCase() === val || opt.text.toLowerCase() === val) {
+                        el.value = opt.value;
+                    }
+                });
+            }
+        } else {
+            el.value = fieldData[key] || '';
+        }
+    });
+}
 
 function updateStepInfo(step) {
     const info = leyInfo[step];
@@ -1541,21 +1606,32 @@ window.prevMeasureStep = function() {
 
 function updateStepContent(step) {
     const wrap = document.getElementById('measure-modal-fields');
+    const stepContents = document.querySelectorAll('.measure-step-content');
     if (!wrap) return;
-    
+
     const def = window.currentMeasureData.def;
-    
+
+    // Mostrar/ocultar contenedores de cada paso y quitar required de campos ocultos
+    stepContents.forEach(el => {
+        const s = parseInt(el.dataset.step || '0', 10);
+        const active = s === step;
+        el.classList.toggle('hidden', !active);
+        if (!active) {
+            el.querySelectorAll('[required]').forEach(inp => inp.removeAttribute('required'));
+        }
+    });
+
     if (step === 1) {
         // Paso 1: Detalles de implementación
         if (def && def.fields && def.fields.length > 0) {
-            wrap.innerHTML = '<div class="space-y-4">' + 
+            wrap.innerHTML = '<div class="space-y-4">' +
                 '<div class="bg-indigo-500/10 border border-indigo-500/20 rounded-lg p-4">' +
                 '<p class="text-[11px] text-indigo-300 mb-2"><strong>Art. 25 Ley 21.719:</strong> Las organizaciones deben adoptar las medidas de seguridad adecuadas al riesgo.</p>' +
                 '</div>' +
                 def.fields.map(f => {
                     let input = '<input type="text" name="field_' + f.key + '" required class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-4 py-3 focus:outline-none focus:border-indigo-500 transition-all">';
                     if (f.type === 'select') {
-                        input = '<select name="field_' + f.key + '" required class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-4 py-3 focus:outline-none focus:border-indigo-500 transition-all"><option value="">Seleccionar...</option>' + 
+                        input = '<select name="field_' + f.key + '" required class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-4 py-3 focus:outline-none focus:border-indigo-500 transition-all"><option value="">Seleccionar...</option>' +
                             f.options.map(o => '<option value="' + o + '">' + o + '</option>').join('') + '</select>';
                     } else if (f.type === 'date') {
                         input = '<input type="date" name="field_' + f.key + '" required class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-4 py-3 focus:outline-none focus:border-indigo-500 transition-all">';
@@ -1566,7 +1642,7 @@ function updateStepContent(step) {
                 }).join('') + '</div>';
         } else {
             // Campos genéricos si no hay campos definidos
-            wrap.innerHTML = '<div class="space-y-4">' + 
+            wrap.innerHTML = '<div class="space-y-4">' +
                 '<div class="bg-indigo-500/10 border border-indigo-500/20 rounded-lg p-4 mb-4">' +
                 '<p class="text-[11px] text-indigo-300"><strong>Art. 25 Ley 21.719:</strong> Esta medida debe estar documentada. Complete la siguiente información:</p>' +
                 '</div>' +
@@ -1576,29 +1652,6 @@ function updateStepContent(step) {
                 '<div class="space-y-2"><label class="text-[11px] font-medium text-text-heading block">URL de evidencia</label><input type="url" name="evidence_url" placeholder="https://..." required class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-4 py-3 focus:outline-none focus:border-indigo-500 transition-all"></div>' +
                 '</div>';
         }
-    } else if (step === 2) {
-        // Paso 2: Evidencia
-        wrap.innerHTML = '<div class="space-y-4">' + 
-            '<div class="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-4 mb-4">' +
-            '<p class="text-[11px] text-emerald-300 mb-2"><strong>Art. 25 Ley 21.719:</strong> La documentación debe incluir políticas, procedimientos y evidencias de la implementación.</p>' +
-            '</div>' +
-            '<div class="space-y-3">' +
-            '<div class="space-y-2"><label class="text-[11px] font-medium text-text-heading block">URL de política/procedimiento</label><input type="url" name="policy_url" placeholder="https://..." required class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-4 py-3 focus:outline-none focus:border-indigo-500 transition-all"></div>' +
-            '<div class="space-y-2"><label class="text-[11px] font-medium text-text-heading block">URL de evidencia técnica (logs, screenshots)</label><input type="url" name="evidence_url" placeholder="https://..." required class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-4 py-3 focus:outline-none focus:border-indigo-500 transition-all"></div>' +
-            '<div class="space-y-2"><label class="text-[11px] font-medium text-text-heading block">Fecha de última actualización</label><input type="date" name="last_updated" required class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-4 py-3 focus:outline-none focus:border-indigo-500 transition-all"></div>' +
-            '</div>';
-    } else if (step === 3) {
-        // Paso 3: Verificación
-        wrap.innerHTML = '<div class="space-y-4">' + 
-            '<div class="bg-purple-500/10 border border-purple-500/20 rounded-lg p-4 mb-4">' +
-            '<p class="text-[11px] text-purple-300 mb-2"><strong>Art. 25 Ley 21.719:</strong> Las medidas deben evaluarse regularmente para verificar su eficacia.</p>' +
-            '</div>' +
-            '<div class="space-y-3">' +
-            '<div class="space-y-2"><label class="text-[11px] font-medium text-text-heading block">Fecha de última verificación</label><input type="date" name="verification_date" required class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-4 py-3 focus:outline-none focus:border-indigo-500 transition-all"></div>' +
-            '<div class="space-y-2"><label class="text-[11px] font-medium text-text-heading block">Resultado de verificación</label><select name="verification_result" required class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-4 py-3 focus:outline-none focus:border-indigo-500 transition-all"><option value="">Seleccionar...</option><option value="exitoso">Exitoso</option><option value="necesita_mejoras">Necesita mejoras</option><option value="no_aplicable">No aplicable</option></select></div>' +
-            '<div class="space-y-2"><label class="text-[11px] font-medium text-text-heading block">Observaciones</label><textarea name="observations" rows="3" placeholder="Detalles de la verificación..." class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-4 py-3 focus:outline-none focus:border-indigo-500 transition-all"></textarea></div>' +
-            '<div class="space-y-2"><label class="text-[11px] font-medium text-text-heading block">Próxima verificación programada</label><input type="date" name="next_verification" class="w-full bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-4 py-3 focus:outline-none focus:border-indigo-500 transition-all"></div>' +
-            '</div>';
     }
 }
 
@@ -1636,10 +1689,35 @@ window.updateMeasureWizardUI = function() {
 };
 
 window.downloadMeasurePDF = function(measureId, measureLabel) {
-    const def = window.currentMeasureData.def;
-    
+    const def = (typeof MEASURE_DEFS !== 'undefined' && MEASURE_DEFS.find(d => d.id === measureId)) ||
+                (typeof window.currentMeasureData !== 'undefined' && window.currentMeasureData.def) ||
+                { label: measureLabel, desc: 'Medida de seguridad' };
+
+    const overrides = (typeof window.MEASURE_OVERRIDES !== 'undefined' ? window.MEASURE_OVERRIDES : []);
+    const override = overrides.find(o => (o.measureId || '') === measureId) || {};
+    let fieldData = (typeof override.fieldData === 'string') ? JSON.parse(override.fieldData || '{}') : (override.fieldData || {});
+
+    const escapeHtml = (text) => {
+        if (text === null || text === undefined) return '';
+        return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    };
+
+    let rows = '';
+    if (Object.keys(fieldData).length === 0) {
+        rows = '<tr><td colspan="2" style="padding:10px;border:1px solid #000;">No hay datos registrados para esta medida.</td></tr>';
+    } else {
+        Object.keys(fieldData).forEach(key => {
+            const label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            rows += '<tr><td style="padding:10px;border:1px solid #000;font-weight:bold;width:40%;">' + escapeHtml(label) + '</td><td style="padding:10px;border:1px solid #000;">' + escapeHtml(fieldData[key]) + '</td></tr>';
+        });
+    }
+
+    const evidence = escapeHtml(override.evidence || '');
+    const notes = escapeHtml(override.notes || '');
+    const completedAt = override.completedAt ? new Date(override.completedAt).toLocaleDateString('es-CL') : 'No registrado';
+
     // Generar HTML formal con información legal - SIN transparencias, máximo contraste
-    const html = '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>' + (def ? def.label : measureLabel) + '</title><style>body{font-family:"Times New Roman",Times,serif;font-size:14px;line-height:1.8;color:#000000;max-width:800px;margin:0 auto;padding:40px;background-color:#ffffff;}.header{text-align:center;border-bottom:3px solid #000000;padding-bottom:20px;margin-bottom:30px;}.header h1{color:#000000;font-size:22px;margin:0 0 10px 0;font-weight:bold;text-transform:uppercase;letter-spacing:1px;}.header p{color:#000000;font-size:14px;margin:5px 0;}.section{margin-bottom:25px;page-break-inside:avoid;background-color:#ffffff;padding:20px 0;}.section h2{color:#000000;font-size:16px;border-bottom:2px solid #000000;padding-bottom:8px;margin-bottom:15px;font-weight:bold;text-transform:uppercase;}.legal-box{background-color:#eeeeee;padding:20px;margin:20px 0;border-left:4px solid #000000;}.legal-box h3{color:#000000;margin:0 0 10px 0;font-size:15px;}.legal-box p{color:#111111;margin:0;font-size:13px;line-height:1.6;}.footer{margin-top:40px;padding-top:20px;border-top:2px solid #000000;text-align:center;padding-bottom:20px;}.footer p{color:#000000;margin:5px 0;font-size:11px;}</style></head><body><div class="header"><h1>' + (def ? def.label : measureLabel) + '</h1><p>Ley 21.719 - Protección de Datos Personales</p><p><strong>SecureLab Admin</strong></p></div><div class="section"><h2>Descripción</h2><p style="color:#000000;font-size:14px;">' + (def ? def.desc : 'Medida de seguridad') + '</p></div><div class="legal-box"><h3>Marco Legal - Artículo 25 Ley 21.719</h3><p>Las organizaciones responsables de bases de datos deberán adoptar las medidas técnicas y organizativas necesarias para garantizar la seguridad de los datos personales, impidiendo accesos no autorizados, su destrucción, pérdida o alteración accidental o ilícita.</p></div><div class="section"><h2>Fecha de Implementación</h2><p style="color:#000000;font-size:14px;">' + new Date().toLocaleDateString('es-CL') + '</p></div><div class="footer"><p>Este documento ha sido generado automáticamente por SecureLab</p><p>Fecha de generación: ' + new Date().toLocaleString('es-CL') + '</p><p>Este documento es válido como evidencia del cumplimiento de la Ley 21.719</p></div></body></html>';
+    const html = '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>' + escapeHtml(def.label) + '</title><style>body{font-family:"Times New Roman",Times,serif;font-size:14px;line-height:1.8;color:#000000;max-width:800px;margin:0 auto;padding:40px;background-color:#ffffff;}.header{text-align:center;border-bottom:3px solid #000000;padding-bottom:20px;margin-bottom:30px;}.header h1{color:#000000;font-size:22px;margin:0 0 10px 0;font-weight:bold;text-transform:uppercase;letter-spacing:1px;}.header p{color:#000000;font-size:14px;margin:5px 0;}.section{margin-bottom:25px;page-break-inside:avoid;background-color:#ffffff;padding:20px 0;}.section h2{color:#000000;font-size:16px;border-bottom:2px solid #000000;padding-bottom:8px;margin-bottom:15px;font-weight:bold;text-transform:uppercase;}.legal-box{background-color:#eeeeee;padding:20px;margin:20px 0;border-left:4px solid #000000;}.legal-box h3{color:#000000;margin:0 0 10px 0;font-size:15px;}.legal-box p{color:#111111;margin:0;font-size:13px;line-height:1.6;}.footer{margin-top:40px;padding-top:20px;border-top:2px solid #000000;text-align:center;padding-bottom:20px;}.footer p{color:#000000;margin:5px 0;font-size:11px;}table{width:100%;border-collapse:collapse;margin:15px 0;}td,th{border:1px solid #000;padding:10px;text-align:left;}</style></head><body><div class="header"><h1>' + escapeHtml(def.label) + '</h1><p>Ley 21.719 - Protección de Datos Personales</p><p><strong>SecureLab Admin</strong></p></div><div class="section"><h2>Descripción</h2><p style="color:#000000;font-size:14px;">' + escapeHtml(def.desc) + '</p></div><div class="legal-box"><h3>Marco Legal - Artículo 25 Ley 21.719</h3><p>Las organizaciones responsables de bases de datos deberán adoptar las medidas técnicas y organizativas necesarias para garantizar la seguridad de los datos personales, impidiendo accesos no autorizados, su destrucción, pérdida o alteración accidental o ilícita.</p></div><div class="section"><h2>Datos Registrados</h2><table>' + rows + '</table></div><div class="section"><h2>Evidencia y Notas</h2><p><strong>URL de evidencia:</strong> ' + (evidence ? evidence : 'No registrada') + '</p><p><strong>Notas:</strong> ' + (notes ? notes : 'Sin notas') + '</p><p><strong>Fecha de completitud:</strong> ' + completedAt + '</p></div><div class="footer"><p>Documento generado automáticamente por SecureLab</p><p>' + new Date().toLocaleDateString('es-CL') + '</p></div></body></html>'; // teString('es-CL') + '</p></div><div class="footer"><p>Este documento ha sido generado automáticamente por SecureLab</p><p>Fecha de generación: ' + new Date().toLocaleString('es-CL') + '</p><p>Este documento es válido como evidencia del cumplimiento de la Ley 21.719</p></div></body></html>';
     
     // Usar html2pdf.js para generar PDF directamente
     if (typeof html2pdf !== 'undefined') {
@@ -1686,6 +1764,83 @@ function downloadHTML(html, measureId) {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 }
+
+// DPD Wizard functions
+window.openDpdWizard = function(step) {
+    const modal = document.getElementById('dpd-modal');
+    if (modal) modal.classList.remove('hidden');
+    window.currentDpdStep = (step && step >= 1 && step <= 4) ? step : 1;
+    updateDpdWizardUI();
+};
+
+window.closeDpdWizard = function() {
+    const modal = document.getElementById('dpd-modal');
+    if (modal) modal.classList.add('hidden');
+};
+
+window.goToDpdStep = function(step) {
+    window.currentDpdStep = step;
+    updateDpdWizardUI();
+};
+
+window.nextDpdStep = function() {
+    if (window.currentDpdStep < 4) {
+        window.currentDpdStep++;
+        updateDpdWizardUI();
+    }
+};
+
+window.prevDpdStep = function() {
+    if (window.currentDpdStep > 1) {
+        window.currentDpdStep--;
+        updateDpdWizardUI();
+    }
+};
+
+window.updateDpdWizardUI = function() {
+    const step = window.currentDpdStep || 1;
+
+    document.querySelectorAll('.dpd-step-content').forEach(el => {
+        el.classList.toggle('hidden', parseInt(el.dataset.step) !== step);
+    });
+
+    document.querySelectorAll('.dpd-step-indicator').forEach(el => {
+        const s = parseInt(el.dataset.step);
+        const num = el.querySelector('div');
+        const label = el.querySelector('span');
+        if (s === step) {
+            num.className = 'w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 border-2 border-emerald-400 flex items-center justify-center text-white font-bold text-[11px] shadow-lg shadow-emerald-500/25 transition-all duration-300';
+            label.classList.remove('text-text-subtle');
+            label.classList.add('text-emerald-400');
+        } else if (s < step) {
+            num.className = 'w-8 h-8 rounded-full bg-emerald-500/20 border-2 border-emerald-400 flex items-center justify-center text-emerald-400 font-bold text-[11px] transition-all duration-300';
+            label.classList.remove('text-text-subtle');
+            label.classList.add('text-emerald-400');
+        } else {
+            num.className = 'w-8 h-8 rounded-full bg-bg-elevated border-2 border-border-theme flex items-center justify-center text-text-subtle font-bold text-[11px] transition-all duration-300';
+            label.classList.remove('text-emerald-400');
+            label.classList.add('text-text-subtle');
+        }
+    });
+
+    const line = document.getElementById('dpd-progress-line');
+    if (line) line.style.width = ((step - 1) / 3 * 100) + '%';
+
+    const prevBtn = document.getElementById('dpd-prev-btn');
+    const nextBtn = document.getElementById('dpd-next-btn');
+    const submitBtn = document.getElementById('dpd-submit-btn');
+    if (prevBtn) prevBtn.classList.toggle('hidden', step === 1);
+    if (nextBtn) nextBtn.classList.toggle('hidden', step === 4);
+    if (submitBtn) submitBtn.classList.toggle('hidden', step !== 4);
+};
+
+document.addEventListener('DOMContentLoaded', function() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('tab') === 'dpd' && params.get('open') === 'apdp') {
+        openDpdWizard(3);
+    }
+});
+
 } catch (e) {
     console.error('Error en script de hardening:', e);
     console.error('Stack:', e.stack);

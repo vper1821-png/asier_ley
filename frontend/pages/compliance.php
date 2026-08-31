@@ -37,13 +37,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ]);
         $msg = 'Configuración guardada.';
     } elseif (isset($_POST['update_config'])) {
-        api_post_form('/api/invisia/compliance/config', [
+        $res = api_post_form('/api/invisia/compliance/config', [
             'token' => $token,
-            'privacyPolicyUrl' => $_POST['privacyPolicyUrl'] ?? '',
-            'cookiesPolicyUrl' => $_POST['cookiesPolicyUrl'] ?? '',
-            'dataRetentionPolicy' => $_POST['dataRetentionPolicy'] ?? '',
+            'policies' => $_POST['policies_json'] ?? '[]',
         ]);
-        $msg = 'Políticas de privacidad actualizadas.';
+        if (!empty($res['success'])) $msg = 'Políticas actualizadas.'; else $err = $res['error'] ?? 'Error al actualizar políticas.';
     } elseif (isset($_POST['assign_training'])) {
         $res = api_post_form('/api/compliance/invites/' . urlencode($_POST['invite_id'] ?? '') . '/assign-training', [
             'token' => $token,
@@ -63,6 +61,9 @@ $overviewRes = api_get('/api/compliance/overview', ['token' => $token]);
 $ov = $overviewRes['overview'] ?? [];
 $config = api_get('/api/invisia/compliance/config', ['token' => $token]);
 if (!is_array($config)) $config = [];
+
+$documentedSections = api_get('/api/invisia/compliance/checklist', ['token' => $token])['sections'] ?? [];
+if (!is_array($documentedSections)) $documentedSections = [];
 
 $fetchList = function ($col) use ($token) {
     $r = api_get('/api/compliance/' . urlencode($col), ['token' => $token]);
@@ -84,16 +85,16 @@ if (!in_array($tab, ['overview', 'violations'])) {
 
 // ── Checklist (criterios mejorados para cálculo real) ──
 $CHECKLIST = [
-    ['id' => 'dpd', 'label' => 'DPD Designado', 'desc' => 'Aplicable cuando la naturaleza o escala del tratamiento exige esta función', 'icon' => 'users', 'done' => !empty($config['dpdName']) && !empty($config['dpdEmail']), 'section' => 'privacy'],
-    ['id' => 'apdp', 'label' => 'Modelo certificado', 'desc' => 'Registro o evidencia de un modelo de prevención certificado, cuando corresponda', 'icon' => 'shield', 'done' => !empty($config['apdpRegistered']) && !empty($config['apdpRegistrationNumber']), 'section' => 'privacy'],
-    ['id' => 'inventory', 'label' => 'Inventario de Datos', 'desc' => 'Registro documentado para sustentar información y transparencia del tratamiento', 'icon' => 'database', 'done' => count($inventory) > 0 && count(array_filter($inventory, fn($i) => !empty($i['name']) && !empty($i['legalBasis']))) > 0, 'section' => 'inventory'],
-    ['id' => 'privacy', 'label' => 'Política de Privacidad', 'desc' => 'Política actualizada y accesible para los titulares', 'icon' => 'fileText', 'done' => !empty($config['privacyPolicyUrl']) || !empty($config['privacyPolicyContent']), 'section' => 'privacy'],
-    ['id' => 'consents', 'label' => 'Consentimientos', 'desc' => 'Consentimientos activos y trazables cuando sean la base de licitud', 'icon' => 'check', 'done' => count($consents) > 0 && count(array_filter($consents, fn($c) => empty($c['revokedAt']))) > 0, 'section' => 'consents'],
+    ['id' => 'dpd', 'label' => 'DPD Designado', 'desc' => 'Aplicable cuando la naturaleza o escala del tratamiento exige esta función', 'icon' => 'users', 'done' => (!empty($config['dpdName']) && !empty($config['dpdEmail'])) || in_array('dpd', $documentedSections), 'section' => 'inventory'],
+    ['id' => 'apdp', 'label' => 'Modelo certificado', 'desc' => 'Registro o evidencia de un modelo de prevención certificado, cuando corresponda', 'icon' => 'shield', 'done' => !empty($config['apdpRegistered']) && !empty($config['apdpRegistrationNumber']), 'section' => 'inventory'],
+    ['id' => 'inventory', 'label' => 'Inventario de Datos', 'desc' => 'Registro documentado para sustentar información y transparencia del tratamiento', 'icon' => 'database', 'done' => (count($inventory) > 0 && count(array_filter($inventory, fn($i) => !empty($i['name']) && !empty($i['legalBasis']))) > 0) || in_array('inventory', $documentedSections), 'section' => 'inventory'],
+    ['id' => 'privacy', 'label' => 'Política de Privacidad', 'desc' => 'Política actualizada y accesible para los titulares', 'icon' => 'fileText', 'done' => (!empty($config['privacyPolicyUrl']) || !empty($config['privacyPolicyContent'])) || in_array('privacy', $documentedSections), 'section' => 'inventory'],
+    ['id' => 'consents', 'label' => 'Consentimientos', 'desc' => 'Consentimientos activos y trazables cuando sean la base de licitud', 'icon' => 'check', 'done' => (count($consents) > 0 && count(array_filter($consents, fn($c) => empty($c['revokedAt']))) > 0) || in_array('consents', $documentedSections), 'section' => 'consents'],
     ['id' => 'breach_protocol', 'label' => 'Protocolo de Brechas', 'desc' => 'Procedimiento documentado de gestión y notificación de incidentes', 'icon' => 'alert', 'done' => !empty($config['breachProtocolUrl']) || !empty($config['breachProtocolContent']), 'section' => 'breaches'],
-    ['id' => 'arco', 'label' => 'Canal de derechos', 'desc' => 'Canal operativo para acceso, rectificación, supresión, oposición y portabilidad', 'icon' => 'users', 'done' => count($arcoRequests) > 0 || !empty($config['arcoChannelUrl']), 'section' => 'privacy'],
-    ['id' => 'pseudonymization', 'label' => 'Seudonimización', 'desc' => 'Medida de seguridad aplicada según la naturaleza y riesgo del tratamiento', 'icon' => 'search', 'done' => count($pseudoRules) > 0 && count(array_filter($pseudoRules, fn($r) => ($r['status'] ?? '') === 'executed' || !empty($r['executed']))) > 0, 'section' => 'pseudonymization'],
-    ['id' => 'incident_response', 'label' => 'Plan de Respuesta a Incidentes', 'desc' => 'Plan documentado o evidencia de incidentes gestionados', 'icon' => 'alert', 'done' => !empty($config['incidentResponsePlan']) || !empty($config['incidentResponsePlanUrl']), 'section' => 'breaches'],
-    ['id' => 'training', 'label' => 'Capacitación', 'desc' => 'Formación completada y respaldada con evidencia', 'icon' => 'info', 'done' => count($trainings) > 0 && count(array_filter($trainings, fn($t) => !empty($t['completed']))) > 0, 'section' => 'trainings'],
+    ['id' => 'arco', 'label' => 'Canal de derechos', 'desc' => 'Canal operativo para acceso, rectificación, supresión, oposición y portabilidad', 'icon' => 'users', 'done' => (count($arcoRequests) > 0 || !empty($config['arcoChannelUrl'])) || in_array('arco', $documentedSections), 'section' => 'consents'],
+    ['id' => 'pseudonymization', 'label' => 'Seudonimización', 'desc' => 'Medida de seguridad aplicada según la naturaleza y riesgo del tratamiento', 'icon' => 'search', 'done' => (count($pseudoRules) > 0 && count(array_filter($pseudoRules, fn($r) => ($r['status'] ?? '') === 'executed' || !empty($r['executed']))) > 0) || in_array('pseudonymization', $documentedSections), 'section' => 'pseudonymization'],
+    ['id' => 'incident_response', 'label' => 'Plan de Respuesta a Incidentes', 'desc' => 'Plan documentado o evidencia de incidentes gestionados', 'icon' => 'alert', 'done' => !empty($config['incidentResponsePlan']) || !empty($config['incidentResponsePlanUrl']), 'section' => 'incident_response'],
+    ['id' => 'training', 'label' => 'Capacitación', 'desc' => 'Formación completada y respaldada con evidencia', 'icon' => 'info', 'done' => (count($trainings) > 0 && count(array_filter($trainings, fn($t) => !empty($t['completed']))) > 0) || in_array('training', $documentedSections), 'section' => 'trainings'],
 ];
 $checklistDone = count(array_filter($CHECKLIST, fn($c) => $c['done']));
 $checklistTotal = count($CHECKLIST);
@@ -167,137 +168,149 @@ require_once __DIR__ . '/../includes/header.php';
 ?>
 
 <style>
+.compliance-workspace input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not([type="file"]),
+.compliance-workspace textarea,
+.compliance-workspace select,
+.compliance-workspace .compliance-input,
+.compliance-workspace .compliance-select,
+.compliance-workspace .compliance-textarea { background-color: #f9fafb !important; color: #111827 !important; }
+.compliance-workspace ::placeholder { color: #6b7280 !important; opacity: 1; }
+.compliance-workspace input:-webkit-autofill,
+.compliance-workspace textarea:-webkit-autofill,
+.compliance-workspace select:-webkit-autofill { -webkit-text-fill-color: #111827 !important; -webkit-box-shadow: 0 0 0px 1000px #f9fafb inset !important; }
 .compliance-workspace .compliance-header-inner { max-width: 1500px; margin: 0 auto; }
-.compliance-workspace .compliance-context { display: flex; align-items: center; gap: 10px; color: var(--text-subtle); font-size: 10px; }
+.compliance-workspace .compliance-context { display: flex; align-items: center; gap: 10px; color: var(--text-subtle, #6b7280); font-size: 10px; }
 .compliance-workspace .compliance-context span { display: inline-flex; align-items: center; gap: 6px; }
-.compliance-workspace .compliance-context span + span::before { content: ''; width: 3px; height: 3px; margin-right: 4px; border-radius: 50%; background: var(--text-subtle); }
-.compliance-workspace .compliance-score-chip { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 7px 12px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-panel); }
-.compliance-workspace .compliance-score-value { color: var(--text-heading); font-size: 16px; font-weight: 750; line-height: 1; }
-.compliance-workspace .compliance-score-label { color: var(--text-subtle); font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
-.compliance-workspace .compliance-nav-wrap { border-top: 1px solid var(--border-subtle); }
+.compliance-workspace .compliance-context span + span::before { content: ''; width: 3px; height: 3px; margin-right: 4px; border-radius: 50%; background: var(--text-subtle, #6b7280); }
+.compliance-workspace .compliance-score-chip { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 7px 12px; border: 1px solid var(--border-color, rgba(255,255,255,0.06)); border-radius: 10px; background: var(--bg-panel, #0f0f14); }
+.compliance-workspace .compliance-score-value { color: var(--text-heading, #f9fafb); font-size: 16px; font-weight: 750; line-height: 1; }
+.compliance-workspace .compliance-score-label { color: var(--text-subtle, #6b7280); font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.compliance-workspace .compliance-nav-wrap { border-top: 1px solid var(--border-subtle, rgba(255,255,255,0.04)); }
 .compliance-workspace .compliance-nav { max-width: 1500px; margin: 0 auto; padding: 8px 16px; }
 .compliance-workspace .compliance-panel,
-.compliance-workspace .rounded-xl.border.border-border-theme { box-shadow: 0 12px 34px color-mix(in srgb, var(--shadow-color) 38%, transparent); }
-.compliance-workspace .rounded-xl:has(> form:not(.inline)) { border-color: var(--border-color) !important; background: color-mix(in srgb, var(--bg-panel) 92%, transparent) !important; }
-.compliance-workspace .rounded-xl:has(> form:not(.inline)) > .flex:first-child { padding-bottom: 13px; border-bottom: 1px solid var(--border-subtle); }
+.compliance-workspace .rounded-xl.border.border-border-theme { box-shadow: 0 12px 34px color-mix(in srgb, var(--shadow-color, rgba(0,0,0,0.35)) 38%, transparent); }
+.compliance-workspace .rounded-xl:has(> form:not(.inline)) { border-color: var(--border-color, rgba(255,255,255,0.06)) !important; background: color-mix(in srgb, var(--bg-panel, #0f0f14) 92%, transparent) !important; }
+.compliance-workspace .rounded-xl:has(> form:not(.inline)) > .flex:first-child { padding-bottom: 13px; border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.04)); }
 .compliance-workspace form:not(.inline) { row-gap: 16px; }
 .compliance-workspace form:not(.inline) > div { min-width: 0; }
 .compliance-workspace form:not(.inline) button[type="submit"] { min-height: 40px; border-radius: 9px; padding-inline: 16px; font-size: 11px; font-weight: 700; box-shadow: none; }
 .compliance-workspace form:not(.inline) button[type="button"] { min-height: 40px; border-radius: 9px; }
-.compliance-workspace form:not(.inline) [class*="col-span"]:last-child.flex { margin-top: 2px; padding-top: 14px; border-top: 1px solid var(--border-subtle); }
+.compliance-workspace form:not(.inline) [class*="col-span"]:last-child.flex { margin-top: 2px; padding-top: 14px; border-top: 1px solid var(--border-subtle, rgba(255,255,255,0.04)); }
 .compliance-workspace select[multiple] { min-height: 132px !important; padding-block: 8px; }
 .compliance-workspace select[multiple] option { padding: 7px 9px; border-radius: 5px; }
 .compliance-workspace textarea { line-height: 1.55; }
-.compliance-workspace .compliance-section-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--border-subtle); }
-.compliance-workspace .compliance-section-title { color: var(--text-heading); font-size: 17px; font-weight: 700; letter-spacing: -.02em; }
-.compliance-workspace .compliance-section-desc { max-width: 760px; color: var(--text-muted); font-size: 11px; line-height: 1.55; margin-top: 4px; }
-.compliance-workspace .compliance-stat { position: relative; min-height: 104px; padding: 15px; border: 1px solid var(--border-color); border-radius: 12px; background: color-mix(in srgb, var(--bg-panel) 88%, transparent); overflow: hidden; }
-.compliance-workspace .compliance-stat::after { content: ''; position: absolute; top: 0; left: 0; width: 3px; height: 100%; background: var(--accent); opacity: .7; }
-.compliance-workspace .compliance-list-row { border: 1px solid var(--border-color); border-radius: 11px; background: color-mix(in srgb, var(--bg-panel) 85%, transparent); transition: border-color .18s ease, background-color .18s ease; }
-.compliance-workspace .compliance-list-row:hover { border-color: var(--accent-border); background: color-mix(in srgb, var(--bg-elevated) 85%, transparent); }
-.compliance-workspace .compliance-empty { padding: 44px 20px; border: 1px dashed var(--border-color); border-radius: 12px; background: color-mix(in srgb, var(--bg-panel) 55%, transparent); text-align: center; }
-.compliance-workspace .compliance-empty strong { display: block; color: var(--text-heading); font-size: 13px; font-weight: 650; }
-.compliance-workspace .compliance-empty span { display: block; color: var(--text-subtle); font-size: 10px; margin-top: 5px; }
-.compliance-workspace .compliance-action { display: inline-flex; min-height: 34px; align-items: center; justify-content: center; padding: 0 11px; border: 1px solid var(--accent-border); border-radius: 8px; background: var(--accent-subtle); color: var(--accent); font-size: 10px; font-weight: 650; transition: background-color .15s ease; }
-.compliance-workspace .compliance-action:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.compliance-workspace .compliance-section-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.04)); }
+.compliance-workspace .compliance-section-title { color: var(--text-heading, #f9fafb); font-size: 17px; font-weight: 700; letter-spacing: -.02em; }
+.compliance-workspace .compliance-section-desc { max-width: 760px; color: var(--text-muted, #9ca3af); font-size: 11px; line-height: 1.55; margin-top: 4px; }
+.compliance-workspace .compliance-stat { position: relative; min-height: 104px; padding: 15px; border: 1px solid var(--border-color, rgba(255,255,255,0.06)); border-radius: 12px; background: color-mix(in srgb, var(--bg-panel, #0f0f14) 88%, transparent); overflow: hidden; }
+.compliance-workspace .compliance-stat::after { content: ''; position: absolute; top: 0; left: 0; width: 3px; height: 100%; background: var(--accent, #3b82f6); opacity: .7; }
+.compliance-workspace .compliance-list-row { border: 1px solid var(--border-color, rgba(255,255,255,0.06)); border-radius: 11px; background: color-mix(in srgb, var(--bg-panel, #0f0f14) 85%, transparent); transition: border-color .18s ease, background-color .18s ease; }
+.compliance-workspace .compliance-list-row:hover { border-color: var(--accent-border, rgba(59,130,246,0.25)); background: color-mix(in srgb, var(--bg-elevated, #141419) 85%, transparent); }
+.compliance-workspace .compliance-empty { padding: 44px 20px; border: 1px dashed var(--border-color, rgba(255,255,255,0.06)); border-radius: 12px; background: color-mix(in srgb, var(--bg-panel, #0f0f14) 55%, transparent); text-align: center; }
+.compliance-workspace .compliance-empty strong { display: block; color: var(--text-heading, #f9fafb); font-size: 13px; font-weight: 650; }
+.compliance-workspace .compliance-empty span { display: block; color: var(--text-subtle, #6b7280); font-size: 10px; margin-top: 5px; }
+.compliance-workspace .compliance-action { display: inline-flex; min-height: 34px; align-items: center; justify-content: center; padding: 0 11px; border: 1px solid var(--accent-border, rgba(59,130,246,0.25)); border-radius: 8px; background: var(--accent-subtle, rgba(59,130,246,0.2)); color: var(--accent, #3b82f6); font-size: 10px; font-weight: 650; transition: background-color .15s ease; }
+.compliance-workspace .compliance-action:hover { background: color-mix(in srgb, var(--accent, #3b82f6) 18%, transparent); }
 
 /* Professional form classes */
 .compliance-workspace .compliance-form-row { display: grid; grid-template-columns: 1fr; gap: 1rem; }
 @media (min-width: 768px) { .compliance-workspace .compliance-form-row { grid-template-columns: repeat(2, 1fr); } }
+.compliance-workspace .compliance-form-row.grid-cols-2 { grid-template-columns: 1fr; }
+@media (min-width: 768px) { .compliance-workspace .compliance-form-row.grid-cols-2 { grid-template-columns: repeat(2, 1fr); } }
 .compliance-workspace .compliance-form-row.grid-cols-3 { grid-template-columns: 1fr; }
 @media (min-width: 768px) { .compliance-workspace .compliance-form-row.grid-cols-3 { grid-template-columns: repeat(3, 1fr); } }
 .compliance-workspace .compliance-form-cell { display: flex; flex-direction: column; }
-.compliance-workspace .compliance-form-label { display: block; color: var(--text-body); font-size: 11px; font-weight: 600; margin-bottom: 0.45rem; }
+.compliance-workspace .compliance-form-label { display: block; color: var(--text-body, #d1d5db); font-size: 11px; font-weight: 600; margin-bottom: 0.45rem; }
 .compliance-workspace .compliance-form-label .required { color: #ef4444; margin-left: 2px; }
-.compliance-workspace .compliance-input { width: 100%; min-height: 42px; padding: 0.625rem 0.875rem; border: 1px solid var(--border-color); border-radius: 0.7rem; background: color-mix(in srgb, var(--bg-input) 92%, transparent); color: var(--text-heading); font-size: 13px; transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease; outline: none; }
-.compliance-workspace .compliance-input:hover { border-color: color-mix(in srgb, var(--text-subtle) 50%, var(--border-color)); }
-.compliance-workspace .compliance-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-subtle); }
-.compliance-workspace .compliance-select { width: 100%; min-height: 42px; padding: 0.625rem 0.875rem; border: 1px solid var(--border-color); border-radius: 0.7rem; background: color-mix(in srgb, var(--bg-input) 92%, transparent); color: var(--text-heading); font-size: 13px; transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease; outline: none; cursor: pointer; }
-.compliance-workspace .compliance-select:hover { border-color: color-mix(in srgb, var(--text-subtle) 50%, var(--border-color)); }
-.compliance-workspace .compliance-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-subtle); }
-.compliance-workspace .compliance-textarea { width: 100%; min-height: 96px; padding: 0.625rem 0.875rem; border: 1px solid var(--border-color); border-radius: 0.7rem; background: color-mix(in srgb, var(--bg-input) 92%, transparent); color: var(--text-heading); font-size: 13px; line-height: 1.55; transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease; outline: none; resize: vertical; }
-.compliance-workspace .compliance-textarea:hover { border-color: color-mix(in srgb, var(--text-subtle) 50%, var(--border-color)); }
-.compliance-workspace .compliance-textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-subtle); }
+.compliance-workspace .compliance-input { width: 100%; min-height: 42px; padding: 0.625rem 0.875rem; border: 1px solid var(--border-color, rgba(255,255,255,0.06)); border-radius: 0.7rem; background: var(--bg-input, #0b0b0f); background: color-mix(in srgb, var(--bg-input, #0b0b0f) 92%, transparent); color: var(--text-heading, #f9fafb); font-size: 13px; transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease; outline: none; }
+.compliance-workspace .compliance-input:hover { border-color: color-mix(in srgb, var(--text-subtle, #6b7280) 50%, var(--border-color, rgba(255,255,255,0.06))); }
+.compliance-workspace .compliance-input:focus { border-color: var(--accent, #3b82f6); box-shadow: 0 0 0 3px var(--accent-subtle, rgba(59,130,246,0.2)); }
+.compliance-workspace .compliance-select { width: 100%; min-height: 42px; padding: 0.625rem 0.875rem; border: 1px solid var(--border-color, rgba(255,255,255,0.06)); border-radius: 0.7rem; background: var(--bg-input, #0b0b0f); background: color-mix(in srgb, var(--bg-input, #0b0b0f) 92%, transparent); color: var(--text-heading, #f9fafb); font-size: 13px; transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease; outline: none; cursor: pointer; }
+.compliance-workspace .compliance-select:hover { border-color: color-mix(in srgb, var(--text-subtle, #6b7280) 50%, var(--border-color, rgba(255,255,255,0.06))); }
+.compliance-workspace .compliance-select:focus { border-color: var(--accent, #3b82f6); box-shadow: 0 0 0 3px var(--accent-subtle, rgba(59,130,246,0.2)); }
+.compliance-workspace .compliance-textarea { width: 100%; min-height: 96px; padding: 0.625rem 0.875rem; border: 1px solid var(--border-color, rgba(255,255,255,0.06)); border-radius: 0.7rem; background: var(--bg-input, #0b0b0f); background: color-mix(in srgb, var(--bg-input, #0b0b0f) 92%, transparent); color: var(--text-heading, #f9fafb); font-size: 13px; line-height: 1.55; transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease; outline: none; resize: vertical; }
+.compliance-workspace .compliance-textarea:hover { border-color: color-mix(in srgb, var(--text-subtle, #6b7280) 50%, var(--border-color, rgba(255,255,255,0.06))); }
+.compliance-workspace .compliance-textarea:focus { border-color: var(--accent, #3b82f6); box-shadow: 0 0 0 3px var(--accent-subtle, rgba(59,130,246,0.2)); }
 .compliance-workspace .compliance-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 40px; padding: 0 1rem; border: none; border-radius: 0.7rem; background: linear-gradient(135deg, #10b981 0%, #14b8a6 100%); color: white; font-size: 11px; font-weight: 700; cursor: pointer; transition: all .18s ease; box-shadow: none; }
 .compliance-workspace .compliance-btn-primary:hover { background: linear-gradient(135deg, #34d399 0%, #2dd4bf 100%); transform: translateY(-1px); }
-.compliance-workspace .compliance-btn-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 40px; padding: 0 1rem; border: 1px solid var(--border-color); border-radius: 0.7rem; background: color-mix(in srgb, var(--bg-panel) 92%, transparent); color: var(--text-heading); font-size: 11px; font-weight: 700; cursor: pointer; transition: all .18s ease; }
-.compliance-workspace .compliance-btn-secondary:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
-.compliance-workspace .compliance-form-actions { display: flex; justify-content: flex-end; align-items: center; gap: 0.75rem; padding-top: 1rem; margin-top: 0.5rem; border-top: 1px solid var(--border-subtle); }
-.compliance-workspace .compliance-fieldset { border: 1px solid var(--border-color); border-radius: 0.75rem; padding: 1rem; background: color-mix(in srgb, var(--bg-panel) 88%, transparent); }
+.compliance-workspace .compliance-btn-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 40px; padding: 0 1rem; border: 1px solid var(--border-color, rgba(255,255,255,0.06)); border-radius: 0.7rem; background: color-mix(in srgb, var(--bg-panel, #0f0f14) 92%, transparent); color: var(--text-heading, #f9fafb); font-size: 11px; font-weight: 700; cursor: pointer; transition: all .18s ease; }
+.compliance-workspace .compliance-btn-secondary:hover { border-color: var(--accent, #3b82f6); background: color-mix(in srgb, var(--accent, #3b82f6) 8%, transparent); }
+.compliance-workspace .compliance-form-actions { display: flex; justify-content: flex-end; align-items: center; gap: 0.75rem; padding-top: 1rem; margin-top: 0.5rem; border-top: 1px solid var(--border-subtle, rgba(255,255,255,0.04)); }
+.compliance-workspace .compliance-fieldset { border: 1px solid var(--border-color, rgba(255,255,255,0.06)); border-radius: 0.75rem; padding: 1rem; background: color-mix(in srgb, var(--bg-panel, #0f0f14) 88%, transparent); }
 
 /* DPIA Wizard Styles (preserved for other sections) */
-.compliance-workspace .dpia-wizard-progress { padding-bottom: 1.5rem; border-bottom: 1px solid var(--border-subtle); }
-.compliance-workspace .dpia-wizard-progress-bar { background: color-mix(in srgb, var(--bg-elevated) 50%, transparent); }
-.compliance-workspace .dpia-wizard-progress-fill { background: linear-gradient(90deg, var(--accent) 0%, #2dd4bf 100%); }
+.compliance-workspace .dpia-wizard-progress { padding-bottom: 1.5rem; border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.04)); }
+.compliance-workspace .dpia-wizard-progress-bar { background: color-mix(in srgb, var(--bg-elevated, #141419) 50%, transparent); }
+.compliance-workspace .dpia-wizard-progress-fill { background: linear-gradient(90deg, var(--accent, #3b82f6) 0%, #2dd4bf 100%); }
 .compliance-workspace .dpia-wizard-step-indicator { transition: all 0.3s ease; }
 .compliance-workspace .dpia-step-number { transition: all 0.3s ease; }
-.compliance-workspace .dpia-step-indicator.active .dpia-step-number { background: var(--accent); color: white; border-color: var(--accent); }
-.compliance-workspace .dpia-step-indicator.active .dpia-step-label { color: var(--text-heading); }
+.compliance-workspace .dpia-step-indicator.active .dpia-step-number { background: var(--accent, #3b82f6); color: white; border-color: var(--accent, #3b82f6); }
+.compliance-workspace .dpia-step-indicator.active .dpia-step-label { color: var(--text-heading, #f9fafb); }
 .compliance-workspace .dpia-step-indicator.completed .dpia-step-number { background: #10b981; color: white; border-color: #10b981; }
-.compliance-workspace .dpia-step-indicator.completed .dpia-step-label { color: var(--text-heading); }
+.compliance-workspace .dpia-step-indicator.completed .dpia-step-label { color: var(--text-heading, #f9fafb); }
 .compliance-workspace .dpia-wizard-step { animation: fadeIn 0.3s ease; }
 .compliance-workspace .dpia-wizard-step.hidden { display: none; }
-.compliance-workspace .compliance-fieldset-legend { display: block; color: var(--text-heading); font-size: 12px; font-weight: 600; margin-bottom: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border-subtle); }
+.compliance-workspace .compliance-fieldset-legend { display: block; color: var(--text-heading, #f9fafb); font-size: 12px; font-weight: 600; margin-bottom: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.04)); }
 .compliance-workspace .compliance-checkbox-group { display: flex; align-items: flex-start; gap: 0.5rem; }
-.compliance-workspace .compliance-checkbox-group input[type="checkbox"] { width: 16px; height: 16px; margin-top: 2px; accent-color: var(--accent); cursor: pointer; }
-.compliance-workspace .compliance-checkbox-group label { color: var(--text-body); font-size: 11px; line-height: 1.5; cursor: pointer; }
-.compliance-workspace .compliance-checkbox-group label strong { color: var(--text-heading); }
+.compliance-workspace .compliance-checkbox-group input[type="checkbox"] { width: 16px; height: 16px; margin-top: 2px; accent-color: var(--accent, #3b82f6); cursor: pointer; }
+.compliance-workspace .compliance-checkbox-group label { color: var(--text-body, #d1d5db); font-size: 11px; line-height: 1.5; cursor: pointer; }
+.compliance-workspace .compliance-checkbox-group label strong { color: var(--text-heading, #f9fafb); }
 
 /* Breach Wizard Styles (specific for breaches form) */
 .compliance-workspace .wizard-container { max-width: 900px; margin: 0 auto; }
 .compliance-workspace .wizard-progress { margin-bottom: 2rem; }
 .compliance-workspace .wizard-progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
-.compliance-workspace .wizard-step-counter { font-size: 12px; font-weight: 600; color: var(--text-heading); letter-spacing: 0.02em; }
+.compliance-workspace .wizard-step-counter { font-size: 12px; font-weight: 600; color: var(--text-heading, #f9fafb); letter-spacing: 0.02em; }
 .compliance-workspace .wizard-step-titles { display: flex; justify-content: space-between; margin-top: 0.5rem; padding: 0 0.5rem; }
-.compliance-workspace .wizard-step-title { font-size: 10px; font-weight: 500; color: var(--text-subtle); text-align: center; max-width: 80px; }
-.compliance-workspace .wizard-step-title.active { color: var(--accent); font-weight: 600; }
-.compliance-workspace .wizard-step-title.completed { color: var(--text-heading); }
-.compliance-workspace .wizard-progress-bar { width: 100%; height: 6px; background: var(--bg-elevated); border-radius: 3px; overflow: hidden; }
+.compliance-workspace .wizard-step-title { font-size: 10px; font-weight: 500; color: var(--text-subtle, #6b7280); text-align: center; max-width: 80px; }
+.compliance-workspace .wizard-step-title.active { color: var(--accent, #3b82f6); font-weight: 600; }
+.compliance-workspace .wizard-step-title.completed { color: var(--text-heading, #f9fafb); }
+.compliance-workspace .wizard-progress-bar { width: 100%; height: 6px; background: var(--bg-elevated, #141419); border-radius: 3px; overflow: hidden; }
 .compliance-workspace .wizard-progress-fill { height: 100%; background: linear-gradient(90deg, #10b981 0%, #14b8a6 100%); border-radius: 3px; transition: width 0.4s ease; }
 .compliance-workspace .wizard-step-content { display: none; animation: wizardFadeIn 0.3s ease; }
 .compliance-workspace .wizard-step-content.active { display: block; }
-.compliance-workspace .wizard-navigation { display: flex; justify-content: space-between; align-items: center; padding-top: 1.5rem; margin-top: 1rem; border-top: 1px solid var(--border-subtle); }
+.compliance-workspace .wizard-navigation { display: flex; justify-content: space-between; align-items: center; padding-top: 1.5rem; margin-top: 1rem; border-top: 1px solid var(--border-subtle, rgba(255,255,255,0.04)); }
 .compliance-workspace .wizard-nav-btn { min-height: 40px; padding: 0 1.25rem; border-radius: 0.7rem; font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.18s ease; display: inline-flex; align-items: center; gap: 0.5rem; }
 .compliance-workspace .wizard-nav-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.compliance-workspace .wizard-nav-btn-prev { border: 1px solid var(--border-color); background: color-mix(in srgb, var(--bg-panel) 92%, transparent); color: var(--text-heading); }
-.compliance-workspace .wizard-nav-btn-prev:hover:not(:disabled) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.compliance-workspace .wizard-nav-btn-prev { border: 1px solid var(--border-color, rgba(255,255,255,0.06)); background: color-mix(in srgb, var(--bg-panel, #0f0f14) 92%, transparent); color: var(--text-heading, #f9fafb); }
+.compliance-workspace .wizard-nav-btn-prev:hover:not(:disabled) { border-color: var(--accent, #3b82f6); background: color-mix(in srgb, var(--accent, #3b82f6) 8%, transparent); }
 .compliance-workspace .wizard-nav-btn-next { background: linear-gradient(135deg, #10b981 0%, #14b8a6 100%); color: white; border: none; }
 .compliance-workspace .wizard-nav-btn-next:hover:not(:disabled) { background: linear-gradient(135deg, #34d399 0%, #2dd4bf 100%); transform: translateY(-1px); }
 .compliance-workspace .wizard-nav-btn-submit { background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%); color: white; border: none; }
 .compliance-workspace .wizard-nav-btn-submit:hover:not(:disabled) { background: linear-gradient(135deg, #60a5fa 0%, #818cf8 100%); transform: translateY(-1px); }
 .compliance-workspace .wizard-step-error { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 0.5rem; padding: 0.75rem; margin-bottom: 1rem; font-size: 11px; color: #f87171; display: none; }
 .compliance-workspace .wizard-step-error.show { display: block; }
-.compliance-workspace .compliance-hint { display: block; color: var(--text-subtle); font-size: 9px; margin-top: 0.35rem; line-height: 1.4; }
+.compliance-workspace .compliance-hint { display: block; color: var(--text-subtle, #6b7280); font-size: 9px; margin-top: 0.35rem; line-height: 1.4; }
 @keyframes wizardFadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
 /* Wizard-specific classes */
 .compliance-workspace .wizard-progress { margin-bottom: 1.5rem; }
 .compliance-workspace .wizard-progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
-.compliance-workspace .wizard-progress-title { font-size: 12px; font-weight: 600; color: var(--text-heading); }
-.compliance-workspace .wizard-progress-step { font-size: 11px; color: var(--text-subtle); font-weight: 600; }
-.compliance-workspace .wizard-progress-steps { font-size: 11px; color: var(--accent); font-weight: 700; }
-.compliance-workspace .wizard-steps-indicator { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; padding: 1rem; border: 1px solid var(--border-color); border-radius: 0.75rem; background: color-mix(in srgb, var(--bg-panel) 88%, transparent); }
+.compliance-workspace .wizard-progress-title { font-size: 12px; font-weight: 600; color: var(--text-heading, #f9fafb); }
+.compliance-workspace .wizard-progress-step { font-size: 11px; color: var(--text-subtle, #6b7280); font-weight: 600; }
+.compliance-workspace .wizard-progress-steps { font-size: 11px; color: var(--accent, #3b82f6); font-weight: 700; }
+.compliance-workspace .wizard-steps-indicator { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; padding: 1rem; border: 1px solid var(--border-color, rgba(255,255,255,0.06)); border-radius: 0.75rem; background: color-mix(in srgb, var(--bg-panel, #0f0f14) 88%, transparent); }
 .compliance-workspace .wizard-step-dot { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; flex: 1; position: relative; }
-.compliance-workspace .wizard-step-dot::after { content: ''; position: absolute; top: 14px; left: 50%; width: 100%; height: 2px; background: var(--border-subtle); z-index: 0; }
+.compliance-workspace .wizard-step-dot::after { content: ''; position: absolute; top: 14px; left: 50%; width: 100%; height: 2px; background: var(--border-subtle, rgba(255,255,255,0.04)); z-index: 0; }
 .compliance-workspace .wizard-step-dot:last-child::after { display: none; }
-.compliance-workspace .wizard-step-dot.active .wizard-step-number { background: var(--accent); color: white; border-color: var(--accent); transform: scale(1.1); }
-.compliance-workspace .wizard-step-dot.completed .wizard-step-number { background: var(--accent); color: white; border-color: var(--accent); }
-.compliance-workspace .wizard-step-number { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--border-subtle); background: var(--bg-elevated); color: var(--text-subtle); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; z-index: 1; transition: all 0.3s ease; }
-.compliance-workspace .wizard-step-label { font-size: 9px; font-weight: 600; color: var(--text-subtle); text-align: center; }
-.compliance-workspace .wizard-step-dot.active .wizard-step-label { color: var(--accent); }
-.compliance-workspace .wizard-step-dot.completed .wizard-step-label { color: var(--accent); }
-.compliance-workspace .wizard-step-title { font-size: 14px; font-weight: 700; color: var(--text-heading); margin-bottom: 1rem; }
-.compliance-workspace .wizard-navigation { display: flex; justify-content: space-between; align-items: center; padding-top: 1.5rem; margin-top: 1rem; border-top: 1px solid var(--border-subtle); }
-.compliance-workspace .wizard-btn-prev { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 38px; padding: 0 1rem; border: 1px solid var(--border-color); border-radius: 0.7rem; background: transparent; color: var(--text-heading); font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.18s ease; }
-.compliance-workspace .wizard-btn-prev:hover:not(:disabled) { background: var(--bg-elevated); border-color: var(--accent-border); }
+.compliance-workspace .wizard-step-dot.active .wizard-step-number { background: var(--accent, #3b82f6); color: white; border-color: var(--accent, #3b82f6); transform: scale(1.1); }
+.compliance-workspace .wizard-step-dot.completed .wizard-step-number { background: var(--accent, #3b82f6); color: white; border-color: var(--accent, #3b82f6); }
+.compliance-workspace .wizard-step-number { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--border-subtle, rgba(255,255,255,0.04)); background: var(--bg-elevated, #141419); color: var(--text-subtle, #6b7280); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; z-index: 1; transition: all 0.3s ease; }
+.compliance-workspace .wizard-step-label { font-size: 9px; font-weight: 600; color: var(--text-subtle, #6b7280); text-align: center; }
+.compliance-workspace .wizard-step-dot.active .wizard-step-label { color: var(--accent, #3b82f6); }
+.compliance-workspace .wizard-step-dot.completed .wizard-step-label { color: var(--accent, #3b82f6); }
+.compliance-workspace .wizard-step-title { font-size: 14px; font-weight: 700; color: var(--text-heading, #f9fafb); margin-bottom: 1rem; }
+.compliance-workspace .wizard-navigation { display: flex; justify-content: space-between; align-items: center; padding-top: 1.5rem; margin-top: 1rem; border-top: 1px solid var(--border-subtle, rgba(255,255,255,0.04)); }
+.compliance-workspace .wizard-btn-prev { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 38px; padding: 0 1rem; border: 1px solid var(--border-color, rgba(255,255,255,0.06)); border-radius: 0.7rem; background: transparent; color: var(--text-heading, #f9fafb); font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.18s ease; }
+.compliance-workspace .wizard-btn-prev:hover:not(:disabled) { background: var(--bg-elevated, #141419); border-color: var(--accent-border, rgba(59,130,246,0.25)); }
 .compliance-workspace .wizard-btn-prev:disabled { opacity: 0.5; cursor: not-allowed; }
 .compliance-workspace .wizard-btn-next { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 38px; padding: 0 1rem; border: none; border-radius: 0.7rem; background: linear-gradient(135deg, #10b981 0%, #14b8a6 100%); color: white; font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.18s ease; }
 .compliance-workspace .wizard-btn-next:hover { background: linear-gradient(135deg, #34d399 0%, #2dd4bf 100%); transform: translateY(-1px); }
 .compliance-workspace .wizard-btn-submit { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 38px; padding: 0 1rem; border: none; border-radius: 0.7rem; background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%); color: white; font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.18s ease; }
 .compliance-workspace .wizard-btn-submit:hover { background: linear-gradient(135deg, #60a5fa 0%, #818cf8 100%); transform: translateY(-1px); }
-.compliance-workspace .wizard-fieldset { padding: 1.5rem; border: 1px solid var(--border-color); border-radius: 0.75rem; background: color-mix(in srgb, var(--bg-panel) 92%, transparent); }
-.compliance-workspace .wizard-fieldset-title { font-size: 12px; font-weight: 600; margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border-subtle); }
+.compliance-workspace .wizard-fieldset { padding: 1.5rem; border: 1px solid var(--border-color, rgba(255,255,255,0.06)); border-radius: 0.75rem; background: color-mix(in srgb, var(--bg-panel, #0f0f14) 92%, transparent); }
+.compliance-workspace .wizard-fieldset-title { font-size: 12px; font-weight: 600; margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.04)); }
 
 /* Training wizard steps */
 .compliance-workspace .wizard-step { display: none; animation: wizardFadeIn 0.3s ease; }
@@ -335,7 +348,7 @@ require_once __DIR__ . '/../includes/header.php';
     text-align: left;
     margin-bottom: 1rem;
     padding: 0.75rem 0;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.04));
 }
 
 /* Transfer Wizard Specific Styles */
@@ -343,37 +356,37 @@ require_once __DIR__ . '/../includes/header.php';
 
 /* Inventory Wizard Specific Styles (RAT - Registro de Actividades de Tratamiento) */
 .compliance-workspace .inventory-wizard-container { max-width: 950px; margin: 0 auto; }
-.compliance-workspace .inventory-wizard-progress { margin-bottom: 1.5rem; padding: 1rem; background: color-mix(in srgb, var(--bg-panel) 88%, transparent); border: 1px solid var(--border-color); border-radius: 0.75rem; }
+.compliance-workspace .inventory-wizard-progress { margin-bottom: 1.5rem; padding: 1rem; background: color-mix(in srgb, var(--bg-panel, #0f0f14) 88%, transparent); border: 1px solid var(--border-color, rgba(255,255,255,0.06)); border-radius: 0.75rem; }
 .compliance-workspace .inventory-wizard-progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
-.compliance-workspace .inventory-wizard-progress-title { font-size: 12px; font-weight: 600; color: var(--text-heading); }
-.compliance-workspace .inventory-wizard-progress-steps { font-size: 11px; color: var(--accent); font-weight: 700; }
-.compliance-workspace .inventory-wizard-progress-bar { width: 100%; height: 6px; background: var(--bg-elevated); border-radius: 3px; overflow: hidden; margin-bottom: 1rem; }
+.compliance-workspace .inventory-wizard-progress-title { font-size: 12px; font-weight: 600; color: var(--text-heading, #f9fafb); }
+.compliance-workspace .inventory-wizard-progress-steps { font-size: 11px; color: var(--accent, #3b82f6); font-weight: 700; }
+.compliance-workspace .inventory-wizard-progress-bar { width: 100%; height: 6px; background: var(--bg-elevated, #141419); border-radius: 3px; overflow: hidden; margin-bottom: 1rem; }
 .compliance-workspace .inventory-wizard-progress-fill { height: 100%; background: linear-gradient(90deg, #3b82f6 0%, #6366f1 100%); border-radius: 3px; transition: width 0.4s ease; }
 .compliance-workspace .inventory-wizard-steps-indicator { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
 .compliance-workspace .inventory-wizard-step-dot { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; flex: 1; position: relative; }
-.compliance-workspace .inventory-wizard-step-dot::after { content: ''; position: absolute; top: 14px; left: 50%; width: 100%; height: 2px; background: var(--border-subtle); z-index: 0; }
+.compliance-workspace .inventory-wizard-step-dot::after { content: ''; position: absolute; top: 14px; left: 50%; width: 100%; height: 2px; background: var(--border-subtle, rgba(255,255,255,0.04)); z-index: 0; }
 .compliance-workspace .inventory-wizard-step-dot:last-child::after { display: none; }
 .compliance-workspace .inventory-wizard-step-dot.active .inventory-wizard-step-number { background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%); color: white; border-color: #3b82f6; transform: scale(1.15); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); }
 .compliance-workspace .inventory-wizard-step-dot.completed .inventory-wizard-step-number { background: #10b981; color: white; border-color: #10b981; }
-.compliance-workspace .inventory-wizard-step-number { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--border-subtle); background: var(--bg-elevated); color: var(--text-subtle); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; z-index: 1; transition: all 0.3s ease; }
-.compliance-workspace .inventory-wizard-step-label { font-size: 9px; font-weight: 600; color: var(--text-subtle); text-align: center; }
+.compliance-workspace .inventory-wizard-step-number { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--border-subtle, rgba(255,255,255,0.04)); background: var(--bg-elevated, #141419); color: var(--text-subtle, #6b7280); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; z-index: 1; transition: all 0.3s ease; }
+.compliance-workspace .inventory-wizard-step-label { font-size: 9px; font-weight: 600; color: var(--text-subtle, #6b7280); text-align: center; }
 .compliance-workspace .inventory-wizard-step-dot.active .inventory-wizard-step-label { color: #3b82f6; }
 .compliance-workspace .inventory-wizard-step-dot.completed .inventory-wizard-step-label { color: #10b981; }
 .compliance-workspace .inventory-wizard-step { display: none; animation: inventoryWizardFadeIn 0.3s ease; }
 .compliance-workspace .inventory-wizard-step.active { display: block; }
-.compliance-workspace .inventory-wizard-step-title { font-size: 15px; font-weight: 700; color: var(--text-heading); margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+.compliance-workspace .inventory-wizard-step-title { font-size: 15px; font-weight: 700; color: var(--text-heading, #f9fafb); margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; }
 .compliance-workspace .inventory-wizard-step-title::before { content: ''; width: 4px; height: 18px; background: linear-gradient(180deg, #3b82f6 0%, #6366f1 100%); border-radius: 2px; }
-.compliance-workspace .inventory-wizard-fieldset { padding: 1.5rem; border: 1px solid var(--border-color); border-radius: 0.75rem; background: color-mix(in srgb, var(--bg-panel) 92%, transparent); }
-.compliance-workspace .inventory-wizard-fieldset-title { font-size: 12px; font-weight: 600; color: var(--text-heading); margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border-subtle); }
-.compliance-workspace .inventory-wizard-navigation { display: flex; justify-content: space-between; align-items: center; padding-top: 1.5rem; margin-top: 1rem; border-top: 1px solid var(--border-subtle); gap: 1rem; }
-.compliance-workspace .inventory-wizard-btn-prev { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 40px; padding: 0 1.25rem; border: 1px solid var(--border-color); border-radius: 0.7rem; background: color-mix(in srgb, var(--bg-panel) 92%, transparent); color: var(--text-heading); font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.18s ease; }
-.compliance-workspace .inventory-wizard-btn-prev:hover:not(:disabled) { background: var(--bg-elevated); border-color: var(--accent-border); }
+.compliance-workspace .inventory-wizard-fieldset { padding: 1.5rem; border: 1px solid var(--border-color, rgba(255,255,255,0.06)); border-radius: 0.75rem; background: color-mix(in srgb, var(--bg-panel, #0f0f14) 92%, transparent); }
+.compliance-workspace .inventory-wizard-fieldset-title { font-size: 12px; font-weight: 600; color: var(--text-heading, #f9fafb); margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.04)); }
+.compliance-workspace .inventory-wizard-navigation { display: flex; justify-content: space-between; align-items: center; padding-top: 1.5rem; margin-top: 1rem; border-top: 1px solid var(--border-subtle, rgba(255,255,255,0.04)); gap: 1rem; }
+.compliance-workspace .inventory-wizard-btn-prev { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 40px; padding: 0 1.25rem; border: 1px solid var(--border-color, rgba(255,255,255,0.06)); border-radius: 0.7rem; background: color-mix(in srgb, var(--bg-panel, #0f0f14) 92%, transparent); color: var(--text-heading, #f9fafb); font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.18s ease; }
+.compliance-workspace .inventory-wizard-btn-prev:hover:not(:disabled) { background: var(--bg-elevated, #141419); border-color: var(--accent-border, rgba(59,130,246,0.25)); }
 .compliance-workspace .inventory-wizard-btn-prev:disabled { opacity: 0.5; cursor: not-allowed; }
 .compliance-workspace .inventory-wizard-btn-next { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 40px; padding: 0 1.25rem; border: none; border-radius: 0.7rem; background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%); color: white; font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.18s ease; }
 .compliance-workspace .inventory-wizard-btn-next:hover { background: linear-gradient(135deg, #60a5fa 0%, #818cf8 100%); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); }
 .compliance-workspace .inventory-wizard-btn-submit { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 40px; padding: 0 1.25rem; border: none; border-radius: 0.7rem; background: linear-gradient(135deg, #10b981 0%, #14b8a6 100%); color: white; font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.18s ease; }
 .compliance-workspace .inventory-wizard-btn-submit:hover { background: linear-gradient(135deg, #34d399 0%, #2dd4bf 100%); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); }
-.compliance-workspace .inventory-wizard-btn-cancel { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 40px; padding: 0 1.25rem; border: 1px solid var(--border-color); border-radius: 0.7rem; background: transparent; color: var(--text-subtle); font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.18s ease; }
+.compliance-workspace .inventory-wizard-btn-cancel { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 40px; padding: 0 1.25rem; border: 1px solid var(--border-color, rgba(255,255,255,0.06)); border-radius: 0.7rem; background: transparent; color: var(--text-subtle, #6b7280); font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.18s ease; }
 .compliance-workspace .inventory-wizard-btn-cancel:hover { border-color: #ef4444; color: #ef4444; background: rgba(239, 68, 68, 0.05); }
 .compliance-workspace .inventory-wizard-error { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 0.5rem; padding: 0.75rem 1rem; margin-bottom: 1rem; font-size: 11px; color: #f87171; display: none; align-items: center; gap: 0.5rem; }
 .compliance-workspace .inventory-wizard-error.show { display: flex; }
@@ -391,26 +404,26 @@ require_once __DIR__ . '/../includes/header.php';
 }
 .compliance-workspace .transfer-wizard-progress { margin-bottom: 1.5rem; }
 .compliance-workspace .transfer-wizard-progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
-.compliance-workspace .transfer-wizard-progress-title { font-size: 12px; font-weight: 600; color: var(--text-heading); }
-.compliance-workspace .transfer-wizard-progress-step { font-size: 11px; color: var(--accent); font-weight: 700; }
-.compliance-workspace .transfer-wizard-progress-bar { width: 100%; height: 6px; background: var(--bg-elevated); border-radius: 3px; overflow: hidden; }
+.compliance-workspace .transfer-wizard-progress-title { font-size: 12px; font-weight: 600; color: var(--text-heading, #f9fafb); }
+.compliance-workspace .transfer-wizard-progress-step { font-size: 11px; color: var(--accent, #3b82f6); font-weight: 700; }
+.compliance-workspace .transfer-wizard-progress-bar { width: 100%; height: 6px; background: var(--bg-elevated, #141419); border-radius: 3px; overflow: hidden; }
 .compliance-workspace .transfer-wizard-progress-fill { height: 100%; background: linear-gradient(90deg, #10b981 0%, #14b8a6 100%); border-radius: 3px; transition: width 0.4s ease; }
-.compliance-workspace .transfer-wizard-steps-indicator { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; padding: 1rem; border: 1px solid var(--border-color); border-radius: 0.75rem; background: color-mix(in srgb, var(--bg-panel) 88%, transparent); }
+.compliance-workspace .transfer-wizard-steps-indicator { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; padding: 1rem; border: 1px solid var(--border-color, rgba(255,255,255,0.06)); border-radius: 0.75rem; background: color-mix(in srgb, var(--bg-panel, #0f0f14) 88%, transparent); }
 .compliance-workspace .transfer-wizard-step-dot { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; flex: 1; position: relative; }
-.compliance-workspace .transfer-wizard-step-dot::after { content: ''; position: absolute; top: 14px; left: 50%; width: 100%; height: 2px; background: var(--border-subtle); z-index: 0; }
+.compliance-workspace .transfer-wizard-step-dot::after { content: ''; position: absolute; top: 14px; left: 50%; width: 100%; height: 2px; background: var(--border-subtle, rgba(255,255,255,0.04)); z-index: 0; }
 .compliance-workspace .transfer-wizard-step-dot:last-child::after { display: none; }
-.compliance-workspace .transfer-wizard-step-dot.active .transfer-wizard-step-number { background: var(--accent); color: white; border-color: var(--accent); transform: scale(1.1); }
-.compliance-workspace .transfer-wizard-step-dot.completed .transfer-wizard-step-number { background: var(--accent); color: white; border-color: var(--accent); }
-.compliance-workspace .transfer-wizard-step-number { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--border-subtle); background: var(--bg-elevated); color: var(--text-subtle); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; z-index: 1; transition: all 0.3s ease; }
-.compliance-workspace .transfer-wizard-step-label { font-size: 9px; font-weight: 600; color: var(--text-subtle); text-align: center; }
-.compliance-workspace .transfer-wizard-step-dot.active .transfer-wizard-step-label { color: var(--accent); }
-.compliance-workspace .transfer-wizard-step-dot.completed .transfer-wizard-step-label { color: var(--accent); }
+.compliance-workspace .transfer-wizard-step-dot.active .transfer-wizard-step-number { background: var(--accent, #3b82f6); color: white; border-color: var(--accent, #3b82f6); transform: scale(1.1); }
+.compliance-workspace .transfer-wizard-step-dot.completed .transfer-wizard-step-number { background: var(--accent, #3b82f6); color: white; border-color: var(--accent, #3b82f6); }
+.compliance-workspace .transfer-wizard-step-number { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--border-subtle, rgba(255,255,255,0.04)); background: var(--bg-elevated, #141419); color: var(--text-subtle, #6b7280); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; z-index: 1; transition: all 0.3s ease; }
+.compliance-workspace .transfer-wizard-step-label { font-size: 9px; font-weight: 600; color: var(--text-subtle, #6b7280); text-align: center; }
+.compliance-workspace .transfer-wizard-step-dot.active .transfer-wizard-step-label { color: var(--accent, #3b82f6); }
+.compliance-workspace .transfer-wizard-step-dot.completed .transfer-wizard-step-label { color: var(--accent, #3b82f6); }
 .compliance-workspace .transfer-wizard-step { display: none; animation: transferWizardFadeIn 0.3s ease; }
 .compliance-workspace .transfer-wizard-step.active { display: block; }
-.compliance-workspace .transfer-wizard-step-title { font-size: 14px; font-weight: 700; color: var(--text-heading); margin-bottom: 1rem; }
-.compliance-workspace .transfer-wizard-navigation { display: flex; justify-content: space-between; align-items: center; padding-top: 1.5rem; margin-top: 1rem; border-top: 1px solid var(--border-subtle); }
-.compliance-workspace .transfer-wizard-btn-prev { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 38px; padding: 0 1rem; border: 1px solid var(--border-color); border-radius: 0.7rem; background: transparent; color: var(--text-heading); font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.18s ease; }
-.compliance-workspace .transfer-wizard-btn-prev:hover:not(:disabled) { background: var(--bg-elevated); border-color: var(--accent-border); }
+.compliance-workspace .transfer-wizard-step-title { font-size: 14px; font-weight: 700; color: var(--text-heading, #f9fafb); margin-bottom: 1rem; }
+.compliance-workspace .transfer-wizard-navigation { display: flex; justify-content: space-between; align-items: center; padding-top: 1.5rem; margin-top: 1rem; border-top: 1px solid var(--border-subtle, rgba(255,255,255,0.04)); }
+.compliance-workspace .transfer-wizard-btn-prev { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 38px; padding: 0 1rem; border: 1px solid var(--border-color, rgba(255,255,255,0.06)); border-radius: 0.7rem; background: transparent; color: var(--text-heading, #f9fafb); font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.18s ease; }
+.compliance-workspace .transfer-wizard-btn-prev:hover:not(:disabled) { background: var(--bg-elevated, #141419); border-color: var(--accent-border, rgba(59,130,246,0.25)); }
 .compliance-workspace .transfer-wizard-btn-prev:disabled { opacity: 0.5; cursor: not-allowed; }
 .compliance-workspace .transfer-wizard-btn-next { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 38px; padding: 0 1rem; border: none; border-radius: 0.7rem; background: linear-gradient(135deg, #10b981 0%, #14b8a6 100%); color: white; font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.18s ease; }
 .compliance-workspace .transfer-wizard-btn-next:hover { background: linear-gradient(135deg, #34d399 0%, #2dd4bf 100%); transform: translateY(-1px); }
@@ -431,6 +444,57 @@ require_once __DIR__ . '/../includes/header.php';
     .compliance-workspace .transfer-wizard-navigation { flex-direction: column-reverse; }
     .compliance-workspace .transfer-wizard-btn-prev, .compliance-workspace .transfer-wizard-btn-next, .compliance-workspace .transfer-wizard-btn-submit { width: 100%; }
 }
+
+/* Generic compliance checklist wizard */
+.cw-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.75); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; z-index: 80; padding: 1rem; }
+.cw-modal-overlay.hidden { display: none; }
+.cw-modal { width: 100%; max-width: 900px; max-height: 92vh; overflow-y: auto; background: var(--bg-panel, #0f0f14); border: 1px solid var(--border-theme, var(--border-color, rgba(255,255,255,0.06))); border-radius: 1rem; box-shadow: 0 25px 50px -12px rgba(0,0,0,.5); display: flex; flex-direction: column; }
+.cw-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.5rem; border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.06)); flex-shrink: 0; }
+.cw-modal-title { color: var(--text-heading, #f9fafb); font-size: 15px; font-weight: 600; }
+.cw-modal-subtitle { color: var(--text-muted, #9ca3af); font-size: 11px; margin-top: .25rem; }
+.cw-modal-body { padding: 1.5rem; }
+.cw-progress { margin-bottom: 1.5rem; }
+.cw-progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: .75rem; }
+.cw-progress-title { color: var(--text-heading, #f9fafb); font-size: 12px; font-weight: 600; }
+.cw-progress-step { color: var(--text-subtle, #6b7280); font-size: 11px; font-weight: 600; }
+.cw-progress-bar { width: 100%; height: 6px; background: var(--bg-elevated, #141419); border-radius: 3px; overflow: hidden; margin-bottom: 1rem; }
+.cw-progress-fill { height: 100%; background: linear-gradient(90deg, #10b981 0%, #14b8a6 100%); border-radius: 3px; transition: width .35s ease; }
+.cw-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: .5rem; padding: .75rem; border: 1px solid var(--border-color, rgba(255,255,255,0.06)); border-radius: .75rem; background: color-mix(in srgb, var(--bg-panel, #0f0f14) 88%, transparent); margin-bottom: 1.5rem; }
+.cw-step-dot { display: flex; flex-direction: column; align-items: center; gap: .35rem; }
+.cw-step-number { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--border-subtle, rgba(255,255,255,0.04)); background: var(--bg-elevated, #141419); color: var(--text-subtle, #6b7280); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; transition: all .2s ease; }
+.cw-step-dot.active .cw-step-number { background: var(--accent, #3b82f6); border-color: var(--accent, #3b82f6); color: white; transform: scale(1.1); }
+.cw-step-dot.completed .cw-step-number { background: #10b981; border-color: #10b981; color: white; }
+.cw-step-label { color: var(--text-subtle, #6b7280); font-size: 9px; font-weight: 600; text-align: center; line-height: 1.2; }
+.cw-step-dot.active .cw-step-label { color: var(--accent, #3b82f6); }
+.cw-step-dot.completed .cw-step-label { color: var(--text-heading, #f9fafb); }
+.cw-step { display: none; animation: cwFadeIn .25s ease; }
+.cw-step.active { display: block; }
+.cw-step-title { color: var(--text-heading, #f9fafb); font-size: 14px; font-weight: 700; margin-bottom: 1rem; padding-bottom: .75rem; border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.04)); }
+.cw-fieldset { padding: 1.25rem; border: 1px solid var(--border-color, rgba(255,255,255,0.06)); border-radius: .75rem; background: color-mix(in srgb, var(--bg-panel, #0f0f14) 90%, transparent); }
+.cw-error { display: none; align-items: flex-start; gap: .5rem; background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.3); border-radius: .5rem; padding: .75rem 1rem; margin-bottom: 1rem; color: #f87171; font-size: 11px; }
+.cw-error.show { display: flex; }
+.cw-nav { display: flex; justify-content: space-between; align-items: center; padding-top: 1.25rem; margin-top: 1rem; border-top: 1px solid var(--border-subtle, rgba(255,255,255,0.04)); flex-wrap: wrap; gap: .75rem; }
+.cw-btn { display: inline-flex; align-items: center; gap: .5rem; min-height: 38px; padding: 0 1rem; border-radius: .7rem; font-size: 11px; font-weight: 700; cursor: pointer; transition: all .18s ease; }
+.cw-btn-prev { border: 1px solid var(--border-color, rgba(255,255,255,0.06)); background: transparent; color: var(--text-heading, #f9fafb); }
+.cw-btn-prev:hover:not(:disabled) { background: var(--bg-elevated, #141419); border-color: var(--accent-border, rgba(59,130,246,0.25)); }
+.cw-btn-next { border: none; background: linear-gradient(135deg, #10b981 0%, #14b8a6 100%); color: white; }
+.cw-btn-next:hover:not(:disabled) { background: linear-gradient(135deg, #34d399 0%, #2dd4bf 100%); transform: translateY(-1px); }
+.cw-btn-submit { border: none; background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%); color: white; }
+.cw-btn-submit:hover:not(:disabled) { background: linear-gradient(135deg, #60a5fa 0%, #818cf8 100%); transform: translateY(-1px); }
+.cw-btn:disabled { opacity: .5; cursor: not-allowed; }
+.cw-btn.hidden { display: none; }
+@keyframes cwFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+/* Generic edit modal */
+#generic-edit-modal .compliance-form-cell { display: flex; flex-direction: column; gap: 0.5rem; }
+#generic-edit-modal .compliance-form-label { display: block; color: var(--text-body, #d1d5db); font-size: 11px; font-weight: 600; }
+#generic-edit-modal .compliance-input,
+#generic-edit-modal .compliance-textarea,
+#generic-edit-modal .compliance-select { width: 100%; min-height: 42px; padding: 0.625rem 0.875rem; border: 1px solid rgba(255,255,255,0.12); border-radius: 0.7rem; background: #0f0f14; color: #f9fafb; font-size: 13px; outline: none; }
+#generic-edit-modal .compliance-input:focus,
+#generic-edit-modal .compliance-textarea:focus,
+#generic-edit-modal .compliance-select:focus { border-color: var(--accent, #3b82f6); box-shadow: 0 0 0 3px rgba(59,130,246,0.2); }
+#generic-edit-modal .compliance-textarea { min-height: 96px; resize: vertical; }
+#generic-edit-modal ::placeholder { color: #9ca3af; opacity: 1; }
 </style>
 
 <div class="flex h-screen bg-bg-base text-[13px] text-text-body overflow-hidden">
@@ -517,13 +581,40 @@ require_once __DIR__ . '/../includes/header.php';
                         <span class="mt-0.5 <?= $item['done'] ? 'text-emerald-400' : 'text-text-subtle' ?>"><?= cIcon($item['icon']) ?></span>
                         <div class="flex-1 min-w-0">
                             <div class="flex items-center gap-2 flex-wrap">
-                                <span class="text-[12px] font-medium <?= $item['done'] ? 'text-emerald-300' : 'text-text-muted' ?>"><?= h($item['label']) ?> <?= infoIcon($item['desc']) ?></span>
+                                <span class="text-[12px] font-medium <?= $item['done'] ? 'text-emerald-300' : 'text-text-muted' ?>">
+                                    <?php if ($item['id'] === 'incident_response'): ?>
+                                    <button type="button" onclick="openComplianceWizard('incident_response'); event.stopPropagation(); return false;" class="text-left font-medium hover:text-accent transition-colors underline-offset-2 hover:underline"><?= h($item['label']) ?></button>
+                                    <?php else: ?>
+                                    <?= h($item['label']) ?>
+                                    <?php endif; ?>
+                                    <?= infoIcon($item['desc']) ?>
+                                </span>
                                 <?php if ($item['done']): ?>
                                 <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-emerald-500/10 text-emerald-400 border-emerald-500/20"><?= cIcon('check', 'w-3 h-3') ?> Cumple</span>
+                                <?php if (!empty($item['section'])): ?>
+                                <?php if ($item['id'] === 'breach_protocol'): ?>
+                                <button type="button" onclick="openBreachProtocolModal()" class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-blue-500/10 text-blue-400 border-blue-500/20 hover:bg-blue-500/20 transition-all"><?= cIcon('pen', 'w-3 h-3') ?> Editar Protocolo</button>
+                                <?php elseif ($item['id'] === 'apdp'): ?>
+                                <button type="button" onclick="openAPDPModal()" class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-blue-500/10 text-blue-400 border-blue-500/20 hover:bg-blue-500/20 transition-all"><?= cIcon('pen', 'w-3 h-3') ?> Editar Registro</button>
+                                <?php elseif ($item['id'] === 'incident_response'): ?>
+                                <button type="button" onclick="openComplianceWizard('incident_response'); event.stopPropagation(); return false;" class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20 transition-all"><?= cIcon('pen', 'w-3 h-3') ?> Editar Plan</button>
+                                <?php else: ?>
+                                <button type="button" onclick="openComplianceWizard('<?= h($item['id']) ?>')" class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20 transition-all"><?= cIcon('pen', 'w-3 h-3') ?> Editar</button>
+                                <?php endif; ?>
+                                <button type="button" onclick="deleteComplianceSection('<?= h($item['id']) ?>', '<?= h(addslashes($item['label'])) ?>')" class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20 transition-all"><?= cIcon('xmark', 'w-3 h-3') ?> Eliminar</button>
+                                <?php endif; ?>
                                 <?php else: ?>
                                 <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-red-500/10 text-red-400 border-red-500/20"><?= cIcon('xmark', 'w-3 h-3') ?> Pendiente</span>
                                 <?php if (!empty($item['section'])): ?>
-                                <a href="/compliance?tab=<?= h($item['section']) ?>" class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-blue-500/10 text-blue-400 border-blue-500/20 hover:bg-blue-500/20 transition-all"><?= cIcon('arrowRight', 'w-3 h-3') ?> Completar</a>
+                                <?php if ($item['id'] === 'breach_protocol'): ?>
+                                <button type="button" onclick="openBreachProtocolModal()" class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20 transition-all"><?= cIcon('alert', 'w-3 h-3') ?> Documentar Protocolo</button>
+                                <?php elseif ($item['id'] === 'apdp'): ?>
+                                <button type="button" onclick="openAPDPModal()" class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-blue-500/10 text-blue-400 border-blue-500/20 hover:bg-blue-500/20 transition-all"><?= cIcon('shield', 'w-3 h-3') ?> Registrar APDP</button>
+                                <?php elseif ($item['id'] === 'incident_response'): ?>
+                                <button type="button" onclick="openComplianceWizard('incident_response'); event.stopPropagation(); return false;" class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20 transition-all"><?= cIcon('pen', 'w-3 h-3') ?> Documentar Plan</button>
+                                <?php else: ?>
+                                <button type="button" onclick="openComplianceWizard('<?= h($item['id']) ?>')" class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20 transition-all"><?= cIcon('pen', 'w-3 h-3') ?> Documentar</button>
+                                <?php endif; ?>
                                 <?php endif; ?>
                                 <?php endif; ?>
                             </div>
@@ -618,99 +709,9 @@ require_once __DIR__ . '/../includes/header.php';
                 </div>
             </div>
 
-            <!-- ═══ Timeline Ley 21.719 ═══ -->
-            <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-4 md:p-6">
-                <h3 class="text-[15px] font-semibold text-white mb-4">Ley 21.719 — Línea de Tiempo de Implementación</h3>
-                <div class="relative">
-                    <div class="absolute left-[15px] top-2 bottom-2 w-0.5 bg-bg-elevated/60"></div>
-                    <div class="space-y-4">
-                        <?php foreach ([
-                            ['date' => '13 Dic 2024', 'title' => 'Publicación de la Ley', 'desc' => 'Se publica la Ley 21.719 en el Diario Oficial, iniciando el período de 24 meses para su implementación.', 'done' => true, 'urgent' => false],
-                            ['date' => '2025', 'title' => 'Implementación de la APDP', 'desc' => 'La Agencia de Protección de Datos Personales debe comenzar a operar. Se definen sus facultades, estructura y presupuesto.', 'done' => false, 'urgent' => false],
-                            ['date' => '13 Dic 2026', 'title' => 'Fin del Período de Transición', 'desc' => 'Todas las empresas deben estar en cumplimiento. La APDP comienza a fiscalizar y aplicar multas de hasta 20.000 UTM (~$1.400M).', 'done' => false, 'urgent' => true],
-                            ['date' => '2027+', 'title' => 'Régimen Sancionatorio Pleno', 'desc' => 'Comienza la aplicación efectiva de multas y sanciones. Las empresas no adecuadas enfrentan multas gravísimas que pueden triplicarse por reincidencia.', 'done' => false, 'urgent' => false],
-                        ] as $i => $m): ?>
-                        <div class="relative flex items-start gap-4">
-                            <div class="w-7 h-7 rounded-full border-2 flex items-center justify-center flex-shrink-0 z-10 text-[9px] font-bold <?= $m['done'] ? 'border-emerald-500 bg-emerald-500/20 text-emerald-400' : ($m['urgent'] ? 'border-red-500 bg-red-500/20 text-red-400' : 'border-gray-600 bg-gray-600/20 text-text-muted') ?>">
-                                <?= $m['done'] ? '✓' : ($m['urgent'] ? '!' : $i + 1) ?>
-                            </div>
-                            <div class="flex-1 min-w-0 pt-0.5">
-                                <div class="flex items-center gap-2">
-                                    <span class="text-[10px] font-mono <?= $m['done'] ? 'text-emerald-400' : ($m['urgent'] ? 'text-red-400' : 'text-text-muted') ?>"><?= h($m['date']) ?></span>
-                                    <span class="text-[12px] font-semibold text-text-heading"><?= h($m['title']) ?></span>
-                                </div>
-                                <p class="text-[11px] text-text-muted mt-0.5"><?= h($m['desc']) ?></p>
-                            </div>
-                        </div>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
-            </div>
 
-            <!-- ═══ Registro APDP ═══ -->
-            <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-4 md:p-6">
-                <?php renderSectionHeader('Registro APDP', 'Registro de la organización en la Agencia de Protección de Datos Personales según Art. 31 de la Ley 21.719'); ?>
-                
-                <form method="POST">
-                    <input type="hidden" name="save_config" value="1">
-                    
-                    <div class="compliance-form-row">
-                        <div class="compliance-form-cell">
-                            <label class="compliance-form-label">Nombre de la empresa <span class="required">*</span></label>
-                            <input type="text" name="companyName" required class="compliance-input" value="<?= h($config['companyName'] ?? '') ?>" placeholder="Razón social de la empresa">
-                        </div>
-                        <div class="compliance-form-cell">
-                            <label class="compliance-form-label">Nivel de cumplimiento</label>
-                            <select name="complianceLevel" class="compliance-select">
-                                <option value="basic" <?= ($config['complianceLevel'] ?? '') === 'basic' ? 'selected' : '' ?>>Básico</option>
-                                <option value="intermediate" <?= ($config['complianceLevel'] ?? '') === 'intermediate' ? 'selected' : '' ?>>Intermedio</option>
-                                <option value="advanced" <?= ($config['complianceLevel'] ?? '') === 'advanced' ? 'selected' : '' ?>>Avanzado</option>
-                                <option value="certified" <?= ($config['complianceLevel'] ?? '') === 'certified' ? 'selected' : '' ?>>Certificado</option>
-                            </select>
-                        </div>
-                    </div>
 
-                    <div class="compliance-form-row mt-4">
-                        <div class="compliance-form-cell">
-                            <label class="compliance-form-label">Nombre del DPD <span class="required">*</span></label>
-                            <input type="text" name="dpdName" required class="compliance-input" value="<?= h($config['dpdName'] ?? '') ?>" placeholder="Nombre completo del Delegado de Protección de Datos">
-                        </div>
-                        <div class="compliance-form-cell">
-                            <label class="compliance-form-label">Email del DPD <span class="required">*</span></label>
-                            <input type="email" name="dpdEmail" required class="compliance-input" value="<?= h($config['dpdEmail'] ?? '') ?>" placeholder="dpd@empresa.cl">
-                        </div>
-                    </div>
 
-                    <div class="compliance-form-row mt-4">
-                        <div class="compliance-form-cell">
-                            <label class="compliance-form-label">Teléfono del DPD</label>
-                            <input type="tel" name="dpdPhone" class="compliance-input" value="<?= h($config['dpdPhone'] ?? '') ?>" placeholder="+56 9 1234 5678">
-                        </div>
-                        <div class="compliance-form-cell">
-                            <label class="compliance-form-label">Número de registro APDP</label>
-                            <input type="text" name="apdpRegistrationNumber" class="compliance-input" value="<?= h($config['apdpRegistrationNumber'] ?? '') ?>" placeholder="Ej: APDP-2024-XXXXX">
-                        </div>
-                    </div>
-
-                    <div class="compliance-form-row mt-4">
-                        <div class="compliance-form-cell">
-                            <div class="compliance-checkbox-group">
-                                <input type="checkbox" name="apdpRegistered" id="apdpRegistered" value="1" <?= ($config['apdpRegistered'] === '1' || $config['apdpRegistered'] === true) ? 'checked' : '' ?>>
-                                <label for="apdpRegistered">
-                                    <strong>Registrado en APDP</strong> (Art. 31)<br>
-                                    Confirmo que la organización está inscrita en el Registro de la Agencia de Protección de Datos Personales
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="compliance-form-actions">
-                        <button type="submit" class="compliance-btn-primary">
-                            Guardar configuración
-                        </button>
-                    </div>
-                </form>
-            </div>
 
             <?php elseif ($tab === 'violations'): ?>
             <!-- ═══ Violaciones y Sanciones ═══ -->
@@ -1129,6 +1130,7 @@ require_once __DIR__ . '/../includes/header.php';
                     </div>
                     <div class="flex items-center gap-2 flex-shrink-0">
                         <?php if ($active) renderActionBtn('consents', $it['_id'] ?? '', 'revoke', 'Revocar'); ?>
+                        <?php renderEditBtn('consents', $it['_id'] ?? ''); ?>
                         <form method="POST" class="inline">
                             <input type="hidden" name="collection" value="consents">
                             <input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>">
@@ -1629,7 +1631,7 @@ require_once __DIR__ . '/../includes/header.php';
                         </div>
 
                         <!-- Step 6: Observaciones -->
-                        <div class="wizard-step" data-step="6">
+                        <div class="inventory-wizard-step" data-step="6">
                             <div class="wizard-step-title">Paso 6: Observaciones</div>
                             <div class="wizard-fieldset">
                                 <div class="wizard-fieldset-title">Información adicional y evidencia</div>
@@ -1650,15 +1652,15 @@ require_once __DIR__ . '/../includes/header.php';
 
                         <!-- Wizard Navigation -->
                         <div class="wizard-navigation">
-                            <button type="button" id="wizard-prev-btn" class="wizard-btn-prev" disabled>
+                            <button type="button" id="inventory-wizard-prev-btn" class="wizard-btn-prev" disabled>
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
                                 Anterior
                             </button>
-                            <button type="button" id="wizard-next-btn" class="wizard-btn-next">
+                            <button type="button" id="inventory-wizard-next-btn" class="wizard-btn-next">
                                 Siguiente
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
                             </button>
-                            <button type="submit" id="wizard-submit-btn" name="create_item" value="1" class="wizard-btn-submit" style="display: none;">
+                            <button type="submit" id="inventory-wizard-submit-btn" name="create_item" value="1" class="wizard-btn-submit" style="display: none;">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
                                 Registrar actividad en RAT (Art. 14)
                             </button>
@@ -2459,23 +2461,39 @@ require_once __DIR__ . '/../includes/header.php';
             <div class="rounded-xl border border-blue-500/20 bg-blue-500/[0.02] p-5 mb-5">
                 <h4 class="text-[13px] font-semibold text-text-heading mb-4">Configuración de Políticas</h4>
                 
-                <form method="POST" class="space-y-4">
+                <form method="POST" id="policy-form" class="space-y-4">
                     <input type="hidden" name="update_config" value="1">
+                    <input type="hidden" name="policies_json" id="policies-json">
                     
-                    <div>
-                        <label class="compliance-form-label">URL Política de Privacidad</label>
-                        <input type="url" name="privacyPolicyUrl" class="compliance-input w-full" value="<?= h($config['privacyPolicyUrl'] ?? '') ?>" placeholder="https://empresa.cl/privacidad">
+                    <div id="policies-list" class="space-y-3">
+                        <?php foreach (($config['policies'] ?? []) as $idx => $p): ?>
+                        <div class="policy-item rounded-xl border border-border-theme bg-bg-base/40 p-4" data-index="<?= $idx ?>">
+                            <div class="grid grid-cols-1 md:grid-cols-12 gap-3">
+                                <input type="text" class="policy-name md:col-span-3 compliance-input" placeholder="Nombre de la política" value="<?= h($p['name'] ?? '') ?>">
+                                <select class="policy-type md:col-span-2 compliance-select">
+                                    <option value="privacy" <?= (($p['type'] ?? '') === 'privacy') ? 'selected' : '' ?>>Privacidad</option>
+                                    <option value="cookies" <?= (($p['type'] ?? '') === 'cookies') ? 'selected' : '' ?>>Cookies</option>
+                                    <option value="retention" <?= (($p['type'] ?? '') === 'retention') ? 'selected' : '' ?>>Retención</option>
+                                    <option value="terms" <?= (($p['type'] ?? '') === 'terms') ? 'selected' : '' ?>>Términos</option>
+                                    <option value="other" <?= (($p['type'] ?? '') === 'other') ? 'selected' : '' ?>>Otro</option>
+                                </select>
+                                <input type="url" class="policy-url md:col-span-4 compliance-input" placeholder="https://empresa.cl/politica" value="<?= h($p['url'] ?? '') ?>">
+                                <label class="flex items-center gap-2 md:col-span-2 text-[11px] text-text-body select-none">
+                                    <input type="checkbox" class="policy-public w-4 h-4 rounded border-border-theme text-primary-600 focus:ring-primary-500" <?= !empty($p['isPublic']) ? 'checked' : '' ?>>
+                                    Pública
+                                </label>
+                                <button type="button" onclick="this.closest('.policy-item').remove()" class="md:col-span-1 px-2 py-1.5 rounded-lg text-[10px] font-medium bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all">
+                                    Eliminar
+                                </button>
+                            </div>
+                            <textarea class="policy-content w-full compliance-textarea mt-2" rows="2" placeholder="Contenido / descripción resumida"><?= h($p['content'] ?? '') ?></textarea>
+                        </div>
+                        <?php endforeach; ?>
                     </div>
                     
-                    <div>
-                        <label class="compliance-form-label">URL Política de Cookies</label>
-                        <input type="url" name="cookiesPolicyUrl" class="compliance-input w-full" value="<?= h($config['cookiesPolicyUrl'] ?? '') ?>" placeholder="https://empresa.cl/cookies">
-                    </div>
-                    
-                    <div>
-                        <label class="compliance-form-label">Política de Retención de Datos</label>
-                        <textarea name="dataRetentionPolicy" rows="4" class="compliance-input w-full" placeholder="Describa los plazos de retención..."><?= h($config['dataRetentionPolicy'] ?? '') ?></textarea>
-                    </div>
+                    <button type="button" onclick="addPolicyRow()" class="mt-3 px-4 py-2 rounded-lg text-[11px] font-medium bg-bg-elevated text-text-body border border-border-theme hover:bg-bg-base hover:text-text-heading transition-all">
+                        + Añadir política
+                    </button>
                     
                     <div class="flex justify-end gap-3 pt-2 border-t border-border-subtle">
                         <button type="submit" class="btn-primary">
@@ -2483,6 +2501,50 @@ require_once __DIR__ . '/../includes/header.php';
                         </button>
                     </div>
                 </form>
+                
+                <script>
+                function addPolicyRow() {
+                    const tpl = `
+                        <div class="policy-item rounded-xl border border-border-theme bg-bg-base/40 p-4">
+                            <div class="grid grid-cols-1 md:grid-cols-12 gap-3">
+                                <input type="text" class="policy-name md:col-span-3 compliance-input" placeholder="Nombre de la política">
+                                <select class="policy-type md:col-span-2 compliance-select">
+                                    <option value="privacy">Privacidad</option>
+                                    <option value="cookies">Cookies</option>
+                                    <option value="retention">Retención</option>
+                                    <option value="terms">Términos</option>
+                                    <option value="other">Otro</option>
+                                </select>
+                                <input type="url" class="policy-url md:col-span-4 compliance-input" placeholder="https://empresa.cl/politica">
+                                <label class="flex items-center gap-2 md:col-span-2 text-[11px] text-text-body select-none">
+                                    <input type="checkbox" class="policy-public w-4 h-4 rounded border-border-theme text-primary-600 focus:ring-primary-500">
+                                    Pública
+                                </label>
+                                <button type="button" onclick="this.closest('.policy-item').remove()" class="md:col-span-1 px-2 py-1.5 rounded-lg text-[10px] font-medium bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all">
+                                    Eliminar
+                                </button>
+                            </div>
+                            <textarea class="policy-content w-full compliance-textarea mt-2" rows="2" placeholder="Contenido / descripción resumida"></textarea>
+                        </div>
+                    `;
+                    document.getElementById('policies-list').insertAdjacentHTML('beforeend', tpl);
+                }
+                
+                document.getElementById('policy-form').addEventListener('submit', function() {
+                    const items = document.querySelectorAll('.policy-item');
+                    const policies = [];
+                    items.forEach(item => {
+                        policies.push({
+                            name: item.querySelector('.policy-name').value,
+                            type: item.querySelector('.policy-type').value,
+                            url: item.querySelector('.policy-url').value,
+                            isPublic: item.querySelector('.policy-public').checked,
+                            content: item.querySelector('.policy-content').value
+                        });
+                    });
+                    document.getElementById('policies-json').value = JSON.stringify(policies);
+                });
+                </script>
             </div>
 
             <?php elseif ($tab === 'breaches'): ?>
@@ -2962,6 +3024,7 @@ require_once __DIR__ . '/../includes/header.php';
                             </button>
                         </form>
                         <?php endif; ?>
+                        <?php renderEditBtn('breaches', $it['_id'] ?? ''); ?>
                         <form method="POST" class="inline">
                             <input type="hidden" name="collection" value="breaches">
                             <input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>">
@@ -2995,7 +3058,7 @@ require_once __DIR__ . '/../includes/header.php';
                 </div>
                 
                 <!-- DPIA Wizard Form -->
-                <form method="POST" id="dpia-wizard-form">
+                <form method="POST" id="dpia-wizard-form" novalidate>
                     <input type="hidden" name="collection" value="dpia">
                     
                     <!-- Wizard Progress Indicator -->
@@ -3094,6 +3157,7 @@ require_once __DIR__ . '/../includes/header.php';
                     </div>
                     <div class="flex items-center gap-2 flex-shrink-0">
                         <?php if (!$approved) renderActionBtn('dpia', $it['_id'] ?? '', 'approve', 'Aprobar'); ?>
+                        <?php renderEditBtn('dpia', $it['_id'] ?? ''); ?>
                         <form method="POST" class="inline">
                             <input type="hidden" name="collection" value="dpia">
                             <input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>">
@@ -3472,6 +3536,7 @@ require_once __DIR__ . '/../includes/header.php';
                         <p class="text-[10px] text-text-subtle mt-0.5"><?= h($p['serviceType'] ?? '') ?> · <?= h($p['purpose'] ?? '') ?> · <?= h(substr($p['createdAt'] ?? '', 0, 10)) ?></p>
                     </div>
                     <div class="flex items-center gap-2 flex-shrink-0">
+                        <?php renderEditBtn('processors', $p['_id'] ?? ''); ?>
                         <form method="POST" class="inline">
                             <input type="hidden" name="collection" value="processors">
                             <input type="hidden" name="item_id" value="<?= h($p['_id'] ?? '') ?>">
@@ -3776,6 +3841,7 @@ require_once __DIR__ . '/../includes/header.php';
                         <p class="text-[10px] text-text-subtle mt-0.5"><?= h($t['recipient'] ?? '') ?> · <?= h($t['dataCategories'] ?? '') ?> · <?= h(substr($t['createdAt'] ?? '', 0, 10)) ?></p>
                     </div>
                     <div class="flex items-center gap-2 flex-shrink-0">
+                        <?php renderEditBtn('transfers', $t['_id'] ?? ''); ?>
                         <form method="POST" class="inline">
                             <input type="hidden" name="collection" value="transfers">
                             <input type="hidden" name="item_id" value="<?= h($t['_id'] ?? '') ?>">
@@ -3826,10 +3892,10 @@ require_once __DIR__ . '/../includes/header.php';
                     <div class="wizard-progress">
                         <div class="wizard-progress-header">
                             <span class="wizard-progress-title">Progreso del formulario</span>
-                            <span class="wizard-progress-steps" id="wizard-step-text">Paso 1 de 5</span>
+                            <span class="wizard-progress-steps" id="pseudo-wizard-step-text">Paso 1 de 5</span>
                         </div>
                         <div class="wizard-progress-bar">
-                            <div class="wizard-progress-fill" id="wizard-progress-fill" style="width: 20%"></div>
+                            <div class="wizard-progress-fill" id="pseudo-wizard-progress-fill" style="width: 20%"></div>
                         </div>
                     </div>
 
@@ -3906,7 +3972,7 @@ require_once __DIR__ . '/../includes/header.php';
                         <!-- Paso 2: Configuración Técnica -->
                     <div class="wizard-step-content" data-step="2">
                         <h3 class="wizard-step-title">Paso 2: Configuración Técnica</h3>
-                        <div class="wizard-error-message" id="wizard-error-message2"></div>
+                        <div class="wizard-error-message" id="pseudoWizard-error-message2"></div>
                         <fieldset class="compliance-fieldset">
                             <legend class="compliance-fieldset-legend">Configuración Técnica y Gestión de Claves</legend>
                                 <div class="compliance-form-row grid-cols-3">
@@ -3945,10 +4011,10 @@ require_once __DIR__ . '/../includes/header.php';
                         </div>
 
                         <!-- Step 3: Aplicación -->
-                        <div class="pseudo-step-content" data-step="3" style="display: none;">
-                            <div style="font-size: 10px; color: var(--text-subtle); font-weight: 600; margin-bottom: 0.25rem;">PASO 3 DE 5</div>
-                            <h3 style="color: var(--text-heading); font-size: 14px; font-weight: 700; margin-bottom: 0.5rem;">Aplicación</h3>
-                            <p style="color: var(--text-muted); font-size: 11px; line-height: 1.5; margin-bottom: 1.25rem;">Defina la frecuencia, entorno y estado de ejecución de la regla de seudonimización.</p>
+                        <div class="wizard-step-content" data-step="3">
+                            <div style="font-size: 10px; color: var(--text-subtle, #6b7280); font-weight: 600; margin-bottom: 0.25rem;">PASO 3 DE 5</div>
+                            <h3 style="color: var(--text-heading, #f9fafb); font-size: 14px; font-weight: 700; margin-bottom: 0.5rem;">Aplicación</h3>
+                            <p style="color: var(--text-muted, #9ca3af); font-size: 11px; line-height: 1.5; margin-bottom: 1.25rem;">Defina la frecuencia, entorno y estado de ejecución de la regla de seudonimización.</p>
                             
                             <fieldset class="compliance-fieldset">
                                 <legend class="compliance-fieldset-legend">Configuración de Ejecución</legend>
@@ -3999,7 +4065,7 @@ require_once __DIR__ . '/../includes/header.php';
                         <!-- Paso 4: Verificación -->
                     <div class="wizard-step-content" data-step="4">
                         <h3 class="wizard-step-title">Paso 4: Verificación</h3>
-                        <div class="wizard-error-message" id="wizard-error-message4"></div>
+                        <div class="wizard-error-message" id="pseudoWizard-error-message4"></div>
                         <fieldset class="compliance-fieldset">
                             <legend class="compliance-fieldset-legend">Verificación de Irreversibilidad</legend>
                             <div class="compliance-form-cell">
@@ -4018,7 +4084,7 @@ require_once __DIR__ . '/../includes/header.php';
                         <!-- Paso 5: Evidencia -->
                     <div class="wizard-step-content" data-step="5">
                         <h3 class="wizard-step-title">Paso 5: Evidencia</h3>
-                        <div class="wizard-error-message" id="wizard-error-message5"></div>
+                        <div class="wizard-error-message" id="pseudoWizard-error-message5"></div>
                         <fieldset class="compliance-fieldset">
                             <legend class="compliance-fieldset-legend">Evidencia y Observaciones</legend>
                             <div class="compliance-form-row">
@@ -4036,15 +4102,15 @@ require_once __DIR__ . '/../includes/header.php';
 
                         <!-- Wizard Navigation -->
                     <div class="wizard-navigation">
-                        <button type="button" class="wizard-btn-prev" id="wizard-prev-btn" disabled>
+                        <button type="button" class="wizard-btn-prev" id="pseudo-wizard-prev-btn" disabled>
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
                             Anterior
                         </button>
-                        <button type="button" class="wizard-btn-next" id="wizard-next-btn">
+                        <button type="button" class="wizard-btn-next" id="pseudo-wizard-next-btn">
                             Siguiente
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
                         </button>
-                        <button type="submit" name="create_item" value="1" class="wizard-btn-submit" id="wizard-submit-btn" style="display: none;">
+                        <button type="submit" name="create_item" value="1" class="wizard-btn-submit" id="pseudo-wizard-submit-btn" style="display: none;">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
                             Registrar regla de seudonimización (Art. 30 - Libre, expreso, informado, específico)
                         </button>
@@ -4057,16 +4123,18 @@ require_once __DIR__ . '/../includes/header.php';
 
             <script>
             (function() {
+                const wizardForm = document.getElementById('pseudoWizardForm');
+                if (!wizardForm) return;
                 const totalSteps = 5;
                 let currentStep = 1;
 
-                const prevBtn = document.getElementById('wizard-prev-btn');
-                const nextBtn = document.getElementById('wizard-next-btn');
-                const submitBtn = document.getElementById('wizard-submit-btn');
-                const progressFill = document.getElementById('wizard-progress-fill');
-                const stepCounter = document.getElementById('wizard-step-text');
-                const stepDots = document.querySelectorAll('.wizard-step-dot');
-                const stepContents = document.querySelectorAll('.wizard-step-content');
+                const prevBtn = wizardForm.querySelector('#pseudo-wizard-prev-btn');
+                const nextBtn = wizardForm.querySelector('#pseudo-wizard-next-btn');
+                const submitBtn = wizardForm.querySelector('#pseudo-wizard-submit-btn');
+                const progressFill = wizardForm.querySelector('#pseudo-wizard-progress-fill');
+                const stepCounter = wizardForm.querySelector('#pseudo-wizard-step-text');
+                const stepDots = wizardForm.querySelectorAll('.wizard-step-dot');
+                const stepContents = wizardForm.querySelectorAll('.wizard-step-content');
 
                 function updateWizard() {
                     const progress = (currentStep / totalSteps) * 100;
@@ -4104,10 +4172,16 @@ require_once __DIR__ . '/../includes/header.php';
                     }
                 }
 
+                function getErrorDiv(step) {
+                    return step === 1
+                        ? wizardForm.querySelector('#pseudoWizard-error-message')
+                        : wizardForm.querySelector('#pseudoWizard-error-message' + step);
+                }
+
                 function validateStep(step) {
-                    const stepContent = document.querySelector('.wizard-step-content[data-step="' + step + '"]');
-                    const errorDiv = document.getElementById('wizard-error-message' + step);
-                    const requiredFields = stepContent.querySelectorAll('[required]');
+                    const stepContent = wizardForm.querySelector('.wizard-step-content[data-step="' + step + '"]');
+                    const errorDiv = getErrorDiv(step);
+                    const requiredFields = stepContent ? stepContent.querySelectorAll('[required]') : [];
                     let isValid = true;
                     let errors = [];
 
@@ -4147,13 +4221,13 @@ require_once __DIR__ . '/../includes/header.php';
                     }
                 });
 
-                document.querySelectorAll('#pseudoWizardForm input, #pseudoWizardForm select, #pseudoWizardForm textarea').forEach(field => {
+                wizardForm.querySelectorAll('input, select, textarea').forEach(field => {
                     field.addEventListener('input', function() {
                         this.style.borderColor = '';
                         const stepContent = this.closest('.wizard-step-content');
                         const step = stepContent ? stepContent.dataset.step : null;
                         if (step) {
-                            const errorDiv = document.getElementById('wizard-error-message' + step);
+                            const errorDiv = getErrorDiv(step);
                             if (errorDiv) {
                                 errorDiv.classList.remove('show');
                             }
@@ -4614,6 +4688,7 @@ require_once __DIR__ . '/../includes/header.php';
                             <button type="submit" name="unassign_invite" value="1" onclick="return confirm('¿Quitar la firma de esta capacitación?')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-red-900/10 border border-red-800/20 text-red-400 hover:bg-red-900/20 transition-all">Quitar</button>
                         </form>
                         <?php endif; ?>
+                        <?php renderEditBtn('trainings', $it['_id'] ?? ''); ?>
                         <form method="POST" class="inline">
                             <input type="hidden" name="collection" value="trainings">
                             <input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>">
@@ -4702,6 +4777,7 @@ require_once __DIR__ . '/../includes/header.php';
                                 <button type="submit" name="unassign_invite" value="1" onclick="return confirm('¿Quitar la asignación de esta firma?')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-amber-900/10 border border-amber-800/20 text-amber-400 hover:bg-amber-900/20 transition-all">Quitar asignación</button>
                             </form>
                             <?php endif; ?>
+                            <?php renderEditBtn('invites', $it['_id'] ?? ''); ?>
                             <form method="POST" class="inline">
                                 <input type="hidden" name="collection" value="invites">
                                 <input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>">
@@ -5342,7 +5418,7 @@ require_once __DIR__ . '/../includes/header.php';
 <?php
 function renderSectionHeader($title, $desc, $pdfResource = null) {
     echo '<div class="compliance-section-header">';
-    echo '<div><p class="workspace-kicker">Área de gestión</p><h2 class="compliance-section-title mt-1">' . h($title) . '</h2>';
+    echo '<div><h2 class="compliance-section-title mt-1">' . h($title) . '</h2>';
     echo '<p class="compliance-section-desc">' . h($desc) . '</p></div>';
     if ($pdfResource) {
         echo '<div class="flex items-center gap-2">';
@@ -5370,6 +5446,7 @@ function renderComplianceList($items, $collection, $renderMain, $renderStatus = 
         $renderMain($it);
         echo '</div><div class="flex items-center gap-2 flex-shrink-0">';
         if ($renderStatus) $renderStatus($it);
+        renderEditBtn($collection, $it['_id'] ?? '');
         echo '<form method="POST" class="inline">';
         echo '<input type="hidden" name="collection" value="' . h($collection) . '">';
         echo '<input type="hidden" name="item_id" value="' . h($it['_id'] ?? '') . '">';
@@ -5385,6 +5462,11 @@ function renderActionBtn($collection, $id, $action, $label) {
     echo '<input type="hidden" name="item_id" value="' . h($id) . '">';
     echo '<button type="submit" name="item_action" value="' . h($action) . '" class="compliance-action">' . h($label) . '</button>';
     echo '</form>';
+}
+
+function renderEditBtn($collection, $id) {
+    if (!$id) return;
+    echo '<button type="button" onclick="openGenericEdit(\'' . h($collection) . '\', \'' . h($id) . '\')" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-cyan-500/10 border border-cyan-500/25 text-cyan-400 hover:bg-cyan-500/20 transition-all">Editar</button>';
 }
 
 function renderImportBtn($collection) {
@@ -5456,6 +5538,481 @@ function renderComplianceStat($label, $value, $color = 'text-white', $icon = '')
             <div id="assign-list" class="flex-1 overflow-y-auto scrollbar-custom px-3 pb-4 space-y-0.5"></div>
             <div id="assign-alphabet" class="flex-shrink-0 overflow-y-auto py-2 px-1 pr-2 scrollbar-custom select-none"></div>
         </div>
+    </div>
+</div>
+
+<!-- ═══ MODAL PROTOCOLO DE BRECHAS ═══ -->
+<div id="breach-protocol-modal" class="compliance-workspace hidden fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
+    <div class="bg-bg-panel border border-border-theme rounded-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto scrollbar-custom shadow-2xl">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-border-theme flex-shrink-0">
+            <div>
+                <h3 class="text-[15px] font-semibold text-white">Protocolo de Gestión de Brechas</h3>
+                <p class="text-[11px] text-text-muted mt-0.5">Documenta el procedimiento de detección, notificación y respuesta a incidentes de seguridad (Art. 26 Ley 21.719)</p>
+            </div>
+            <button onclick="closeBreachProtocolModal()" class="text-text-muted hover:text-white transition-colors p-1.5 rounded-lg hover:bg-bg-elevated">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        
+        <form id="breach-protocol-form" class="p-6 space-y-6">
+            <!-- Wizard Progress -->
+            <div class="wizard-progress">
+                <div class="wizard-progress-header">
+                    <span class="wizard-progress-title">Progreso del Protocolo</span>
+                    <span class="wizard-progress-step">Paso <span id="bp-current-step">1</span> de 7</span>
+                </div>
+                <div class="wizard-progress-bar">
+                    <div class="wizard-progress-fill" id="bp-progress-fill" style="width: 14.28%"></div>
+                </div>
+                <div class="wizard-steps-indicator">
+                    <div class="wizard-step-dot active" data-step="1">
+                        <div class="wizard-step-number">1</div>
+                        <span class="wizard-step-label">Info General</span>
+                    </div>
+                    <div class="wizard-step-dot" data-step="2">
+                        <div class="wizard-step-number">2</div>
+                        <span class="wizard-step-label">Detección</span>
+                    </div>
+                    <div class="wizard-step-dot" data-step="3">
+                        <div class="wizard-step-number">3</div>
+                        <span class="wizard-step-label">Contención</span>
+                    </div>
+                    <div class="wizard-step-dot" data-step="4">
+                        <div class="wizard-step-number">4</div>
+                        <span class="wizard-step-label">Evaluación</span>
+                    </div>
+                    <div class="wizard-step-dot" data-step="5">
+                        <div class="wizard-step-number">5</div>
+                        <span class="wizard-step-label">Notificación</span>
+                    </div>
+                    <div class="wizard-step-dot" data-step="6">
+                        <div class="wizard-step-number">6</div>
+                        <span class="wizard-step-label">Resolución</span>
+                    </div>
+                    <div class="wizard-step-dot" data-step="7">
+                        <div class="wizard-step-number">7</div>
+                        <span class="wizard-step-label">Revisión</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step Error Message -->
+            <div class="wizard-step-error" id="bp-step-error">
+                <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <span id="bp-step-error-text">Por favor complete los campos requeridos antes de continuar.</span>
+            </div>
+
+            <!-- PASO 1: Información General -->
+            <div class="wizard-step-content active" data-step="1">
+                <div class="wizard-fieldset">
+                    <h3 class="wizard-fieldset-title">1. Información General del Protocolo</h3>
+                    <div class="compliance-form-row grid-cols-2">
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Nombre del Protocolo <span class="required">*</span></label>
+                            <input type="text" name="protocolName" required class="compliance-input" placeholder="Ej: Protocolo de Gestión de Incidentes de Seguridad">
+                        </div>
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Versión <span class="required">*</span></label>
+                            <input type="text" name="protocolVersion" required class="compliance-input" placeholder="Ej: 1.0">
+                        </div>
+                    </div>
+                    <div class="compliance-form-row grid-cols-2">
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Fecha de Aprobación <span class="required">*</span></label>
+                            <input type="date" name="approvalDate" required class="compliance-input">
+                        </div>
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Fecha de Próxima Revisión</label>
+                            <input type="date" name="nextReviewDate" class="compliance-input">
+                        </div>
+                    </div>
+                    <div class="compliance-form-row">
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Responsable del Protocolo <span class="required">*</span></label>
+                            <input type="text" name="protocolOwner" required class="compliance-input" placeholder="Ej: DPD / CISO / Jefe de Seguridad">
+                        </div>
+                    </div>
+                    <div class="compliance-form-row">
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Aprobado por</label>
+                            <input type="text" name="approvedBy" class="compliance-input" placeholder="Ej: Dirección General / Comité de Seguridad">
+                        </div>
+                    </div>
+                    <div class="compliance-form-row">
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Alcance <span class="required">*</span></label>
+                            <textarea name="scope" required rows="3" class="compliance-textarea" placeholder="Describe el alcance del protocolo: qué sistemas, procesos, datos y terceros cubre."></textarea>
+                        </div>
+                    </div>
+                    <div class="compliance-form-row">
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Definiciones y Referencias</label>
+                            <textarea name="definitions" rows="3" class="compliance-textarea" placeholder="Define términos clave: Incidente, Brecha, Dato sensible, APDP, etc. Referencias normativas: Ley 21.719 Art. 26, ISO 27001, etc."></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PASO 2: Detección e Identificación -->
+            <div class="wizard-step-content" data-step="2">
+                <div class="wizard-fieldset">
+                    <h3 class="wizard-fieldset-title">2. Detección e Identificación de Incidentes</h3>
+                    <div class="compliance-form-row">
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Canales de Detección <span class="required">*</span></label>
+                            <textarea name="detectionChannels" required rows="4" class="compliance-textarea" placeholder="Enumera los canales: Alertas SIEM/SOC, Reportes de usuarios, Auditorías, Proveedores/terceros, Monitoreo de logs, Alertas de DLP, etc."></textarea>
+                        </div>
+                    </div>
+                    <div class="compliance-form-row grid-cols-2">
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Tiempo Máximo de Detección</label>
+                            <input type="text" name="maxDetectionTime" class="compliance-input" placeholder="Ej: 4 horas, 24 horas">
+                        </div>
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Niveles de Severidad</label>
+                            <select name="severityLevels" multiple size="4" class="compliance-select">
+                                <option value="critical" selected>Crítica - Datos sensibles + escala masiva</option>
+                                <option value="high" selected>Alta - Datos sensibles afectados</option>
+                                <option value="medium" selected>Media - Datos personales básicos</option>
+                                <option value="low" selected>Baja - Sin datos personales</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="compliance-form-row">
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Clasificación de Tipos de Incidente <span class="required">*</span></label>
+                            <textarea name="incidentTypes" required rows="4" class="compliance-textarea" placeholder="Confidencialidad: Acceso no autorizado, Fuga de datos, Divulgación&#10;Integridad: Modificación no autorizada, Corrupción, Inyección&#10;Disponibilidad: Ransomware, Borrado, DoS, Fallo sin backup"></textarea>
+                        </div>
+                    </div>
+                    <div class="compliance-form-row">
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Procedimiento de Reporte Interno</label>
+                            <textarea name="internalReporting" rows="3" class="compliance-textarea" placeholder="Describe cómo reportan los empleados: canal (email, teléfono, formulario), información requerida, tiempo de respuesta esperado."></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PASO 3: Contención -->
+            <div class="wizard-step-content" data-step="3">
+                <div class="wizard-fieldset">
+                    <h3 class="wizard-fieldset-title">3. Contención Inmediata</h3>
+                    <div class="compliance-form-row grid-cols-2">
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Equipo de Respuesta (CSIRT) <span class="required">*</span></label>
+                            <textarea name="csirtTeam" required rows="3" class="compliance-textarea" placeholder="Lista roles y contactos: Coordinador, Analista forense, Comunicaciones, Legal/DPD, IT/Infraestructura, Dirección."></textarea>
+                        </div>
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Acciones de Contención Inmediata <span class="required">*</span></label>
+                            <textarea name="containmentActions" required rows="3" class="compliance-textarea" placeholder="Aislar sistemas afectados, Revocar credenciales comprometidas, Bloquear IPs maliciosas, Activar backups, Preservar evidencia, etc."></textarea>
+                        </div>
+                    </div>
+                    <div class="compliance-form-row">
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Preservación de Evidencia</label>
+                            <textarea name="evidencePreservation" rows="3" class="compliance-textarea" placeholder="Chain of custody, Copias forenses (bit-a-bit), Hash SHA-256, Logs inmutables, Screenshots, Metadatos."></textarea>
+                        </div>
+                    </div>
+                    <div class="compliance-form-row grid-cols-2">
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Tiempo Máximo Contención</label>
+                            <input type="text" name="maxContainmentTime" class="compliance-input" placeholder="Ej: 2 horas (crítica), 8 horas (alta)">
+                        </div>
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Escalamiento Automático</label>
+                            <textarea name="autoEscalation" rows="2" class="compliance-textarea" placeholder="Si no se contiene en X horas, escalar a: Dirección, APDP, Fuerzas de seguridad, Seguros cibernéticos."></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PASO 4: Evaluación de Riesgo -->
+            <div class="wizard-step-content" data-step="4">
+                <div class="wizard-fieldset">
+                    <h3 class="wizard-fieldset-title">4. Evaluación de Riesgo e Impacto</h3>
+                    <div class="compliance-form-row">
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Metodología de Evaluación <span class="required">*</span></label>
+                            <textarea name="assessmentMethodology" required rows="3" class="compliance-textarea" placeholder="Ej: Matriz de riesgo (Probabilidad x Impacto), NIST SP 800-30, ISO 27005. Criterios: Tipo de datos, Nº de afectados, Sensibilidad, Consecuencias legales/reputacionales."></textarea>
+                        </div>
+                    </div>
+                    <div class="compliance-form-row grid-cols-2">
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Criterios de Notificación a APDP <span class="required">*</span></label>
+                            <textarea name="apdpCriteria" required rows="3" class="compliance-textarea" placeholder="Art. 26.1: Notificar sin dilación indebida (máx. 72h) si hay riesgo para derechos de titulares. Criterios: Datos sensibles, Nº afectados > X, Niños, Riesgo alto."></textarea>
+                        </div>
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Criterios de Notificación a Titulares <span class="required">*</span></label>
+                            <textarea name="subjectCriteria" required rows="3" class="compliance-textarea" placeholder="Art. 26.4: Notificar a titulares si hay ALTO riesgo para sus derechos. Criterios: Robo identidad, Fraude financiero, Discriminación, Daño reputacional severo."></textarea>
+                        </div>
+                    </div>
+                    <div class="compliance-form-row">
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Evaluación de Consecuencias Probables</label>
+                            <textarea name="likelyConsequences" rows="3" class="compliance-textarea" placeholder="Art. 26.3: Descripción de consecuencias probables para titulares: usurpación identidad, fraude, daño reputacional, pérdida confidencialidad médica, etc."></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PASO 5: Notificaciones -->
+            <div class="wizard-step-content" data-step="5">
+                <div class="wizard-fieldset">
+                    <h3 class="wizard-fieldset-title">5. Notificaciones y Comunicaciones</h3>
+                    <div class="compliance-form-row grid-cols-2">
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Notificación a APDP (Art. 26.1) <span class="required">*</span></label>
+                            <textarea name="apdpNotification" required rows="4" class="compliance-textarea" placeholder="Contenido mínimo: Naturaleza brecha, Categorías datos, Nº aproximado titulares, Consecuencias probables, Medidas adoptadas, Contacto DPD. Plazo: 72h."></textarea>
+                        </div>
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Notificación a Titulares (Art. 26.4) <span class="required">*</span></label>
+                            <textarea name="subjectNotification" required rows="4" class="compliance-textarea" placeholder="Contenido: Naturaleza brecha en lenguaje claro, Contacto DPD, Consecuencias probables, Medidas adoptadas, Recomendaciones (cambiar contraseñas, vigilar extractos, etc.). Canal: Email, SMS, Carta, Web."></textarea>
+                        </div>
+                    </div>
+                    <div class="compliance-form-row grid-cols-2">
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Notificación a Terceros/Encargados</label>
+                            <textarea name="thirdPartyNotification" rows="3" class="compliance-textarea" placeholder="Proveedores cloud, Procesadores de pagos, Socios comerciales, Autoridades sectoriales, Seguros cibernéticos."></textarea>
+                        </div>
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Comunicación Externa / Prensa</label>
+                            <textarea name="externalCommunication" rows="3" class="compliance-textarea" placeholder="Portavoz designado, Key messages, FAQ preparadas, Monitoreo redes sociales, Comunicado de prensa (si procede)."></textarea>
+                        </div>
+                    </div>
+                    <div class="compliance-form-row">
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Plantillas de Comunicación</label>
+                            <textarea name="communicationTemplates" rows="3" class="compliance-textarea" placeholder="Adjuntar o referenciar plantillas pre-aprobadas: Email APDP, Email titulares, Comunicado web, Carta formal, FAQ."></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PASO 6: Resolución y Recuperación -->
+            <div class="wizard-step-content" data-step="6">
+                <div class="wizard-fieldset">
+                    <h3 class="wizard-fieldset-title">6. Resolución, Recuperación y Cierre</h3>
+                    <div class="compliance-form-row grid-cols-2">
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Plan de Recuperación <span class="required">*</span></label>
+                            <textarea name="recoveryPlan" required rows="4" class="compliance-textarea" placeholder="Restaurar desde backups verificados, Verificar integridad sistemas, Aplicar parches/actualizaciones, Cambiar credenciales, Restaurar servicios por prioridad, Validar con pruebas."></textarea>
+                        </div>
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Criterios de Cierre del Incidente</label>
+                            <textarea name="closureCriteria" rows="4" class="compliance-textarea" placeholder="Sistemas restaurados y validados, Vulnerabilidad corregida, Notificaciones completadas, Evidencia preservada, Informe final aprobado, Lecciones aprendidas documentadas."></textarea>
+                        </div>
+                    </div>
+                    <div class="compliance-form-row grid-cols-2">
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Medidas Correctivas y Preventivas</label>
+                            <textarea name="correctivePreventive" rows="3" class="compliance-textarea" placeholder="Corregir causa raíz, Implementar controles adicionales, Actualizar políticas, Capacitación reforzada, Revisiones de arquitectura, Pen-testing, Monitoring mejorado."></textarea>
+                        </div>
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Tiempo Objetivo de Recuperación (RTO/RPO)</label>
+                            <textarea name="rtoRpo" rows="3" class="compliance-textarea" placeholder="RTO (Recovery Time Objective): Ej: 4h crítico, 24h alto, 72h medio&#10;RPO (Recovery Point Objective): Ej: 1h crítico, 24h alto, 48h medio"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PASO 7: Revisión Post-Incidente -->
+            <div class="wizard-step-content" data-step="7">
+                <div class="wizard-fieldset">
+                    <h3 class="wizard-fieldset-title">7. Revisión Post-Incidente y Mejora Continua</h3>
+                    <div class="compliance-form-row grid-cols-2">
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Informe Final (Post-Mortem) <span class="required">*</span></label>
+                            <textarea name="postmortemReport" required rows="4" class="compliance-textarea" placeholder="Cronología detallada, Causa raíz (5 porqués), Impacto real vs estimado, Eficacia de respuesta, Gaps identificados, Acciones de mejora con responsables y plazos."></textarea>
+                        </div>
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Lecciones Aprendidas</label>
+                            <textarea name="lessonsLearned" rows="4" class="compliance-textarea" placeholder="Qué funcionó bien, Qué falló, Qué cambiar en el protocolo, Qué controles añadir, Qué capacitación reforzar, Actualizaciones a proveedores/terceros."></textarea>
+                        </div>
+                    </div>
+                    <div class="compliance-form-row grid-cols-2">
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Actualización del Protocolo</label>
+                            <textarea name="protocolUpdate" rows="3" class="compliance-textarea" placeholder="Versión nueva, Fecha, Cambios realizados, Aprobado por, Comunicado a: Equipo CSIRT, DPD, Dirección, Terceros relevantes."></textarea>
+                        </div>
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Simulacros y Pruebas</label>
+                            <textarea name="drillsTesting" rows="3" class="compliance-textarea" placeholder="Frecuencia: Ej: Trimestral mesa de trabajo, Anual simulación real. Escenarios: Ransomware, Fuga datos, Insider threat, Terceros. Métricas: MTTR, MTTC, Cobertura notificaciones."></textarea>
+                        </div>
+                    </div>
+                    <div class="compliance-form-row">
+                        <div class="compliance-form-cell">
+                            <label class="compliance-form-label">Anexos y Referencias</label>
+                            <textarea name="annexes" rows="2" class="compliance-textarea" placeholder="Matriz de contactos CSIRT, Diagramas de flujo, Plantillas notificaciones, Inventario activos críticos, Contratos encargados, Pólizas seguro cyber."></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation -->
+            <div class="wizard-navigation flex-shrink-0">
+                <button type="button" id="bp-btn-prev" class="wizard-btn-prev" onclick="bpPrevStep()" disabled>
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                    Anterior
+                </button>
+                <div class="flex items-center gap-3">
+                    <button type="button" id="bp-btn-next" class="wizard-btn-next" onclick="bpNextStep()">
+                        Siguiente
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                    </button>
+                    <button type="submit" id="bp-btn-submit" class="wizard-btn-submit visible" style="display: none;">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                        Guardar Protocolo
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ═══ MODAL REGISTRO APDP ═══ -->
+<div id="apdp-modal" class="compliance-workspace hidden fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
+    <div class="bg-bg-panel border border-border-theme rounded-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto scrollbar-custom shadow-2xl">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-border-theme flex-shrink-0">
+            <div>
+                <h3 class="text-[15px] font-semibold text-white">Registro en APDP</h3>
+                <p class="text-[11px] text-text-muted mt-0.5">Registra la inscripción de la empresa en la Agencia de Protección de Datos Personales (Art. 31 Ley 21.719)</p>
+            </div>
+            <button onclick="closeAPDPModal()" class="text-text-muted hover:text-white transition-colors p-1.5 rounded-lg hover:bg-bg-elevated">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        
+        <form id="apdp-form" class="p-6 space-y-6">
+            <div class="compliance-form-row grid-cols-2">
+                <div class="compliance-form-cell">
+                    <label class="compliance-form-label">Empresa registrada <span class="required">*</span></label>
+                    <input type="text" name="companyName" required class="compliance-input" placeholder="Nombre legal de la empresa" value="<?= h($config['companyName'] ?? '') ?>">
+                </div>
+                <div class="compliance-form-cell">
+                    <label class="compliance-form-label">RUT Empresa <span class="required">*</span></label>
+                    <input type="text" name="companyRut" required class="compliance-input" placeholder="76.123.456-7" value="<?= h($config['companyRut'] ?? '') ?>">
+                </div>
+            </div>
+            <div class="compliance-form-row grid-cols-2">
+                <div class="compliance-form-cell">
+                    <label class="compliance-form-label">Número de Registro APDP <span class="required">*</span></label>
+                    <input type="text" name="apdpRegistrationNumber" required class="compliance-input" placeholder="Ej: APDP-2024-001234" value="<?= h($config['apdpRegistrationNumber'] ?? '') ?>">
+                </div>
+                <div class="compliance-form-cell">
+                    <label class="compliance-form-label">Fecha de Registro <span class="required">*</span></label>
+                    <input type="date" name="apdpRegistrationDate" required class="compliance-input" value="<?= h($config['apdpRegistrationDate'] ?? '') ?>">
+                </div>
+            </div>
+            <div class="compliance-form-row">
+                <div class="compliance-form-cell">
+                    <label class="compliance-form-label">Modelo de Prevención Certificado</label>
+                    <select name="preventionModel" class="compliance-select">
+                        <option value="">No certificado</option>
+                        <option value="basico" <?= ($config['preventionModel'] ?? '') === 'basico' ? 'selected' : '' ?>>Modelo Básico</option>
+                        <option value="intermedio" <?= ($config['preventionModel'] ?? '') === 'intermedio' ? 'selected' : '' ?>>Modelo Intermedio</option>
+                        <option value="avanzado" <?= ($config['preventionModel'] ?? '') === 'avanzado' ? 'selected' : '' ?>>Modelo Avanzado</option>
+                        <option value="certificado_externo" <?= ($config['preventionModel'] ?? '') === 'certificado_externo' ? 'selected' : '' ?>>Certificado por entidad externa</option>
+                    </select>
+                    <span class="compliance-hint">Si la empresa tiene un modelo de prevención certificado según Art. 31.2</span>
+                </div>
+            </div>
+            <div class="compliance-form-row">
+                <div class="compliance-form-cell">
+                    <label class="compliance-form-label">Fecha de Certificación del Modelo</label>
+                    <input type="date" name="preventionModelDate" class="compliance-input" value="<?= h($config['preventionModelDate'] ?? '') ?>">
+                </div>
+            </div>
+            <div class="compliance-form-row">
+                <div class="compliance-form-cell">
+                    <label class="compliance-form-label">Entidad Certificadora (si aplica)</label>
+                    <input type="text" name="certifyingEntity" class="compliance-input" placeholder="Nombre de la entidad que certificó el modelo" value="<?= h($config['certifyingEntity'] ?? '') ?>">
+                </div>
+            </div>
+            <div class="compliance-form-row">
+                <div class="compliance-form-cell">
+                    <label class="compliance-form-label">Observaciones</label>
+                    <textarea name="apdpObservations" rows="3" class="compliance-textarea" placeholder="Detalles adicionales sobre el registro, vigencia, renovaciones..."><?= h($config['apdpObservations'] ?? '') ?></textarea>
+                </div>
+            </div>
+            
+            <div class="flex justify-end gap-3 pt-4 border-t border-border-subtle">
+                <button type="button" onclick="closeAPDPModal()" class="px-4 py-2 rounded-lg text-[11px] font-medium bg-bg-elevated text-text-body border border-border-theme transition-all">Cancelar</button>
+                <button type="submit" class="px-4 py-2 rounded-lg text-[11px] font-medium bg-gradient-to-r from-blue-600 to-indigo-600 text-white transition-all">
+                    <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                    Guardar Registro APDP
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ═══ MODAL GENERICO CHECKLIST ═══ -->
+<div id="compliance-wizard-modal" class="compliance-workspace cw-modal-overlay hidden">
+    <div class="cw-modal">
+        <div class="cw-modal-header">
+            <div>
+                <div class="cw-modal-title" id="cw-title">Documentar Control</div>
+                <div class="cw-modal-subtitle" id="cw-subtitle"></div>
+            </div>
+            <button type="button" onclick="closeComplianceWizard()" class="text-text-muted hover:text-white transition-colors p-1.5 rounded-lg hover:bg-bg-elevated">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <form id="compliance-wizard-form" class="cw-modal-body" novalidate>
+            <div class="cw-progress">
+                <div class="cw-progress-header">
+                    <span class="cw-progress-title">Progreso</span>
+                    <span class="cw-progress-step">Paso <span id="cw-current-step">1</span> de <span id="cw-total-steps">1</span></span>
+                </div>
+                <div class="cw-progress-bar">
+                    <div class="cw-progress-fill" id="cw-progress-fill" style="width: 0%"></div>
+                </div>
+                <div class="cw-steps" id="cw-steps"></div>
+            </div>
+            <div class="cw-error" id="cw-error">
+                <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <span id="cw-error-text"></span>
+            </div>
+            <div id="cw-content"></div>
+            <div class="cw-nav">
+                <button type="button" id="cw-btn-prev" class="cw-btn cw-btn-prev" onclick="cwPrevStep()" disabled>
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                    Anterior
+                </button>
+                <div class="flex items-center gap-3">
+                    <button type="button" id="cw-btn-next" class="cw-btn cw-btn-next" onclick="cwNextStep()">
+                        Siguiente
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                    </button>
+                    <button type="button" id="cw-btn-submit" class="cw-btn cw-btn-submit hidden" onclick="submitComplianceWizard()">Guardar</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ═══ MODAL EDICIÓN GENÉRICA ═══ -->
+<div id="generic-edit-modal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
+    <div class="bg-bg-panel border border-border-theme rounded-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto scrollbar-custom shadow-2xl">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-border-theme">
+            <div>
+                <h3 class="text-[15px] font-semibold text-white">Editar registro</h3>
+                <p class="text-[11px] text-text-subtle">Edición rápida de los campos del registro</p>
+            </div>
+            <button type="button" onclick="document.getElementById('generic-edit-modal').classList.add('hidden')" class="text-text-muted hover:text-white transition-colors p-1.5 rounded-lg hover:bg-bg-elevated">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <form id="generic-edit-form" class="p-6 space-y-4">
+            <input type="hidden" id="generic-edit-collection">
+            <input type="hidden" id="generic-edit-id">
+            <div id="generic-edit-fields" class="space-y-3"></div>
+            <div id="generic-edit-error" class="hidden rounded-lg bg-red-500/10 border border-red-500/30 p-3 text-[11px] text-red-400"></div>
+            <div class="flex justify-end gap-3 pt-4 border-t border-border-subtle">
+                <button type="button" onclick="document.getElementById('generic-edit-modal').classList.add('hidden')" class="px-4 py-2 rounded-lg text-[11px] font-medium bg-bg-elevated text-text-body border border-border-theme transition-all">Cancelar</button>
+                <button type="submit" class="px-4 py-2 rounded-lg text-[11px] font-medium bg-gradient-to-r from-cyan-600 to-blue-600 text-white transition-all">Guardar cambios</button>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -5788,11 +6345,8 @@ async function generateCompliancePDF(resource) {
         btn.disabled = true;
         btn.innerHTML = '<svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Generando...';
         
-        const response = await fetch(`/api/compliance/${resource}/pdf?token=${encodeURIComponent(token)}`, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json'
-            }
+        const response = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/compliance/' + resource + '/pdf'), {
+            method: 'GET'
         });
         
         const data = await response.json();
@@ -6065,12 +6619,895 @@ document.getElementById('assign-modal').addEventListener('click', function (e) {
         }
     });
 
+    wizardForm.addEventListener('submit', function(e) {
+        if (!validateStep(currentStep)) {
+            e.preventDefault();
+            alert('Por favor completa los campos requeridos antes de continuar.');
+        }
+    });
+
     // Initialize wizard
     updateWizard();
 })();
-</script>
 
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+// ═══ BREACH PROTOCOL MODAL WIZARD ═══
+(function() {
+    const form = document.getElementById('breach-protocol-form');
+    if (!form) return;
+
+    let bpCurrentStep = 1;
+    const bpTotalSteps = 7;
+
+    const bpProgressFill = document.getElementById('bp-progress-fill');
+    const bpCurrentStepEl = document.getElementById('bp-current-step');
+    const bpStepError = document.getElementById('bp-step-error');
+    const bpStepErrorText = document.getElementById('bp-step-error-text');
+    const bpBtnPrev = document.getElementById('bp-btn-prev');
+    const bpBtnNext = document.getElementById('bp-btn-next');
+    const bpBtnSubmit = document.getElementById('bp-btn-submit');
+
+    // Step validation rules
+    const bpStepValidation = {
+        1: function() {
+            const name = form.querySelector('input[name="protocolName"]').value.trim();
+            const version = form.querySelector('input[name="protocolVersion"]').value.trim();
+            const approvalDate = form.querySelector('input[name="approvalDate"]').value;
+            const owner = form.querySelector('input[name="protocolOwner"]').value.trim();
+            const scope = form.querySelector('textarea[name="scope"]').value.trim();
+            if (!name) return 'Por favor ingrese el nombre del protocolo.';
+            if (!version) return 'Por favor ingrese la versión.';
+            if (!approvalDate) return 'Por favor ingrese la fecha de aprobación.';
+            if (!owner) return 'Por favor ingrese el responsable del protocolo.';
+            if (!scope) return 'Por favor describa el alcance del protocolo.';
+            return null;
+        },
+        2: function() {
+            const channels = form.querySelector('textarea[name="detectionChannels"]').value.trim();
+            const types = form.querySelector('textarea[name="incidentTypes"]').value.trim();
+            if (!channels) return 'Por favor describa los canales de detección.';
+            if (!types) return 'Por favor clasifique los tipos de incidente.';
+            return null;
+        },
+        3: function() {
+            const team = form.querySelector('textarea[name="csirtTeam"]').value.trim();
+            const actions = form.querySelector('textarea[name="containmentActions"]').value.trim();
+            if (!team) return 'Por favor defina el equipo de respuesta (CSIRT).';
+            if (!actions) return 'Por favor describa las acciones de contención.';
+            return null;
+        },
+        4: function() {
+            const methodology = form.querySelector('textarea[name="assessmentMethodology"]').value.trim();
+            const apdpCriteria = form.querySelector('textarea[name="apdpCriteria"]').value.trim();
+            const subjectCriteria = form.querySelector('textarea[name="subjectCriteria"]').value.trim();
+            if (!methodology) return 'Por favor describa la metodología de evaluación.';
+            if (!apdpCriteria) return 'Por favor defina criterios de notificación a APDP.';
+            if (!subjectCriteria) return 'Por favor defina criterios de notificación a titulares.';
+            return null;
+        },
+        5: function() {
+            const apdpNotif = form.querySelector('textarea[name="apdpNotification"]').value.trim();
+            const subjectNotif = form.querySelector('textarea[name="subjectNotification"]').value.trim();
+            if (!apdpNotif) return 'Por favor describa el contenido de notificación a APDP.';
+            if (!subjectNotif) return 'Por favor describa el contenido de notificación a titulares.';
+            return null;
+        },
+        6: function() {
+            const recovery = form.querySelector('textarea[name="recoveryPlan"]').value.trim();
+            const closure = form.querySelector('textarea[name="closureCriteria"]').value.trim();
+            if (!recovery) return 'Por favor describa el plan de recuperación.';
+            if (!closure) return 'Por favor defina criterios de cierre.';
+            return null;
+        },
+        7: function() {
+            const postmortem = form.querySelector('textarea[name="postmortemReport"]').value.trim();
+            if (!postmortem) return 'Por favor describa el contenido del informe post-mortem.';
+            return null;
+        },
+    };
+
+    function bpUpdateWizard() {
+        // Update progress
+        const pct = (bpCurrentStep / bpTotalSteps) * 100;
+        bpProgressFill.style.width = pct + '%';
+        bpCurrentStepEl.textContent = bpCurrentStep;
+
+        // Update step indicators
+        document.querySelectorAll('#breach-protocol-modal .wizard-step-dot').forEach((dot, i) => {
+            const step = i + 1;
+            dot.classList.remove('active', 'completed');
+            if (step < bpCurrentStep) dot.classList.add('completed');
+            else if (step === bpCurrentStep) dot.classList.add('active');
+        });
+
+        // Update step titles
+        document.querySelectorAll('#breach-protocol-modal .wizard-step-title').forEach((title, i) => {
+            const step = i + 1;
+            title.classList.remove('active', 'completed');
+            if (step < bpCurrentStep) title.classList.add('completed');
+            else if (step === bpCurrentStep) title.classList.add('active');
+        });
+
+        // Show/hide step content
+        document.querySelectorAll('#breach-protocol-modal .wizard-step-content').forEach(content => {
+            const step = parseInt(content.dataset.step);
+            if (step === bpCurrentStep) {
+                content.classList.add('active');
+            } else {
+                content.classList.remove('active');
+            }
+        });
+
+        // Update buttons
+        bpBtnPrev.disabled = bpCurrentStep === 1;
+        if (bpCurrentStep === bpTotalSteps) {
+            bpBtnNext.classList.add('hidden');
+            bpBtnSubmit.classList.remove('hidden');
+        } else {
+            bpBtnNext.classList.remove('hidden');
+            bpBtnSubmit.classList.add('hidden');
+        }
+
+        // Hide error
+        bpStepError.classList.remove('show');
+    }
+
+    function bpNextStep() {
+        const error = bpStepValidation[bpCurrentStep]();
+        if (error) {
+            bpStepErrorText.textContent = error;
+            bpStepError.classList.add('show');
+            return;
+        }
+        if (bpCurrentStep < bpTotalSteps) {
+            bpCurrentStep++;
+            bpUpdateWizard();
+        }
+    }
+
+    function bpPrevStep() {
+        if (bpCurrentStep > 1) {
+            bpCurrentStep--;
+            bpUpdateWizard();
+        }
+    }
+
+    // Expose navigation handlers for inline onclick attributes
+    window.bpNextStep = bpNextStep;
+    window.bpPrevStep = bpPrevStep;
+
+    // Form submission
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const error = bpStepValidation[bpCurrentStep]();
+        if (error) {
+            bpStepErrorText.textContent = error;
+            bpStepError.classList.add('show');
+            return;
+        }
+
+        const formData = new FormData(form);
+        const payload = {
+            token: '<?= h($token) ?>',
+            protocolName: formData.get('protocolName'),
+            protocolVersion: formData.get('protocolVersion'),
+            approvalDate: formData.get('approvalDate'),
+            nextReviewDate: formData.get('nextReviewDate'),
+            protocolOwner: formData.get('protocolOwner'),
+            approvedBy: formData.get('approvedBy'),
+            scope: formData.get('scope'),
+            definitions: formData.get('definitions'),
+            detectionChannels: formData.get('detectionChannels'),
+            maxDetectionTime: formData.get('maxDetectionTime'),
+            severityLevels: formData.getAll('severityLevels'),
+            incidentTypes: formData.get('incidentTypes'),
+            internalReporting: formData.get('internalReporting'),
+            csirtTeam: formData.get('csirtTeam'),
+            containmentActions: formData.get('containmentActions'),
+            evidencePreservation: formData.get('evidencePreservation'),
+            maxContainmentTime: formData.get('maxContainmentTime'),
+            autoEscalation: formData.get('autoEscalation'),
+            assessmentMethodology: formData.get('assessmentMethodology'),
+            apdpCriteria: formData.get('apdpCriteria'),
+            subjectCriteria: formData.get('subjectCriteria'),
+            likelyConsequences: formData.get('likelyConsequences'),
+            apdpNotification: formData.get('apdpNotification'),
+            subjectNotification: formData.get('subjectNotification'),
+            thirdPartyNotification: formData.get('thirdPartyNotification'),
+            externalCommunication: formData.get('externalCommunication'),
+            communicationTemplates: formData.get('communicationTemplates'),
+            recoveryPlan: formData.get('recoveryPlan'),
+            closureCriteria: formData.get('closureCriteria'),
+            correctivePreventive: formData.get('correctivePreventive'),
+            rtoRpo: formData.get('rtoRpo'),
+            postmortemReport: formData.get('postmortemReport'),
+            lessonsLearned: formData.get('lessonsLearned'),
+            protocolUpdate: formData.get('protocolUpdate'),
+            drillsTesting: formData.get('drillsTesting'),
+            annexes: formData.get('annexes'),
+        };
+
+        bpBtnSubmit.disabled = true;
+        bpBtnSubmit.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Guardando...';
+
+        try {
+            const res = await fetch('/api-proxy.php?path=/api/invisia/compliance/breach-protocol', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (data.success) {
+                closeBreachProtocolModal();
+                location.reload();
+            } else {
+                bpStepErrorText.textContent = data.error || 'Error al guardar el protocolo.';
+                bpStepError.classList.add('show');
+            }
+        } catch (e) {
+            bpStepErrorText.textContent = 'Error de conexión: ' + e.message;
+            bpStepError.classList.add('show');
+        } finally {
+            bpBtnSubmit.disabled = false;
+            bpBtnSubmit.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg> Guardar Protocolo';
+        }
+    });
+
+    // Expose helpers to reset/load the wizard from outside
+    window.bpUpdateWizard = bpUpdateWizard;
+    window.bpResetWizard = function() {
+        bpCurrentStep = 1;
+        bpUpdateWizard();
+    };
+    window.bpLoadData = function(data) {
+        const form = document.getElementById('breach-protocol-form');
+        if (!form || !data) return;
+        Object.keys(data).forEach(key => {
+            const field = form.querySelector('[name="' + key + '"]');
+            if (!field) return;
+            if (field.type === 'checkbox') {
+                field.checked = data[key] === '1' || data[key] === true || data[key] === 'on';
+            } else if (field.tagName === 'SELECT' && field.multiple) {
+                const values = Array.isArray(data[key]) ? data[key] : (data[key] ? [data[key]] : []);
+                Array.from(field.options).forEach(opt => {
+                    opt.selected = values.includes(opt.value);
+                });
+            } else if (field.tagName === 'SELECT' && key === 'autoEscalation') {
+                field.value = data[key] === 'yes' || data[key] === true || data[key] === '1' ? 'yes' : 'no';
+            } else {
+                field.value = data[key] || '';
+            }
+        });
+    };
+
+    // Initialize
+    bpUpdateWizard();
+})();
+
+async function openBreachProtocolModal() {
+    const modal = document.getElementById('breach-protocol-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        try {
+            const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/invisia/compliance/breach-protocol'));
+            const data = await res.json();
+            if (window.bpLoadData && data && !data.error) window.bpLoadData(data);
+        } catch (e) {}
+        if (window.bpResetWizard) window.bpResetWizard();
+    }
+}
+
+function closeBreachProtocolModal() {
+    const modal = document.getElementById('breach-protocol-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+}
+
+document.getElementById('breach-protocol-modal')?.addEventListener('click', function(e) {
+    if (e.target.id === 'breach-protocol-modal') closeBreachProtocolModal();
+});
+
+// ═══ APDP MODAL FUNCTIONS ═══
+function openAPDPModal() {
+    const modal = document.getElementById('apdp-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+}
+
+function closeAPDPModal() {
+    const modal = document.getElementById('apdp-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+}
+
+document.getElementById('apdp-modal')?.addEventListener('click', function(e) {
+    if (e.target.id === 'apdp-modal') closeAPDPModal();
+});
+
+// APDP Form submission
+document.getElementById('apdp-form')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    const payload = {
+        token: '<?= h($token) ?>',
+        companyName: formData.get('companyName'),
+        companyRut: formData.get('companyRut'),
+        apdpRegistrationNumber: formData.get('apdpRegistrationNumber'),
+        apdpRegistrationDate: formData.get('apdpRegistrationDate'),
+        preventionModel: formData.get('preventionModel'),
+        preventionModelDate: formData.get('preventionModelDate'),
+        certifyingEntity: formData.get('certifyingEntity'),
+        apdpObservations: formData.get('apdpObservations'),
+        apdpRegistered: '1',
+    };
+
+    const submitBtn = this.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Guardando...';
+
+    try {
+        const res = await fetch('/api-proxy.php?path=/api/invisia/compliance/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+            closeAPDPModal();
+            location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'no se pudo guardar'));
+        }
+    } catch (e) {
+        alert('Error de conexión: ' + e.message);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg> Guardar Registro APDP';
+    }
+});
+
+// ═══ GENERIC COMPLIANCE WIZARD ═══
+const COMPLIANCE_WIZARDS = {
+    incident_response: {
+        title: 'Plan de Respuesta a Incidentes',
+        subtitle: 'Documenta el plan de respuesta a incidentes de seguridad (Art. 25, 26 Ley 21.719)',
+        endpoint: '/api/invisia/compliance/incident-response',
+        steps: [
+            { title: 'Información General', fields: [
+                { name: 'planName', label: 'Nombre del Plan', type: 'text', required: true, placeholder: 'Ej: Plan de Respuesta a Incidentes de Seguridad' },
+                { name: 'planVersion', label: 'Versión', type: 'text', required: true, placeholder: 'Ej: 1.0' },
+                { name: 'approvalDate', label: 'Fecha de Aprobación', type: 'date', required: true },
+                { name: 'nextReviewDate', label: 'Fecha de Próxima Revisión', type: 'date' },
+                { name: 'planOwner', label: 'Responsable del Plan', type: 'text', required: true, placeholder: 'Ej: CISO / DPD / Jefe de Seguridad' },
+                { name: 'scope', label: 'Alcance', type: 'textarea', required: true, placeholder: 'Describe el alcance: sistemas, procesos, datos, terceros cubiertos.' },
+                { name: 'references', label: 'Referencias Normativas', type: 'textarea', placeholder: 'Ley 21.719 Art. 25, 26; ISO 27001; NIST SP 800-61; etc.' },
+            ]},
+            { title: 'Equipo CSIRT', fields: [
+                { name: 'csirtRoles', label: 'Roles y Responsables', type: 'textarea', required: true, placeholder: 'Ej:\nCoordinador: Juan Pérez (CISO) - juan@empresa.cl\nAnalista Forense: María López - maria@empresa.cl' },
+                { name: 'csirtPhone24', label: 'Contacto 24/7 (Teléfono)', type: 'tel', placeholder: '+56 9 1234 5678' },
+                { name: 'csirtEmail24', label: 'Contacto 24/7 (Email)', type: 'email', placeholder: 'csirt@empresa.cl' },
+                { name: 'escalationToManagement', label: 'Escalamiento a Dirección', type: 'textarea', placeholder: 'Criterios y procedimiento para escalar a dirección ejecutiva.' },
+            ]},
+            { title: 'Procedimientos', fields: [
+                { name: 'detectionChannels', label: 'Canales de Detección', type: 'textarea', required: true, placeholder: 'SIEM/SOC, Reportes usuarios, Auditorías, Proveedores, DLP, Logs, etc.' },
+                { name: 'maxDetectionTime', label: 'Tiempo Máximo Detección', type: 'text', placeholder: 'Ej: 4 horas' },
+                { name: 'severityClassification', label: 'Clasificación de Severidad', type: 'select', multiple: true, options: [
+                    { value: 'critical', label: 'Crítica' },
+                    { value: 'high', label: 'Alta' },
+                    { value: 'medium', label: 'Media' },
+                    { value: 'low', label: 'Baja' },
+                ]},
+                { name: 'containmentActions', label: 'Acciones de Contención Inmediata', type: 'textarea', required: true, placeholder: 'Aislar sistemas, revocar credenciales, bloquear IPs, activar backups, preservar evidencia.' },
+                { name: 'evidencePreservation', label: 'Preservación de Evidencia', type: 'textarea', placeholder: 'Chain of custody, copias forenses, hash SHA-256, logs inmutables.' },
+            ]},
+            { title: 'Comunicación', fields: [
+                { name: 'apdpNotification', label: 'Notificación a APDP (Art. 26.1)', type: 'textarea', required: true, placeholder: 'Contenido: Naturaleza, categorías datos, nº afectados, consecuencias, medidas, contacto DPD. Plazo: 72h.' },
+                { name: 'subjectNotification', label: 'Notificación a Titulares (Art. 26.4)', type: 'textarea', required: true, placeholder: 'Lenguaje claro, contacto DPD, consecuencias, medidas, recomendaciones. Canal: email, SMS, web.' },
+                { name: 'thirdPartyNotification', label: 'Notificación a Terceros/Encargados', type: 'textarea', placeholder: 'Proveedores cloud, procesadores pagos, autoridades sectoriales, seguros cyber.' },
+                { name: 'externalCommunication', label: 'Comunicación Externa / Prensa', type: 'textarea', placeholder: 'Portavoz, key messages, FAQ, monitoreo redes, comunicado prensa.' },
+            ]},
+            { title: 'Recuperación', fields: [
+                { name: 'recoveryPlan', label: 'Plan de Recuperación', type: 'textarea', required: true, placeholder: 'Restaurar backups, verificar integridad, aplicar parches, cambiar credenciales, validar con pruebas.' },
+                { name: 'closureCriteria', label: 'Criterios de Cierre', type: 'textarea', placeholder: 'Sistemas restaurados, vulnerabilidad corregida, notificaciones completadas, evidencia preservada, informe final aprobado.' },
+                { name: 'rtoRpo', label: 'RTO / RPO', type: 'textarea', placeholder: 'RTO: 4h crítico, 24h alto, 72h medio\nRPO: 1h crítico, 24h alto, 48h medio' },
+                { name: 'correctivePreventive', label: 'Medidas Correctivas/Preventivas', type: 'textarea', placeholder: 'Corregir causa raíz, controles adicionales, actualizar políticas, capacitación, pen-testing.' },
+            ]},
+            { title: 'Mejora Continua', fields: [
+                { name: 'postmortemReport', label: 'Informe Post-Mortem', type: 'textarea', required: true, placeholder: 'Cronología, causa raíz (5 porqués), impacto real vs estimado, eficacia respuesta, gaps, acciones mejora con responsables y plazos.' },
+                { name: 'lessonsLearned', label: 'Lecciones Aprendidas', type: 'textarea', placeholder: 'Qué funcionó, qué falló, qué cambiar en protocolo, qué controles añadir, qué capacitación reforzar.' },
+                { name: 'planUpdate', label: 'Actualización del Plan', type: 'textarea', placeholder: 'Nueva versión, fecha, cambios, aprobado por, comunicado a CSIRT, DPD, Dirección, terceros.' },
+                { name: 'drillsTesting', label: 'Simulacros y Pruebas', type: 'textarea', placeholder: 'Frecuencia: trimestral mesa, anual simulación real. Escenarios: ransomware, fuga datos, insider, terceros.' },
+                { name: 'annexes', label: 'Anexos', type: 'textarea', placeholder: 'Matriz contactos CSIRT, diagramas flujo, plantillas notificaciones, inventario activos críticos, contratos, pólizas.' },
+            ]},
+        ],
+    },
+    dpd: {
+        title: 'DPD Designado',
+        subtitle: 'Registra al Delegado de Protección de Datos y su publicación (Art. 28 Ley 21.719)',
+        steps: [
+            { title: 'Delegado de Protección', fields: [
+                { name: 'dpdName', label: 'Nombre DPD', type: 'text', required: true, placeholder: 'Nombre completo del DPD' },
+                { name: 'dpdRut', label: 'RUT DPD', type: 'text', placeholder: '12.345.678-9' },
+                { name: 'dpdEmail', label: 'Email DPD', type: 'email', required: true, placeholder: 'dpd@empresa.cl' },
+                { name: 'dpdPhone', label: 'Teléfono DPD', type: 'tel', placeholder: '+56 9 1234 5678' },
+                { name: 'dpdTitle', label: 'Cargo', type: 'text', placeholder: 'Ej: DPD / CISO / Legal' },
+                { name: 'dpdAddress', label: 'Dirección publicada', type: 'text', placeholder: 'Dirección física publicada' },
+                { name: 'dpdPublicUrl', label: 'URL publicación DPD', type: 'url', placeholder: 'https://empresa.cl/dpd' },
+            ]},
+        ],
+    },
+    privacy: {
+        title: 'Política de Privacidad',
+        subtitle: 'Documenta las políticas publicadas para los titulares',
+        steps: [
+            { title: 'Políticas', fields: [
+                { name: 'privacyPolicyUrl', label: 'URL Política de Privacidad', type: 'url', required: true, placeholder: 'https://empresa.cl/privacidad' },
+                { name: 'cookiesPolicyUrl', label: 'URL Política de Cookies', type: 'url', placeholder: 'https://empresa.cl/cookies' },
+                { name: 'dataRetentionPolicy', label: 'Política de Retención de Datos', type: 'textarea', placeholder: 'Períodos de conservación por categoría de datos.' },
+                { name: 'privacyPolicyContent', label: 'Resumen del Contenido', type: 'textarea', placeholder: 'Resumen de los puntos principales de la política.' },
+            ]},
+        ],
+    },
+    consents: {
+        title: 'Consentimientos',
+        subtitle: 'Registra el consentimiento representativo o la base de licitud del tratamiento',
+        steps: [
+            { title: 'Consentimiento', fields: [
+                { name: 'consentTitle', label: 'Título', type: 'text', required: true, placeholder: 'Ej: Consentimiento envío de newsletter' },
+                { name: 'consentPurpose', label: 'Finalidad', type: 'textarea', required: true, placeholder: 'Finalidad específica del tratamiento.' },
+                { name: 'consentLegalBasis', label: 'Base legal', type: 'select', required: true, options: [
+                    { value: 'consentimiento', label: 'Consentimiento' },
+                    { value: 'interes legitimo', label: 'Interés legítimo' },
+                    { value: 'contrato', label: 'Ejecución de contrato' },
+                    { value: 'obligacion legal', label: 'Obligación legal' },
+                    { value: 'vital', label: 'Interés vital' },
+                    { value: 'publico', label: 'Interés público' },
+                ]},
+                { name: 'consentDescription', label: 'Descripción adicional', type: 'textarea', placeholder: 'Detalle de cómo se obtiene y gestiona el consentimiento.' },
+            ]},
+        ],
+    },
+    inventory: {
+        title: 'Inventario de Datos',
+        subtitle: 'Registra el primer activo o RAT para sustentar el inventario (Art. 15 Ley 21.719)',
+        steps: [
+            { title: 'Activo de Tratamiento', fields: [
+                { name: 'inventoryName', label: 'Nombre del activo / RAT', type: 'text', required: true, placeholder: 'Ej: Base de datos clientes CRM' },
+                { name: 'inventoryDescription', label: 'Descripción', type: 'textarea', placeholder: 'Finalidad, categorías de datos, origen, etc.' },
+                { name: 'inventoryLegalBasis', label: 'Base legal', type: 'select', required: true, options: [
+                    { value: 'consentimiento', label: 'Consentimiento' },
+                    { value: 'interes legitimo', label: 'Interés legítimo' },
+                    { value: 'contrato', label: 'Ejecución de contrato' },
+                    { value: 'obligacion legal', label: 'Obligación legal' },
+                ]},
+                { name: 'inventorySensitive', label: '¿Contiene datos sensibles?', type: 'checkbox' },
+                { name: 'inventorySecurity', label: 'Medidas de seguridad aplicadas', type: 'textarea', placeholder: 'Encriptación, acceso restringido, pseudonimización, etc.' },
+            ]},
+        ],
+    },
+    arco: {
+        title: 'Canal de Derechos ARCO',
+        subtitle: 'Documenta el canal operativo para ejercer derechos ARCO+Portabilidad (Arts. 8-13 Ley 21.719)',
+        steps: [
+            { title: 'Canal ARCO', fields: [
+                { name: 'arcoChannelUrl', label: 'URL / Formulario ARCO', type: 'url', required: true, placeholder: 'https://empresa.cl/arco' },
+                { name: 'arcoEmail', label: 'Email ARCO', type: 'email', placeholder: 'arco@empresa.cl' },
+                { name: 'arcoProcedure', label: 'Procedimiento de atención', type: 'textarea', required: true, placeholder: 'Pasos para recibir, validar y responder solicitudes ARCO.' },
+                { name: 'arcoResponseTime', label: 'Plazo de respuesta (días hábiles)', type: 'number', placeholder: '10' },
+            ]},
+        ],
+    },
+    pseudonymization: {
+        title: 'Seudonimización',
+        subtitle: 'Documenta la medida de seudonimización aplicada según el riesgo del tratamiento',
+        steps: [
+            { title: 'Medida de Seudonimización', fields: [
+                { name: 'pseudoName', label: 'Nombre de la regla', type: 'text', required: true, placeholder: 'Ej: Seudonimización de RUT clientes' },
+                { name: 'pseudoScope', label: 'Alcance', type: 'textarea', required: true, placeholder: 'Sistemas, bases de datos o flujos donde aplica.' },
+                { name: 'pseudoMethod', label: 'Método', type: 'select', required: true, options: [
+                    { value: 'hash', label: 'Hash (SHA-256)' },
+                    { value: 'tokenizacion', label: 'Tokenización' },
+                    { value: 'anonimizacion', label: 'Anonimización' },
+                    { value: 'otro', label: 'Otro' },
+                ]},
+                { name: 'pseudoDetails', label: 'Detalles técnicos', type: 'textarea', placeholder: 'Cómo se implementa y gestiona la seudonimización.' },
+            ]},
+        ],
+    },
+    training: {
+        title: 'Capacitación',
+        subtitle: 'Documenta el programa de formación en protección de datos',
+        steps: [
+            { title: 'Programa de Capacitación', fields: [
+                { name: 'trainingTitle', label: 'Título del programa', type: 'text', required: true, placeholder: 'Ej: Ley 21.719 para todos los colaboradores' },
+                { name: 'trainingAudience', label: 'Dirigido a', type: 'text', placeholder: 'Ej: Todos los empleados, área comercial, TI' },
+                { name: 'trainingContent', label: 'Contenido / Temario', type: 'textarea', required: true, placeholder: 'Temas principales de la capacitación.' },
+                { name: 'trainingFrequency', label: 'Frecuencia', type: 'text', placeholder: 'Ej: Anual / Al inicio de relación laboral' },
+                { name: 'trainingCompleted', label: '¿Completado?', type: 'checkbox' },
+            ]},
+        ],
+    },
+};
+
+let cwId = null;
+let cwStep = 1;
+let cwData = null;
+let cwValues = {};
+
+function openComplianceWizard(id) {
+    cwId = id;
+    cwData = COMPLIANCE_WIZARDS[id];
+    if (!cwData) return;
+    cwStep = 1;
+    cwValues = {};
+    document.getElementById('cw-title').textContent = cwData.title;
+    document.getElementById('cw-subtitle').textContent = cwData.subtitle || '';
+    document.getElementById('cw-total-steps').textContent = cwData.steps.length;
+    cwRenderSteps();
+    cwRenderContent();
+    cwUpdateNav();
+    document.getElementById('cw-error').classList.remove('show');
+    document.getElementById('compliance-wizard-modal').classList.remove('hidden');
+    cwLoadExisting();
+}
+
+function closeComplianceWizard() {
+    document.getElementById('compliance-wizard-modal').classList.add('hidden');
+}
+
+async function deleteComplianceSection(id, label) {
+    label = label || id;
+    if (!confirm('¿Eliminar la documentación de "' + label + '"? Esta acción no se puede deshacer.')) return;
+    try {
+        const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/invisia/compliance/checklist/' + id), {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: '<?= h($token) ?>' })
+        });
+        const data = await res.json();
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error || 'Error al eliminar el control');
+        }
+    } catch (e) {
+        alert('Error de conexión: ' + e.message);
+    }
+}
+
+document.getElementById('compliance-wizard-modal')?.addEventListener('click', function(e) {
+    if (e.target.id === 'compliance-wizard-modal') closeComplianceWizard();
+});
+
+function cwRenderSteps() {
+    const container = document.getElementById('cw-steps');
+    container.innerHTML = cwData.steps.map((s, i) => `
+        <div class="cw-step-dot ${i + 1 === cwStep ? 'active' : (i + 1 < cwStep ? 'completed' : '')}" data-step="${i + 1}">
+            <div class="cw-step-number">${i + 1}</div>
+            <span class="cw-step-label">${s.title}</span>
+        </div>
+    `).join('');
+}
+
+function cwEscape(str) {
+    return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function cwFieldHtml(field, value) {
+    const val = value !== undefined ? value : (field.multiple ? [] : '');
+    const label = `<label class="compliance-form-label">${cwEscape(field.label)}${field.required ? ' <span class="required">*</span>' : ''}</label>`;
+    let input = '';
+    if (field.type === 'textarea') {
+        input = `<textarea name="${cwEscape(field.name)}" ${field.required ? 'required' : ''} rows="3" class="compliance-textarea" placeholder="${cwEscape(field.placeholder || '')}">${cwEscape(val)}</textarea>`;
+    } else if (field.type === 'select') {
+        const options = (field.options || []).map(opt => {
+            const o = typeof opt === 'string' ? { value: opt, label: opt } : opt;
+            const selected = field.multiple ? (val || []).includes(o.value) : val === o.value;
+            return `<option value="${cwEscape(o.value)}" ${selected ? 'selected' : ''}>${cwEscape(o.label)}</option>`;
+        }).join('');
+        input = `<select name="${cwEscape(field.name)}" ${field.multiple ? 'multiple size="4"' : ''} ${field.required ? 'required' : ''} class="compliance-select">${field.required && !field.multiple ? '' : `<option value="">${field.required ? 'Seleccione...' : '(Ninguno)'}</option>`}${options}</select>`;
+    } else if (field.type === 'checkbox') {
+        const checked = val ? 'checked' : '';
+        input = `<div class="compliance-checkbox-group"><input type="checkbox" name="${cwEscape(field.name)}" id="cw_${cwEscape(field.name)}" ${checked}><label for="cw_${cwEscape(field.name)}">${cwEscape(field.label)}</label></div>`;
+        return `<div class="compliance-form-cell">${input}</div>`;
+    } else {
+        input = `<input type="${field.type}" name="${cwEscape(field.name)}" ${field.required ? 'required' : ''} class="compliance-input" placeholder="${cwEscape(field.placeholder || '')}" value="${cwEscape(val)}">`;
+    }
+    return `<div class="compliance-form-cell">${label}${input}</div>`;
+}
+
+function cwRenderContent() {
+    document.getElementById('cw-current-step').textContent = cwStep;
+    const step = cwData.steps[cwStep - 1];
+    const html = `
+        <div class="cw-step active">
+            <h3 class="cw-step-title">${cwStep}. ${cwEscape(step.title)}</h3>
+            <div class="cw-fieldset">
+                <div class="compliance-form-row grid-cols-2">
+                    ${step.fields.map(f => cwFieldHtml(f, cwValues[f.name])).join('')}
+                </div>
+            </div>
+        </div>
+    `;
+    document.getElementById('cw-content').innerHTML = html;
+    document.getElementById('cw-progress-fill').style.width = ((cwStep / cwData.steps.length) * 100) + '%';
+}
+
+function cwUpdateNav() {
+    document.getElementById('cw-btn-prev').disabled = cwStep === 1;
+    const next = document.getElementById('cw-btn-next');
+    const submit = document.getElementById('cw-btn-submit');
+    if (cwStep === cwData.steps.length) {
+        next.classList.add('hidden');
+        submit.classList.remove('hidden');
+    } else {
+        next.classList.remove('hidden');
+        submit.classList.add('hidden');
+    }
+    cwRenderSteps();
+}
+
+function cwReadValues() {
+    const form = document.getElementById('compliance-wizard-form');
+    cwData.steps[cwStep - 1].fields.forEach(f => {
+        if (f.type === 'checkbox') {
+            const el = form.querySelector(`[name="${f.name}"]`);
+            cwValues[f.name] = el ? el.checked : false;
+        } else if (f.multiple) {
+            const els = form.querySelectorAll(`[name="${f.name}"] option:checked`);
+            cwValues[f.name] = Array.from(els).map(o => o.value);
+        } else {
+            const el = form.querySelector(`[name="${f.name}"]`);
+            cwValues[f.name] = el ? el.value : '';
+        }
+    });
+}
+
+function cwIsValidValue(v, type) {
+    if (v === '' || v === null || v === undefined) return true; // vacío lo valida required
+    if (type === 'email') return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+    if (type === 'url') {
+        try {
+            const url = v.match(/^https?:\/\//i) ? v : 'https://' + v;
+            new URL(url);
+            return true;
+        } catch (e) { return false; }
+    }
+    return true;
+}
+
+function cwValidate() {
+    const step = cwData.steps[cwStep - 1];
+    for (const f of step.fields) {
+        const v = cwValues[f.name];
+        if (f.required && (v === '' || v === null || v === undefined || (Array.isArray(v) && v.length === 0))) {
+            return `Complete el campo "${f.label}".`;
+        }
+        if (!cwIsValidValue(v, f.type)) {
+            return `El valor de "${f.label}" no es un ${f.type === 'email' ? 'correo' : 'enlace'} válido.`;
+        }
+    }
+    return null;
+}
+
+function cwNextStep() {
+    cwReadValues();
+    const err = cwValidate();
+    const errorEl = document.getElementById('cw-error');
+    if (err) {
+        document.getElementById('cw-error-text').textContent = err;
+        errorEl.classList.add('show');
+        errorEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+    }
+    errorEl.classList.remove('show');
+    if (cwStep < cwData.steps.length) {
+        cwStep++;
+        cwRenderContent();
+        cwUpdateNav();
+    } else {
+        submitComplianceWizard();
+    }
+}
+
+function cwPrevStep() {
+    if (cwStep > 1) {
+        cwStep--;
+        cwRenderContent();
+        cwUpdateNav();
+    }
+}
+
+async function cwLoadExisting() {
+    const endpoint = cwData.endpoint || `/api/invisia/compliance/checklist/${encodeURIComponent(cwId)}`;
+    try {
+        const res = await fetch(`/api-proxy.php?path=${encodeURIComponent(endpoint)}`, {
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        if (data && !data.error) {
+            cwValues = { ...data };
+            cwRenderContent();
+        }
+    } catch (e) {
+        // ignore
+    }
+}
+
+async function submitComplianceWizard() {
+    cwReadValues();
+    let err = cwValidate();
+    // validate all steps
+    const prevStep = cwStep;
+    for (let s = 1; s <= cwData.steps.length; s++) {
+        cwStep = s;
+        cwRenderContent();
+        const step = cwData.steps[s - 1];
+        for (const f of step.fields) {
+            if (!f.required) continue;
+            const v = cwValues[f.name];
+            if (v === '' || v === null || v === undefined || (Array.isArray(v) && v.length === 0)) {
+                err = `Paso ${s}: complete "${f.label}".`;
+                break;
+            }
+        }
+        if (err) break;
+    }
+    cwStep = prevStep;
+    cwRenderContent();
+    cwUpdateNav();
+    const errorEl = document.getElementById('cw-error');
+    if (err) {
+        document.getElementById('cw-error-text').textContent = err;
+        errorEl.classList.add('show');
+        errorEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        alert(err);
+        return;
+    }
+    errorEl.classList.remove('show');
+
+    const payload = { token: '<?= h($token) ?>', ...cwValues };
+    const endpoint = cwData.endpoint || `/api/invisia/compliance/checklist/${encodeURIComponent(cwId)}`;
+    const submitBtn = document.getElementById('cw-btn-submit');
+    const original = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Guardando...';
+
+    try {
+        const res = await fetch('/api-proxy.php?path=' + encodeURIComponent(endpoint), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+            closeComplianceWizard();
+            location.reload();
+        } else {
+            const msg = data.error || 'Error al guardar.';
+            document.getElementById('cw-error-text').textContent = msg;
+            errorEl.classList.add('show');
+            errorEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            alert(msg);
+        }
+    } catch (e) {
+        const msg = 'Error de conexión: ' + e.message;
+        document.getElementById('cw-error-text').textContent = msg;
+        errorEl.classList.add('show');
+        errorEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        alert(msg);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = original;
+    }
+}
+
+document.getElementById('compliance-wizard-form')?.addEventListener('submit', function(e) {
+    e.preventDefault();
+    submitComplianceWizard();
+});
+
+// ═══ EDICIÓN GENÉRICA DE REGISTROS DE COMPLIANCE ═══
+function escHtml(str) {
+    return String(str == null ? '' : str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function openGenericEdit(collection, id) {
+    const modal = document.getElementById('generic-edit-modal');
+    const container = document.getElementById('generic-edit-fields');
+    const errorEl = document.getElementById('generic-edit-error');
+    container.innerHTML = '<p class="text-[11px] text-text-subtle">Cargando...</p>';
+    errorEl.classList.add('hidden');
+    document.getElementById('generic-edit-collection').value = collection;
+    document.getElementById('generic-edit-id').value = id;
+    modal.classList.remove('hidden');
+    fetch('/api-proxy.php?path=' + encodeURIComponent('/api/compliance/' + encodeURIComponent(collection) + '/' + encodeURIComponent(id)) + '&token=<?= h($token) ?>')
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                container.innerHTML = '<p class="text-red-400 text-[11px]">' + escHtml(data.error) + '</p>';
+                return;
+            }
+            renderGenericEditFields(data);
+        })
+        .catch(e => {
+            container.innerHTML = '<p class="text-red-400 text-[11px]">Error al cargar: ' + escHtml(e.message) + '</p>';
+        });
+}
+
+function renderGenericEditFields(item) {
+    const container = document.getElementById('generic-edit-fields');
+    const skip = ['_id','userId','createdAt','updatedAt','token','companyId'];
+    container.innerHTML = '';
+    Object.keys(item).forEach(key => {
+        if (skip.includes(key)) return;
+        const val = item[key];
+        const label = '<label class="compliance-form-label">' + escHtml(key) + '</label>';
+        let input = '';
+        if (key.endsWith('At') || /date|Date|fecha/i.test(key)) {
+            input = '<input type="text" name="' + escHtml(key) + '" value="' + escHtml(val) + '" class="compliance-input">';
+        } else if (Array.isArray(val)) {
+            input = '<textarea name="' + escHtml(key) + '" rows="2" class="compliance-textarea font-mono" placeholder="Uno por línea">' + escHtml(val.join('\\n')) + '</textarea>';
+        } else if (typeof val === 'boolean') {
+            input = '<label class="flex items-center gap-2 text-[11px] text-text-body"><input type="checkbox" name="' + escHtml(key) + '" ' + (val ? 'checked' : '') + ' class="w-4 h-4 rounded border-border-theme text-primary-600 focus:ring-primary-500" value="1"> Sí</label>';
+        } else if (typeof val === 'number') {
+            input = '<input type="number" name="' + escHtml(key) + '" value="' + escHtml(val) + '" class="compliance-input">';
+        } else if (String(val).includes('\\n') || String(val).length > 80) {
+            input = '<textarea name="' + escHtml(key) + '" rows="3" class="compliance-textarea">' + escHtml(val) + '</textarea>';
+        } else {
+            input = '<input type="text" name="' + escHtml(key) + '" value="' + escHtml(val) + '" class="compliance-input">';
+        }
+        container.insertAdjacentHTML('beforeend', '<div class="compliance-form-cell">' + label + input + '</div>');
+    });
+}
+
+document.getElementById('generic-edit-form')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const collection = document.getElementById('generic-edit-collection').value;
+    const id = document.getElementById('generic-edit-id').value;
+    const formData = new FormData(this);
+    const payload = { token: '<?= h($token) ?>' };
+    const skip = ['_id','userId','createdAt','updatedAt','token','companyId','collection','id'];
+    const form = this;
+    formData.forEach((v, k) => {
+        if (skip.includes(k)) return;
+        const el = form.querySelector('[name="' + k.replace(/"/g, '\\"') + '"]');
+        if (el && el.type === 'checkbox') {
+            payload[k] = el.checked;
+        } else if (el && el.tagName === 'TEXTAREA' && el.classList.contains('font-mono')) {
+            payload[k] = v.split('\\n').map(s => s.trim()).filter(Boolean);
+        } else {
+            payload[k] = v;
+        }
+    });
+    const errorEl = document.getElementById('generic-edit-error');
+    errorEl.classList.add('hidden');
+    try {
+        const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/compliance/' + encodeURIComponent(collection) + '/' + encodeURIComponent(id)), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+            document.getElementById('generic-edit-modal').classList.add('hidden');
+            location.reload();
+        } else {
+            errorEl.textContent = data.error || 'Error al guardar';
+            errorEl.classList.remove('hidden');
+        }
+    } catch (err) {
+        errorEl.textContent = 'Error de conexión: ' + err.message;
+        errorEl.classList.remove('hidden');
+    }
+});
+
 </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

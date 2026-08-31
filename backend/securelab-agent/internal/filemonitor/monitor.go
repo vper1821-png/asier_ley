@@ -277,7 +277,11 @@ func (m *Monitor) scanFileAndReport(ev audit.FileEvent, alreadySent bool) {
 // isScannableFile comprueba si el archivo puede contener PII según su extensión
 func isScannableFile(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
-	return ext == ".xlsx" || ext == ".xls" || ext == ".csv" || ext == ".txt"
+	switch ext {
+	case ".xlsx", ".xls", ".csv", ".txt", ".json", ".xml", ".pdf", ".doc", ".docx", ".ods", ".rtf":
+		return true
+	}
+	return false
 }
 
 // hasSensitiveData determina si los datos personales incluyen categorías sensibles

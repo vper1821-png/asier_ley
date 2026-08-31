@@ -1149,7 +1149,7 @@ class PDFGenerator {
             $pdfContent = $dompdf->output();
             
             if (!empty($pdfContent)) {
-                $reportsDir = __DIR__ . '/../frontend/public/reports';
+                $reportsDir = __DIR__ . '/reports';
                 if (!is_dir($reportsDir)) {
                     mkdir($reportsDir, 0755, true);
                 }
@@ -1159,7 +1159,7 @@ class PDFGenerator {
                 if (file_put_contents($pdfPath, $pdfContent) !== false) {
                     chmod($pdfPath, 0644);
                     $baseUrl = defined('API_BASE_URL') ? API_BASE_URL : 'http://leysecurelab.sytes.net';
-                    $pdfUrl = $baseUrl . '/public/reports/' . $pdfFilename;
+                    $pdfUrl = $baseUrl . '/backend/reports/' . $pdfFilename;
                 }
             }
         } catch (Exception $e) {

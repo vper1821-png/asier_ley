@@ -57,146 +57,30 @@ function detailedChecklist() {
     $transfers = $db->find('compliance_transfers', ['userId' => $user['_id']]);
 
     // Checklist completo basado en la Ley 21.719
+    $checkDocs = $db->find('compliance_checklist', ['userId' => $user['_id']]);
+    $documentedSections = [];
+    foreach ($checkDocs as $doc) {
+        $section = $doc['section'] ?? '';
+        $data = (array)($doc['data'] ?? []);
+        $hasData = false;
+        if (is_array($data) && count($data) > 0) {
+            foreach ($data as $v) { if (!empty($v) || (is_array($v) && count($v) > 0)) { $hasData = true; break; } }
+        }
+        if ($section !== '' && $hasData) $documentedSections[] = $section;
+    }
+    $documentedSections = array_unique($documentedSections);
+
     $detailedChecklist = [
-        // Identificación y Registro
-        [
-            'id' => 'dpd',
-            'label' => 'DPD Designado',
-            'done' => !empty($config['dpdEmail']),
-            'link' => '/hardening?tab=dpd',
-            'severity' => 'gravisima',
-            'fine' => 'Hasta 20.000 UTM'
-        ],
-        [
-            'id' => 'apdp',
-            'label' => 'Registro APDP',
-            'done' => !empty($config['apdpRegistered']),
-            'link' => '/hardening?tab=dpd',
-            'severity' => 'gravisima',
-            'fine' => 'Hasta 20.000 UTM'
-        ],
-        // Política de Privacidad
-        [
-            'id' => 'privacy_policy',
-            'label' => 'Política de Privacidad publicada',
-            'done' => !empty($config['privacyPolicyUrl']),
-            'link' => '/compliance?tab=privacy',
-            'severity' => 'leve',
-            'fine' => 'Hasta 5.000 UTM'
-        ],
-        [
-            'id' => 'cookies_policy',
-            'label' => 'Política de cookies publicada',
-            'done' => !empty($config['cookiesPolicyUrl']),
-            'link' => '/compliance?tab=privacy',
-            'severity' => 'leve',
-            'fine' => 'Hasta 5.000 UTM'
-        ],
-        [
-            'id' => 'retention_policy',
-            'label' => 'Política de retención de datos definida',
-            'done' => !empty($config['dataRetentionPolicy']),
-            'link' => '/compliance?tab=privacy',
-            'severity' => 'leve',
-            'fine' => 'Hasta 5.000 UTM'
-        ],
-        // Base de Licitud y Consentimiento
-        [
-            'id' => 'consents',
-            'label' => 'Consentimientos registrados',
-            'done' => count($consents) > 0,
-            'link' => '/compliance?tab=consents',
-            'severity' => 'leve',
-            'fine' => 'Hasta 5.000 UTM'
-        ],
-        // Inventario de Tratamiento
-        [
-            'id' => 'inventory',
-            'label' => 'Inventario de datos registrado',
-            'done' => count($inventory) > 0,
-            'link' => '/compliance?tab=inventory',
-            'severity' => 'leve',
-            'fine' => 'Hasta 5.000 UTM'
-        ],
-        [
-            'id' => 'sensitive_legal_basis',
-            'label' => 'Datos sensibles con base legal',
-            'done' => count(array_filter($inventory, fn($i) => !empty($i['sensitive']) && !empty($i['legalBasis']))) === count(array_filter($inventory, fn($i) => !empty($i['sensitive']))),
-            'link' => '/compliance?tab=inventory',
-            'severity' => 'gravisima',
-            'fine' => 'Hasta 20.000 UTM'
-        ],
-        // Protocolo de Brechas
-        [
-            'id' => 'breaches_protocol',
-            'label' => 'Protocolo de notificación de brechas',
-            'done' => count($breaches) > 0,
-            'link' => '/compliance?tab=breaches',
-            'severity' => 'grave',
-            'fine' => 'Hasta 10.000 UTM'
-        ],
-        [
-            'id' => 'breaches_resolved',
-            'label' => 'Plan de respuesta a incidentes',
-            'done' => count(array_filter($breaches, fn($b) => ($b['status'] ?? '') === 'resolved')) > 0,
-            'link' => '/compliance?tab=breaches',
-            'severity' => 'grave',
-            'fine' => 'Hasta 10.000 UTM'
-        ],
-        // Evaluación de Impacto (DPIA)
-        [
-            'id' => 'dpia_approved',
-            'label' => 'DPIA aprobadas para datos sensibles',
-            'done' => count(array_filter($dpia, fn($d) => ($d['status'] ?? '') === 'approved')) > 0,
-            'link' => '/compliance?tab=dpia',
-            'severity' => 'grave',
-            'fine' => 'Hasta 10.000 UTM'
-        ],
-        // Seudonimización
-        [
-            'id' => 'pseudonymization',
-            'label' => 'Reglas de seudonimización definidas',
-            'done' => count($pseudoRules) > 0,
-            'link' => '/compliance?tab=pseudonymization',
-            'severity' => 'leve',
-            'fine' => 'Hasta 5.000 UTM'
-        ],
-        // Capacitación
-        [
-            'id' => 'training_signed',
-            'label' => 'Personal capacitado con firma',
-            'done' => count(array_filter($trainings, fn($t) => !empty($t['signature']) || !empty($t['inviteId']))) > 0,
-            'link' => '/compliance?tab=trainings',
-            'severity' => 'leve',
-            'fine' => 'Hasta 5.000 UTM'
-        ],
-        // Encargados (DPA)
-        [
-            'id' => 'processors',
-            'label' => 'Acuerdos con encargados (DPA)',
-            'done' => count($processors) > 0,
-            'link' => '/compliance?tab=processors',
-            'severity' => 'grave',
-            'fine' => 'Hasta 10.000 UTM'
-        ],
-        // Transferencias internacionales
-        [
-            'id' => 'transfers',
-            'label' => 'Transferencias internacionales registradas',
-            'done' => count($transfers) > 0,
-            'link' => '/compliance?tab=transfers',
-            'severity' => 'grave',
-            'fine' => 'Hasta 10.000 UTM'
-        ],
-        // Derechos ARCO
-        [
-            'id' => 'arco_requests',
-            'label' => 'Registro de solicitudes ARCO',
-            'done' => count($arcoRequests) > 0,
-            'link' => '/arco',
-            'severity' => 'leve',
-            'fine' => 'Hasta 5.000 UTM'
-        ],
+        ['id' => 'dpd', 'label' => 'DPD Designado', 'done' => (!empty($config['dpdName']) && !empty($config['dpdEmail'])) || in_array('dpd', $documentedSections)],
+        ['id' => 'apdp', 'label' => 'Modelo certificado', 'done' => !empty($config['apdpRegistered']) && !empty($config['apdpRegistrationNumber'])],
+        ['id' => 'inventory', 'label' => 'Inventario de Datos', 'done' => (count($inventory) > 0 && count(array_filter($inventory, fn($i) => !empty($i['name']) && !empty($i['legalBasis']))) > 0) || in_array('inventory', $documentedSections)],
+        ['id' => 'privacy', 'label' => 'Política de Privacidad', 'done' => (!empty($config['privacyPolicyUrl']) || !empty($config['privacyPolicyContent'])) || in_array('privacy', $documentedSections)],
+        ['id' => 'consents', 'label' => 'Consentimientos', 'done' => (count($consents) > 0 && count(array_filter($consents, fn($c) => empty($c['revokedAt']))) > 0) || in_array('consents', $documentedSections)],
+        ['id' => 'breach_protocol', 'label' => 'Protocolo de Brechas', 'done' => !empty($config['breachProtocolUrl']) || !empty($config['breachProtocolContent'])],
+        ['id' => 'arco', 'label' => 'Canal de derechos', 'done' => (count($arcoRequests) > 0 || !empty($config['arcoChannelUrl'])) || in_array('arco', $documentedSections)],
+        ['id' => 'pseudonymization', 'label' => 'Seudonimización', 'done' => (count($pseudoRules) > 0 && count(array_filter($pseudoRules, fn($r) => ($r['status'] ?? '') === 'executed' || !empty($r['executed']))) > 0) || in_array('pseudonymization', $documentedSections)],
+        ['id' => 'incident_response', 'label' => 'Plan de Respuesta a Incidentes', 'done' => !empty($config['incidentResponsePlan']) || !empty($config['incidentResponsePlanUrl'])],
+        ['id' => 'training', 'label' => 'Capacitación', 'done' => (count($trainings) > 0 && count(array_filter($trainings, fn($t) => !empty($t['completed']))) > 0) || in_array('training', $documentedSections)],
     ];
 
     json_response(['checklist' => $detailedChecklist]);
@@ -242,11 +126,51 @@ function updateConfig() {
     
     $config = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
     
+    // Policies list (multi-policy support)
+    $policiesRaw = null;
+    if (isset($body['policies'])) {
+        $policiesRaw = is_string($body['policies']) ? json_decode($body['policies'], true) : $body['policies'];
+        if (!is_array($policiesRaw)) $policiesRaw = [];
+    }
+
+    $privacyUrl = $config['privacyPolicyUrl'] ?? '';
+    $cookiesUrl = $config['cookiesPolicyUrl'] ?? '';
+    $retention = $config['dataRetentionPolicy'] ?? '';
+
+    if ($policiesRaw !== null) {
+        // Recalculate legacy scalar fields from the policies list
+        $privacyUrl = '';
+        $cookiesUrl = '';
+        $retention = '';
+        foreach ($policiesRaw as $p) {
+            if (!is_array($p)) continue;
+            $t = $p['type'] ?? '';
+            if ($t === 'privacy' && empty($privacyUrl) && !empty($p['url'])) $privacyUrl = $p['url'];
+            if ($t === 'cookies' && empty($cookiesUrl) && !empty($p['url'])) $cookiesUrl = $p['url'];
+            if ($t === 'retention' && empty($retention) && !empty($p['content'])) $retention = $p['content'];
+        }
+    } else {
+        $policiesRaw = $config['policies'] ?? [];
+        // Fallback: derive scalar fields from stored policies if missing
+        foreach ($policiesRaw as $p) {
+            if (!is_array($p)) continue;
+            $t = $p['type'] ?? '';
+            if ($t === 'privacy' && empty($privacyUrl) && !empty($p['url'])) $privacyUrl = $p['url'];
+            if ($t === 'cookies' && empty($cookiesUrl) && !empty($p['url'])) $cookiesUrl = $p['url'];
+            if ($t === 'retention' && empty($retention) && !empty($p['content'])) $retention = $p['content'];
+        }
+        // Allow explicit scalar overrides only when they have a value
+        if (!empty($body['privacyPolicyUrl'])) $privacyUrl = $body['privacyPolicyUrl'];
+        if (!empty($body['cookiesPolicyUrl'])) $cookiesUrl = $body['cookiesPolicyUrl'];
+        if (!empty($body['dataRetentionPolicy'])) $retention = $body['dataRetentionPolicy'];
+    }
+
     $updates = [
         // Campos existentes
-        'privacyPolicyUrl' => $body['privacyPolicyUrl'] ?? $config['privacyPolicyUrl'] ?? '',
-        'cookiesPolicyUrl' => $body['cookiesPolicyUrl'] ?? $config['cookiesPolicyUrl'] ?? '',
-        'dataRetentionPolicy' => $body['dataRetentionPolicy'] ?? $config['dataRetentionPolicy'] ?? '',
+        'privacyPolicyUrl' => $privacyUrl,
+        'cookiesPolicyUrl' => $cookiesUrl,
+        'dataRetentionPolicy' => $retention,
+        'policies' => $policiesRaw,
         // Campos DPD
         'dpdName' => $body['dpdName'] ?? $config['dpdName'] ?? '',
         'dpdRut' => $body['dpdRut'] ?? $config['dpdRut'] ?? '',
@@ -263,6 +187,7 @@ function updateConfig() {
         'apdpRegistrationDate' => $body['apdpRegistrationDate'] ?? $config['apdpRegistrationDate'] ?? '',
         'complianceLevel' => $body['complianceLevel'] ?? $config['complianceLevel'] ?? '',
         'preventionModelDate' => $body['preventionModelDate'] ?? $config['preventionModelDate'] ?? '',
+        'measureOverrides' => $body['measureOverrides'] ?? $config['measureOverrides'] ?? '',
     ];
     
     if (empty($config)) {
@@ -328,6 +253,159 @@ function sign() {
     ]);
 
     json_response(['success' => true]);
+}
+
+function saveBreachProtocol($user, $db, $body) {
+    $protocolData = [
+        'userId' => $user['_id'],
+        'protocolName' => $body['protocolName'] ?? '',
+        'protocolVersion' => $body['protocolVersion'] ?? '',
+        'approvalDate' => $body['approvalDate'] ?? '',
+        'nextReviewDate' => $body['nextReviewDate'] ?? '',
+        'protocolOwner' => $body['protocolOwner'] ?? '',
+        'approvedBy' => $body['approvedBy'] ?? '',
+        'scope' => $body['scope'] ?? '',
+        'definitions' => $body['definitions'] ?? '',
+        'detectionChannels' => $body['detectionChannels'] ?? '',
+        'maxDetectionTime' => $body['maxDetectionTime'] ?? '',
+        'severityLevels' => $body['severityLevels'] ?? [],
+        'incidentTypes' => $body['incidentTypes'] ?? '',
+        'internalReporting' => $body['internalReporting'] ?? '',
+        'csirtTeam' => $body['csirtTeam'] ?? '',
+        'containmentActions' => $body['containmentActions'] ?? '',
+        'evidencePreservation' => $body['evidencePreservation'] ?? '',
+        'maxContainmentTime' => $body['maxContainmentTime'] ?? '',
+        'autoEscalation' => $body['autoEscalation'] ?? '',
+        'assessmentMethodology' => $body['assessmentMethodology'] ?? '',
+        'apdpCriteria' => $body['apdpCriteria'] ?? '',
+        'subjectCriteria' => $body['subjectCriteria'] ?? '',
+        'likelyConsequences' => $body['likelyConsequences'] ?? '',
+        'apdpNotification' => $body['apdpNotification'] ?? '',
+        'subjectNotification' => $body['subjectNotification'] ?? '',
+        'thirdPartyNotification' => $body['thirdPartyNotification'] ?? '',
+        'externalCommunication' => $body['externalCommunication'] ?? '',
+        'communicationTemplates' => $body['communicationTemplates'] ?? '',
+        'recoveryPlan' => $body['recoveryPlan'] ?? '',
+        'closureCriteria' => $body['closureCriteria'] ?? '',
+        'correctivePreventive' => $body['correctivePreventive'] ?? '',
+        'rtoRpo' => $body['rtoRpo'] ?? '',
+        'postmortemReport' => $body['postmortemReport'] ?? '',
+        'lessonsLearned' => $body['lessonsLearned'] ?? '',
+        'protocolUpdate' => $body['protocolUpdate'] ?? '',
+        'drillsTesting' => $body['drillsTesting'] ?? '',
+        'annexes' => $body['annexes'] ?? '',
+        'createdAt' => date('c'),
+        'updatedAt' => date('c'),
+    ];
+
+    // Check if protocol already exists
+    $existing = $db->findOne('compliance_breach_protocol', ['userId' => $user['_id']]);
+    if ($existing) {
+        $protocolData['updatedAt'] = date('c');
+        $db->updateOne('compliance_breach_protocol', ['_id' => $existing['_id']], $protocolData);
+    } else {
+        $db->insertOne('compliance_breach_protocol', $protocolData);
+    }
+
+    // Also update compliance_config to mark breach protocol as complete
+    $config = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
+    $config['breachProtocolContent'] = 'documented';
+    $config['breachProtocolUpdatedAt'] = date('c');
+    if (empty($config)) {
+        $config['userId'] = $user['_id'];
+        $db->insertOne('compliance_config', $config);
+    } else {
+        $db->updateOne('compliance_config', ['userId' => $user['_id']], $config);
+    }
+
+    audit_log('breach_protocol_saved', [
+        'protocolName' => $protocolData['protocolName'],
+        'protocolVersion' => $protocolData['protocolVersion'],
+    ], $user['_id']);
+
+    json_response(['success' => true, 'message' => 'Protocolo de brechas guardado correctamente']);
+}
+
+function getBreachProtocol($user, $db) {
+    $protocol = $db->findOne('compliance_breach_protocol', ['userId' => $user['_id']]);
+    if ($protocol) {
+        unset($protocol['_id']);
+        unset($protocol['userId']);
+    }
+    json_response($protocol ?? []);
+}
+
+function saveIncidentResponse($user, $db, $body) {
+    $planData = [
+        'userId' => $user['_id'],
+        'planName' => $body['planName'] ?? '',
+        'planVersion' => $body['planVersion'] ?? '',
+        'approvalDate' => $body['approvalDate'] ?? '',
+        'nextReviewDate' => $body['nextReviewDate'] ?? '',
+        'planOwner' => $body['planOwner'] ?? '',
+        'scope' => $body['scope'] ?? '',
+        'references' => $body['references'] ?? '',
+        'csirtRoles' => $body['csirtRoles'] ?? '',
+        'csirtPhone24' => $body['csirtPhone24'] ?? '',
+        'csirtEmail24' => $body['csirtEmail24'] ?? '',
+        'escalationToManagement' => $body['escalationToManagement'] ?? '',
+        'detectionChannels' => $body['detectionChannels'] ?? '',
+        'maxDetectionTime' => $body['maxDetectionTime'] ?? '',
+        'severityClassification' => $body['severityClassification'] ?? [],
+        'containmentActions' => $body['containmentActions'] ?? '',
+        'evidencePreservation' => $body['evidencePreservation'] ?? '',
+        'apdpNotification' => $body['apdpNotification'] ?? '',
+        'subjectNotification' => $body['subjectNotification'] ?? '',
+        'thirdPartyNotification' => $body['thirdPartyNotification'] ?? '',
+        'externalCommunication' => $body['externalCommunication'] ?? '',
+        'recoveryPlan' => $body['recoveryPlan'] ?? '',
+        'closureCriteria' => $body['closureCriteria'] ?? '',
+        'rtoRpo' => $body['rtoRpo'] ?? '',
+        'correctivePreventive' => $body['correctivePreventive'] ?? '',
+        'postmortemReport' => $body['postmortemReport'] ?? '',
+        'lessonsLearned' => $body['lessonsLearned'] ?? '',
+        'planUpdate' => $body['planUpdate'] ?? '',
+        'drillsTesting' => $body['drillsTesting'] ?? '',
+        'annexes' => $body['annexes'] ?? '',
+        'createdAt' => date('c'),
+        'updatedAt' => date('c'),
+    ];
+
+    // Check if plan already exists
+    $existing = $db->findOne('compliance_incident_response', ['userId' => $user['_id']]);
+    if ($existing) {
+        $planData['updatedAt'] = date('c');
+        $db->updateOne('compliance_incident_response', ['_id' => $existing['_id']], $planData);
+    } else {
+        $db->insertOne('compliance_incident_response', $planData);
+    }
+
+    // Also update compliance_config to mark incident response plan as complete
+    $config = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
+    $config['incidentResponsePlan'] = 'documented';
+    $config['incidentResponsePlanUpdatedAt'] = date('c');
+    if (empty($config)) {
+        $config['userId'] = $user['_id'];
+        $db->insertOne('compliance_config', $config);
+    } else {
+        $db->updateOne('compliance_config', ['userId' => $user['_id']], $config);
+    }
+
+    audit_log('incident_response_saved', [
+        'planName' => $planData['planName'],
+        'planVersion' => $planData['planVersion'],
+    ], $user['_id']);
+
+    json_response(['success' => true, 'message' => 'Plan de respuesta a incidentes guardado correctamente']);
+}
+
+function getIncidentResponse($user, $db) {
+    $plan = $db->findOne('compliance_incident_response', ['userId' => $user['_id']]);
+    if ($plan) {
+        unset($plan['_id']);
+        unset($plan['userId']);
+    }
+    json_response($plan ?? []);
 }
 
 function crud() {
@@ -413,6 +491,113 @@ function crud() {
     // ARCO requests
     if ($resource === 'arco-requests') {
         arcoCrud($user, $db, $method, $id, $action, $body);
+    }
+
+    // Breach Protocol handler
+    if ($resource === 'breach-protocol') {
+        if ($method === 'POST') {
+            saveBreachProtocol($user, $db, $body);
+        } else if ($method === 'GET') {
+            getBreachProtocol($user, $db);
+        } else {
+            json_error('método no soportado', 405);
+        }
+        return;
+    }
+
+    // Incident Response Plan handler
+    if ($resource === 'incident-response') {
+        if ($method === 'POST') {
+            saveIncidentResponse($user, $db, $body);
+        } else if ($method === 'GET') {
+            getIncidentResponse($user, $db);
+        } else {
+            json_error('método no soportado', 405);
+        }
+        return;
+    }
+
+    // Generic checklist section handler
+    if ($resource === 'checklist') {
+        if (!$id) {
+            $docs = $db->find('compliance_checklist', ['userId' => $user['_id']]);
+            $sections = [];
+            foreach ($docs as $d) {
+                if (empty($d['section'])) continue;
+                $data = (array)($d['data'] ?? []);
+                $hasData = is_array($data) && count(array_filter($data, fn($v) => $v !== '' && $v !== null && $v !== [])) > 0;
+                if ($hasData) $sections[] = $d['section'];
+            }
+            json_response(['success' => true, 'sections' => $sections]);
+        }
+
+        if (!$id) json_error('sección requerida', 400);
+
+        if ($method === 'GET') {
+            $doc = $db->findOne('compliance_checklist', ['userId' => $user['_id'], 'section' => $id]);
+            json_response((array)($doc['data'] ?? []));
+        }
+
+        if ($method === 'POST') {
+            $data = $body;
+            unset($data['token']);
+            $existing = $db->findOne('compliance_checklist', ['userId' => $user['_id'], 'section' => $id]);
+            $doc = [
+                'userId' => $user['_id'],
+                'section' => $id,
+                'data' => $data,
+                'updatedAt' => date('c'),
+            ];
+            if ($existing) {
+                $db->updateOne('compliance_checklist', ['_id' => $existing['_id']], $doc);
+            } else {
+                $doc['createdAt'] = date('c');
+                $db->insertOne('compliance_checklist', $doc);
+            }
+            json_response(['success' => true, 'message' => 'Documentación guardada']);
+        }
+
+        if ($method === 'DELETE') {
+            $db->deleteOne('compliance_checklist', ['userId' => $user['_id'], 'section' => $id]);
+
+            // Clear related dedicated records/config so the item reverts to pending
+            if ($id === 'breach_protocol') {
+                $db->deleteOne('compliance_breach_protocol', ['userId' => $user['_id']]);
+                $cfg = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
+                $cfg['breachProtocolContent'] = null; $cfg['breachProtocolUrl'] = null; $cfg['breachProtocolUpdatedAt'] = null;
+                $db->updateOne('compliance_config', ['userId' => $user['_id']], $cfg);
+            }
+            if ($id === 'incident_response') {
+                $db->deleteOne('compliance_incident_response', ['userId' => $user['_id']]);
+                $cfg = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
+                $cfg['incidentResponsePlan'] = null; $cfg['incidentResponsePlanUrl'] = null; $cfg['incidentResponsePlanUpdatedAt'] = null;
+                $db->updateOne('compliance_config', ['userId' => $user['_id']], $cfg);
+            }
+            if ($id === 'dpd') {
+                $cfg = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
+                $cfg['dpdName'] = null; $cfg['dpdEmail'] = null; $cfg['dpdPhone'] = null;
+                $db->updateOne('compliance_config', ['userId' => $user['_id']], $cfg);
+            }
+            if ($id === 'apdp') {
+                $cfg = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
+                $cfg['apdpRegistered'] = null; $cfg['apdpRegistrationNumber'] = null; $cfg['apdpCertified'] = null; $cfg['apdpCertificationDate'] = null; $cfg['apdpCertEntity'] = null;
+                $db->updateOne('compliance_config', ['userId' => $user['_id']], $cfg);
+            }
+            if ($id === 'privacy') {
+                $cfg = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
+                $cfg['privacyPolicyUrl'] = null; $cfg['cookiesPolicyUrl'] = null; $cfg['dataRetentionPolicy'] = null;
+                $db->updateOne('compliance_config', ['userId' => $user['_id']], $cfg);
+            }
+            if ($id === 'arco') {
+                $cfg = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
+                $cfg['arcoChannelUrl'] = null;
+                $db->updateOne('compliance_config', ['userId' => $user['_id']], $cfg);
+            }
+
+            json_response(['success' => true, 'message' => 'Control eliminado']);
+        }
+
+        json_error('método no soportado', 405);
     }
 
     $allowedCollections = ['consents', 'inventory', 'breaches', 'templates', 'trainings', 'dpia', 'dpa', 'pseudonymization', 'invites', 'processors', 'transfers', 'public_policy'];

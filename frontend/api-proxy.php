@@ -28,6 +28,13 @@ if ($raw !== '') {
     }
 }
 
+// Debug log para el problema de guardado de compliance
+if (str_contains($path, '/api/invisia/compliance/checklist') || str_contains($path, '/api/invisia/compliance/')) {
+    $logBody = $body;
+    unset($logBody['token']);
+    file_put_contents('/tmp/api-proxy-compliance.log', date('c') . ' ' . $method . ' ' . $path . ' body=' . json_encode($logBody, JSON_UNESCAPED_SLASHES) . "\n", FILE_APPEND);
+}
+
 // Extract token from multiple sources: session, GET, body, Authorization header
 $sessionToken = $_SESSION['token'] ?? $_GET['token'] ?? $body['token'] ?? '';
 if (!$sessionToken) {
@@ -55,8 +62,8 @@ if ($sessionToken) {
     $query['token'] = $sessionToken;
 }
 
-// Backend URL (direct local port 8080 for fast, reliable loopback)
-$backendBase = 'http://leysecurelab.sytes.net';
+// Backend URL from server-side config (overridable via API_BASE_URL env var)
+$backendBase = API_BASE_URL;
 $url = $backendBase . $path;
 $url .= (str_contains($url, '?') ? '&' : '?') . http_build_query($query);
 

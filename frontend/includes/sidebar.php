@@ -42,18 +42,66 @@ $mobileOpen = $mobileSidebar ?? false;
 
 $isAdminUser = !empty($_SESSION['user']['isAdmin']) || in_array($_SESSION['user']['role'] ?? '', ['admin', 'superadmin']);
 
-// Compliance score for pending tasks ring
+$token = $_SESSION['token'] ?? '';
+
+// Compliance score (green ring) - from detailed checklist
 $complianceScore = 0;
-$scoreRes = api_post_form('/api/invisia/score', ['token' => $_SESSION['token'] ?? '']);
-if (isset($scoreRes['score'])) $complianceScore = (int)$scoreRes['score'];
-$ringColor = $complianceScore === 100 ? 'text-emerald-500' : ($complianceScore >= 60 ? 'text-yellow-400' : 'text-red-500');
-$ringLabel = $complianceScore === 100 ? 'Todo en orden' : ($complianceScore >= 60 ? 'Queda por completar' : 'Atención requerida');
-$circ = 2 * M_PI * 18;
-$dashOffset = $circ * (1 - $complianceScore / 100);
+
+// Agent & Database score (yellow ring)
+$statsRes = api_post_form('/api/dashboard/stats', ['token' => $token]);
+$s = is_array($statsRes) && isset($statsRes['stats']) ? $statsRes['stats'] : [];
+$totalAgents = (int)($s['totalAgents'] ?? 0);
+$onlineAgents = (int)($s['onlineAgents'] ?? 0);
+$totalDatabases = (int)($s['totalDatabases'] ?? 0);
+$compliantDBs = (int)($s['compliantDBs'] ?? 0);
+$agentScore = $totalAgents > 0 ? round($onlineAgents / $totalAgents * 100) : 0;
+$dbScore = $totalDatabases > 0 ? round($compliantDBs / $totalDatabases * 100) : 0;
+$agentDBScore = (int)round(($agentScore + $dbScore) / 2);
+
+// Hardening score (red ring)
+$cfgRes = api_get('/api/invisia/compliance/config', ['token' => $token]);
+$config = is_array($cfgRes) ? $cfgRes : [];
+$measureOverrides = [];
+if (!empty($config['measureOverrides'])) {
+    $measureOverrides = is_string($config['measureOverrides']) ? json_decode($config['measureOverrides'], true) : $config['measureOverrides'];
+    if (!is_array($measureOverrides)) $measureOverrides = [];
+}
+$hardeningIds = ['encryption','access_control','backup','logging','patching','ids_ips','dlp','waf','pseudonymization','incident_response'];
+$hardeningDone = 0;
+$hardeningTotal = count($hardeningIds);
+foreach ($measureOverrides as $o) {
+    if (!empty($o['completed']) && in_array($o['measureId'] ?? '', $hardeningIds, true)) {
+        $hardeningDone++;
+    }
+}
+$hardeningScore = $hardeningTotal ? (int)round($hardeningDone / $hardeningTotal * 100) : 0;
 
 // Obtener checklist detallado de compliance
-$checklistRes = api_post_form('/api/invisia/checklist', ['token' => $_SESSION['token'] ?? '']);
-$checklistItems = $checklistRes['checklist'] ?? [];
+$checklistRes = api_post_form('/api/invisia/checklist', ['token' => $token]);
+$checklistItems = is_array($checklistRes) && isset($checklistRes['checklist']) ? $checklistRes['checklist'] : [];
+$checklistDone = count(array_filter($checklistItems, fn($t) => $t['done'] ?? false));
+$checklistTotal = count($checklistItems);
+$complianceScore = $checklistTotal ? (int)round($checklistDone / $checklistTotal * 100) : 0;
+
+// Global score (average of the three)
+$globalScore = (int)round(($agentDBScore + $complianceScore + $hardeningScore) / 3);
+
+$scoreColor = function ($score) {
+    return $score >= 70 ? 'text-emerald-400' : ($score >= 40 ? 'text-yellow-400' : 'text-red-400');
+};
+$circ = 2 * M_PI * 18;
+
+function renderScoreRing($score, $colorClass, $sizeClass = 'w-10 h-10') {
+    global $circ;
+    $offset = $circ * (1 - $score / 100);
+    echo '<div class="relative ' . $sizeClass . ' ' . $colorClass . ' flex-shrink-0" title="' . $score . '%">';
+    echo '<svg class="w-full h-full -rotate-90" viewBox="0 0 48 48">';
+    echo '<circle cx="24" cy="24" r="18" fill="none" stroke="currentColor" stroke-width="5" class="text-text-subtle opacity-20"/>';
+    echo '<circle cx="24" cy="24" r="18" fill="none" stroke="currentColor" stroke-width="5" stroke-dasharray="' . $circ . '" stroke-dashoffset="' . $offset . '" stroke-linecap="round"/>';
+    echo '</svg>';
+    echo '<span class="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-text-heading">' . $score . '%</span>';
+    echo '</div>';
+}
 ?>
 <aside class="flex flex-col bg-bg-base border-r border-border-theme transition-all duration-300 flex-shrink-0 <?= $collapsed ? 'w-16' : 'w-56' ?> hidden md:flex">
     <!-- Logo -->
@@ -73,17 +121,21 @@ $checklistItems = $checklistRes['checklist'] ?? [];
     <?php if (!$collapsed): ?>
     <div class="px-4 py-3 border-b border-border-theme tour-pending-ring relative group">
         <p class="text-[10px] font-medium text-text-subtle uppercase tracking-wider mb-2">Tareas pendientes</p>
-        <div class="flex items-center gap-3">
-            <div class="relative w-14 h-14 shrink-0 <?= $ringColor ?>">
-                <svg class="w-full h-full -rotate-90" viewBox="0 0 48 48">
-                    <circle cx="24" cy="24" r="18" fill="none" stroke="currentColor" stroke-width="5" class="text-text-subtle opacity-20" />
-                    <circle cx="24" cy="24" r="18" fill="none" stroke="currentColor" stroke-width="5" stroke-dasharray="<?= $circ ?>" stroke-dashoffset="<?= $dashOffset ?>" stroke-linecap="round" />
-                </svg>
-                <span class="absolute inset-0 flex items-center justify-center text-[11px] font-bold text-text-heading"><?= $complianceScore ?>%</span>
+        <div class="flex items-center justify-between">
+            <div class="flex flex-col items-center gap-1" title="Agente &amp; Base de datos">
+                <?php renderScoreRing($agentDBScore, 'text-yellow-400', 'w-10 h-10'); ?>
+                <span class="text-[9px] text-text-subtle">Agente &amp; DB</span>
             </div>
-            <p class="text-[11px] text-text-body leading-tight"><?= h($ringLabel) ?></p>
+            <div class="flex flex-col items-center gap-1" title="Compliance">
+                <?php renderScoreRing($complianceScore, 'text-emerald-400', 'w-10 h-10'); ?>
+                <span class="text-[9px] text-text-subtle">Compliance</span>
+            </div>
+            <div class="flex flex-col items-center gap-1" title="Hardening">
+                <?php renderScoreRing($hardeningScore, 'text-red-400', 'w-10 h-10'); ?>
+                <span class="text-[9px] text-text-subtle">Hardening</span>
+            </div>
         </div>
-        
+
         <!-- Popup flotante con lista de tareas -->
         <div class="absolute left-full top-0 ml-2 w-72 bg-bg-panel border border-border-theme rounded-xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 p-4">
             <p class="text-[11px] font-semibold text-text-heading mb-3">Checklist de Cumplimiento</p>
@@ -92,13 +144,15 @@ $checklistItems = $checklistRes['checklist'] ?? [];
                 <div class="flex items-center justify-between gap-2 p-2 rounded-lg <?= $task['done'] ? 'bg-emerald-500/5' : 'bg-bg-surface/30' ?>">
                     <div class="flex items-center gap-2 min-w-0">
                         <span class="w-1.5 h-1.5 rounded-full <?= $task['done'] ? 'bg-emerald-400' : 'bg-yellow-400' ?> flex-shrink-0"></span>
+                        <?php if (!$task['done']): ?>
+                        <a href="<?= h($task['link']) ?>" class="text-[10px] text-text-body truncate hover:text-primary-300 transition-colors">
+                            <?= h($task['label']) ?>
+                        </a>
+                        <?php else: ?>
                         <span class="text-[10px] text-text-body truncate"><?= h($task['label']) ?></span>
+                        <?php endif; ?>
                     </div>
-                    <?php if (!$task['done']): ?>
-                    <a href="<?= h($task['link']) ?>" class="flex-shrink-0 px-2 py-1 rounded bg-primary-500/20 text-primary-300 text-[9px] font-medium hover:bg-primary-500/30 transition-colors">
-                        IR
-                    </a>
-                    <?php else: ?>
+                    <?php if ($task['done']): ?>
                     <span class="text-[9px] text-emerald-400/60 flex-shrink-0">✓</span>
                     <?php endif; ?>
                 </div>
@@ -197,9 +251,19 @@ $checklistItems = $checklistRes['checklist'] ?? [];
         <div class="flex-1 min-w-0"><p class="text-sm font-semibold text-text-heading truncate">SecureLab</p><p class="text-[10px] text-text-subtle truncate">Centro de cumplimiento</p></div>
         <button type="button" onclick="closeMobileNav()" class="w-9 h-9 rounded-xl border border-border-theme text-text-muted flex items-center justify-center" aria-label="Cerrar navegación"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
     </div>
-    <div class="mx-4 mt-4 p-3 rounded-xl border border-border-theme bg-bg-panel/70 flex items-center gap-3">
-        <div class="relative w-12 h-12 <?= $ringColor ?> flex-shrink-0"><svg class="w-full h-full -rotate-90" viewBox="0 0 48 48"><circle cx="24" cy="24" r="18" fill="none" stroke="currentColor" stroke-width="5" class="text-text-subtle opacity-20"/><circle cx="24" cy="24" r="18" fill="none" stroke="currentColor" stroke-width="5" stroke-dasharray="<?= $circ ?>" stroke-dashoffset="<?= $dashOffset ?>" stroke-linecap="round"/></svg><span class="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-text-heading"><?= $complianceScore ?>%</span></div>
-        <div><p class="text-[10px] uppercase tracking-wider text-text-subtle">Cumplimiento</p><p class="text-xs font-medium text-text-heading mt-0.5"><?= h($ringLabel) ?></p></div>
+    <div class="mx-4 mt-4 p-3 rounded-xl border border-border-theme bg-bg-panel/70 flex items-center justify-between">
+        <div class="flex flex-col items-center gap-1" title="Agente &amp; Base de datos">
+            <?php renderScoreRing($agentDBScore, 'text-yellow-400', 'w-11 h-11'); ?>
+            <span class="text-[9px] text-text-subtle">Agente &amp; DB</span>
+        </div>
+        <div class="flex flex-col items-center gap-1" title="Compliance">
+            <?php renderScoreRing($complianceScore, 'text-emerald-400', 'w-11 h-11'); ?>
+            <span class="text-[9px] text-text-subtle">Compliance</span>
+        </div>
+        <div class="flex flex-col items-center gap-1" title="Hardening">
+            <?php renderScoreRing($hardeningScore, 'text-red-400', 'w-11 h-11'); ?>
+            <span class="text-[9px] text-text-subtle">Hardening</span>
+        </div>
     </div>
     <nav class="flex-1 overflow-y-auto p-3 space-y-1">
         <?php foreach ($navItems as $item): $hasPage = file_exists(__DIR__ . '/../pages/' . $item['id'] . '.php'); $href = ($item['id'] === 'dashboard' || $hasPage) ? '/' . $item['id'] : '/dashboard?tab=' . $item['id']; ?>
