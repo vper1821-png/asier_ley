@@ -94,6 +94,7 @@ if (str_contains($path, 'download') || isset($_GET['installer'])) {
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_SSL_VERIFYPEER => false,
         CURLOPT_SSL_VERIFYHOST => 0,
+        CURLOPT_ENCODING => '',
         CURLOPT_HEADERFUNCTION => function($curl, $header) {
             $len = strlen($header);
             $trimmed = trim($header);
@@ -101,7 +102,6 @@ if (str_contains($path, 'download') || isset($_GET['installer'])) {
                 $lower = strtolower($trimmed);
                 if (str_starts_with($lower, 'content-type:') ||
                     str_starts_with($lower, 'content-disposition:') ||
-                    str_starts_with($lower, 'content-length:') ||
                     str_starts_with($lower, 'cache-control:') ||
                     str_starts_with($lower, 'pragma:') ||
                     str_starts_with($lower, 'expires:')) {

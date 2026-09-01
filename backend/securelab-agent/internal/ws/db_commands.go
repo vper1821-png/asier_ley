@@ -8,7 +8,7 @@ import (
 	"securelab-agent/internal/logger"
 
 	_ "github.com/denisenkom/go-mssqldb"
-	_ "github.com/go-sql-driver/mysql"
+	mysql "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
 	_ "modernc.org/sqlite"
 )
@@ -107,12 +107,22 @@ func (c *Client) openDB(dbType, host string, port int, database, user, password 
 	var dsn string
 	switch dbType {
 	case "mysql", "mariadb":
-		tlsOpt := "false"
+		cfg := mysql.NewConfig()
+		cfg.User = user
+		cfg.Passwd = password
+		cfg.Net = "tcp"
+		cfg.Addr = fmt.Sprintf("%s:%d", host, port)
+		cfg.DBName = database
+		cfg.Timeout = 5 * time.Second
+		cfg.MultiStatements = true
+		cfg.ParseTime = true
+		cfg.Loc = time.Local
 		if ssl {
-			tlsOpt = "true"
+			cfg.TLSConfig = "true"
+		} else {
+			cfg.TLSConfig = "false"
 		}
-		dsn = fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?timeout=5s&tls=%s&multiStatements=true",
-			user, password, host, port, database, tlsOpt)
+		dsn = cfg.FormatDSN()
 	case "postgres", "postgresql":
 		sslMode := "disable"
 		if ssl {
@@ -130,7 +140,13 @@ func (c *Client) openDB(dbType, host string, port int, database, user, password 
 		return nil, fmt.Errorf("tipo de base de datos no soportado: %s", dbType)
 	}
 
-	db, err := sql.Open(dbType, dsn)
+	// mssql usa el driver "sqlserver"; el resto coincide con dbType
+	driverName := dbType
+	if dbType == "mssql" {
+		driverName = "sqlserver"
+	}
+
+	db, err := sql.Open(driverName, dsn)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +167,8 @@ func (c *Client) scanDB(dbType, host string, port int, database, user, password 
 
 	switch dbType {
 	case "mysql", "mariadb":
-		rows, err := db.Query("SHOW TABLES")
+		// information_schema.tables es mucho más rápido y evita bloqueos por SELECT COUNT(*) en tablas grandes
+		rows, err := db.Query("SELECT table_name, table_rows FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'")
 		if err != nil {
 			return DBScanResult{Success: false, Error: err.Error()}, nil
 		}
@@ -159,13 +176,11 @@ func (c *Client) scanDB(dbType, host string, port int, database, user, password 
 
 		for rows.Next() {
 			var tableName string
-			if err := rows.Scan(&tableName); err != nil {
+			var rowCnt int64
+			if err := rows.Scan(&tableName, &rowCnt); err != nil {
 				continue
 			}
-			var cnt int
-			if err := db.QueryRow("SELECT COUNT(*) FROM `" + tableName + "`").Scan(&cnt); err != nil {
-				cnt = 0
-			}
+			cnt := int(rowCnt)
 			result.TableList = append(result.TableList, DBTableInfo{Name: tableName, Rows: cnt})
 			result.Records += cnt
 		}

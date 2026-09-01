@@ -596,15 +596,19 @@ class AgentWebSocket implements MessageComponentInterface {
                 echo "⚠️ No se puede enviar comando, agente desconectado: {$agentId}\n";
                 break;
             }
-            $conn->send(json_encode([
-                'type' => 'command',
-                'payload' => [
-                    'command' => $cmd['command'],
-                    'params' => $cmd['params'] ?? [],
-                    'commandId' => $cmd['_id'],
-                ]
-            ]));
-            echo "📨 Comando enviado a {$agentId}: " . json_encode($cmd['command']) . "\n";
+            try {
+                $conn->send(json_encode([
+                    'type' => 'command',
+                    'payload' => [
+                        'command' => $cmd['command'],
+                        'params' => $cmd['params'] ?? [],
+                        'commandId' => $cmd['_id'],
+                    ]
+                ]));
+                echo "📨 Comando enviado a {$agentId}: " . json_encode($cmd['command']) . "\n";
+            } catch (\Exception $e) {
+                echo "⚠️ No se pudo enviar comando a {$agentId}: " . $e->getMessage() . "\n";
+            }
         }
     }
 
@@ -766,15 +770,19 @@ $server->loop->addPeriodicTimer(1.0, function () use ($agentWsRef) {
         $count = 0;
         foreach ($cmds as $cmd) {
             $count++;
-            $conn->send(json_encode([
-                'type' => 'command',
-                'payload' => [
-                    'command' => $cmd['command'],
-                    'params' => $cmd['params'] ?? [],
-                    'commandId' => $cmd['_id'],
-                ]
-            ]));
-            echo "⚡ PUSH DIRECTO -> {$agentId}: " . $cmd['command'] . " (ID: {$cmd['_id']})\n";
+            try {
+                $conn->send(json_encode([
+                    'type' => 'command',
+                    'payload' => [
+                        'command' => $cmd['command'],
+                        'params' => $cmd['params'] ?? [],
+                        'commandId' => $cmd['_id'],
+                    ]
+                ]));
+                echo "⚡ PUSH DIRECTO -> {$agentId}: " . $cmd['command'] . " (ID: {$cmd['_id']})\n";
+            } catch (\Exception $e) {
+                echo "⚠️ No se pudo enviar PUSH a {$agentId}: " . $e->getMessage() . "\n";
+            }
         }
         if ($count > 0) {
             echo "📤 Enviados {$count} comandos pendientes a {$agentId}\n";

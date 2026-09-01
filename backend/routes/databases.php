@@ -165,7 +165,7 @@ function waitForAgentCommand($commandId, $timeoutSeconds = 30) {
     return null;
 }
 
-function executeDBCommandViaAgent($userId, $command, $record) {
+function executeDBCommandViaAgent($userId, $command, $record, $timeout = 45) {
     $agent = getOnlineAgentForUser($userId);
     if (!$agent) {
         json_error('no hay agente online para ejecutar el comando');
@@ -182,7 +182,7 @@ function executeDBCommandViaAgent($userId, $command, $record) {
     ];
 
     $commandId = sendAgentCommand($userId, $agent['agentId'], $command, $params);
-    $result = waitForAgentCommand($commandId, 45);
+    $result = waitForAgentCommand($commandId, $timeout);
     if (!$result) {
         json_error('timeout esperando respuesta del agente');
     }
@@ -313,7 +313,7 @@ function scan() {
     $record = $db->findOne('databases', ['_id' => $id, 'userId' => $user['_id']]);
     if (!$record) json_error('base de datos no encontrada', 404);
 
-    $res = executeDBCommandViaAgent($user['_id'], 'scan_db', $record);
+    $res = executeDBCommandViaAgent($user['_id'], 'scan_db', $record, 120);
     if (empty($res['success'])) {
         $msg = $res['error'] ?? $res['Error'] ?? 'escaneo fallido';
         json_error('escaneo fallido: ' . $msg);
