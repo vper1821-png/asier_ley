@@ -699,7 +699,7 @@ if (preg_match('#^/api/reports/download/(.+\.pdf)$#', $uri, $matches) && $method
         
         if ($mimeType === 'application/pdf') {
             header('Content-Type: application/pdf');
-            header('Content-Disposition: inline; filename="' . $filename . '"');
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
             header('Content-Length: ' . filesize($filePath));
             header('Cache-Control: public, max-age=3600');
             header('Access-Control-Allow-Origin: *');

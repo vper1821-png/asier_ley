@@ -211,10 +211,7 @@ $avgRam = $totalHosts > 0 ? round(array_sum(array_map(fn($h) => (float)($h['ram'
                             <div class="px-4 py-2.5 border-t border-white/[0.04] bg-white/[0.01] flex items-center justify-between">
                                 <span class="text-[10px] text-text-subtle font-mono">v<?= h($host['version'] ?? '?') ?></span>
                                 <div class="flex items-center gap-2">
-                                    <a href="/host-privacy?agentId=<?= urlencode($host['agentId'] ?? '') ?>" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-medium bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/20 transition-all">
-                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
-                                        Privacidad
-                                    </a>
+
                                     <span class="text-[10px] text-text-subtle">User: <?= h($host['user'] ?? '?') ?></span>
                                 </div>
                             </div>

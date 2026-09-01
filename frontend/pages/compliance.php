@@ -323,8 +323,10 @@ require_once __DIR__ . '/../includes/header.php';
 .compliance-workspace .wizard-step-content.active { display: block !important; }
 
 /* Wizard submit button visibility - use class instead of inline style */
-.compliance-workspace .wizard-submit-btn { display: none !important; }
-.compliance-workspace .wizard-submit-btn.visible { display: inline-flex !important; }
+.compliance-workspace .wizard-submit-btn,
+.compliance-workspace .wizard-btn-submit { display: none !important; }
+.compliance-workspace .wizard-submit-btn.visible,
+.compliance-workspace .wizard-btn-submit.visible { display: inline-flex !important; }
 
 /* In-page error messages */
 .compliance-workspace .wizard-error-message {
@@ -6353,9 +6355,11 @@ async function generateCompliancePDF(resource) {
         
         if (data.success) {
             if (data.pdfUrl && data.pdfUrl !== null && data.pdfUrl !== '') {
-                // Download PDF directly
+                // Download PDF directly via the same API proxy used by the rest of the app
                 const a = document.createElement('a');
-                a.href = data.pdfUrl;
+                a.href = data.pdfUrl.startsWith('/api/')
+                    ? '/api-proxy.php?path=' + encodeURIComponent(data.pdfUrl)
+                    : data.pdfUrl;
                 a.download = 'certificado-compliance-' + resource + '-' + new Date().toISOString().slice(0,10) + '.pdf';
                 document.body.appendChild(a);
                 a.click();
@@ -6741,10 +6745,10 @@ document.getElementById('assign-modal').addEventListener('click', function (e) {
         bpBtnPrev.disabled = bpCurrentStep === 1;
         if (bpCurrentStep === bpTotalSteps) {
             bpBtnNext.classList.add('hidden');
-            bpBtnSubmit.classList.remove('hidden');
+            bpBtnSubmit.classList.add('visible');
         } else {
             bpBtnNext.classList.remove('hidden');
-            bpBtnSubmit.classList.add('hidden');
+            bpBtnSubmit.classList.remove('visible');
         }
 
         // Hide error

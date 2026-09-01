@@ -1158,8 +1158,7 @@ class PDFGenerator {
                 
                 if (file_put_contents($pdfPath, $pdfContent) !== false) {
                     chmod($pdfPath, 0644);
-                    $baseUrl = defined('API_BASE_URL') ? API_BASE_URL : 'http://leysecurelab.sytes.net';
-                    $pdfUrl = $baseUrl . '/backend/reports/' . $pdfFilename;
+                    $pdfUrl = '/api/reports/download/' . $pdfFilename;
                 }
             }
         } catch (Exception $e) {

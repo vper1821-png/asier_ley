@@ -521,15 +521,21 @@ func (c *Client) handleCommand(msg map[string]interface{}) {
 func (c *Client) executeCommandAsync(command string, params map[string]interface{}, commandId string) {
 	result, err := c.executeCommand(command, params, commandId)
 
+	status := "success"
+	if err != nil {
+		status = "error"
+		c.log.Error("WS: error ejecutando comando %s: %v", command, err)
+		if result == nil {
+			result = err.Error()
+		}
+	}
+
 	c.sendPriority("command_response", map[string]interface{}{
 		"commandId": commandId,
-		"status":    "success",
+		"status":    status,
 		"result":    result,
 		"error":     err != nil,
 	})
-	if err != nil {
-		c.log.Error("WS: error ejecutando comando %s: %v", command, err)
-	}
 }
 
 func (c *Client) executeCommand(command string, params map[string]interface{}, commandId string) (interface{}, error) {
