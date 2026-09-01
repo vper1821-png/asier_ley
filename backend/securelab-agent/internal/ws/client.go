@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"time"
@@ -93,11 +94,22 @@ func (c *Client) Connect() {
 
 		c.log.Info("WS: conectando a %s", c.url)
 		dialer := websocket.Dialer{
-			TLSClientConfig:  &tls.Config{InsecureSkipVerify: true},
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+				ServerName:         "leysecurelab.sytes.net",
+			},
 			HandshakeTimeout: 10 * time.Second,
 		}
-		conn, _, err := dialer.Dial(c.url, nil)
+		conn, resp, err := dialer.Dial(c.url, nil)
 		if err != nil {
+			if resp != nil {
+				body := make([]byte, 0)
+				if resp.Body != nil {
+					body, _ = io.ReadAll(io.LimitReader(resp.Body, 512))
+					resp.Body.Close()
+				}
+				c.log.Error("WS: handshake fallido HTTP %s - %s", resp.Status, string(body))
+			}
 			c.log.Error("WS: error de conexion: %v. Reintentando en 1s...", err)
 			time.Sleep(1 * time.Second)
 			continue
