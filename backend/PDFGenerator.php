@@ -1130,7 +1130,8 @@ class PDFGenerator {
 
     public function generatePDFFile($html, $filename) {
         $pdfUrl = null;
-        
+        $pdfBase64 = null;
+
         try {
             // Use dompdf instead of wkhtmltopdf
             $options = new \Dompdf\Options();
@@ -1139,15 +1140,15 @@ class PDFGenerator {
             $options->set('defaultFont', 'Times New Roman');
             $options->set('paperSize', 'A4');
             $options->set('orientation', 'portrait');
-            
+
             $dompdf = new \Dompdf\Dompdf($options);
             $dompdf->loadHtml($html);
             $dompdf->setPaper('A4', 'portrait');
             $dompdf->render();
-            
+
             // Get PDF content
             $pdfContent = $dompdf->output();
-            
+
             if (!empty($pdfContent)) {
                 $reportsDir = __DIR__ . '/reports';
                 if (!is_dir($reportsDir)) {
@@ -1155,11 +1156,13 @@ class PDFGenerator {
                 }
                 $pdfFilename = $filename . '-' . date('Y-m-d-His') . '.pdf';
                 $pdfPath = $reportsDir . '/' . $pdfFilename;
-                
+
                 if (file_put_contents($pdfPath, $pdfContent) !== false) {
                     chmod($pdfPath, 0644);
                     $pdfUrl = '/api/reports/download/' . $pdfFilename;
                 }
+
+                $pdfBase64 = base64_encode($pdfContent);
             }
         } catch (Exception $e) {
             // Log error but continue with HTML fallback
@@ -1168,8 +1171,9 @@ class PDFGenerator {
 
         return [
             'pdfUrl' => $pdfUrl,
+            'pdfBase64' => $pdfBase64,
             'html' => $html,
-            'message' => $pdfUrl ? 'PDF generado exitosamente' : 'PDF no disponible, se devuelve HTML para impresión'
+            'message' => $pdfUrl || $pdfBase64 ? 'PDF generado exitosamente' : 'PDF no disponible, se devuelve HTML para impresión'
         ];
     }
 }

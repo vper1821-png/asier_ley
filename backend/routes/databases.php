@@ -313,7 +313,7 @@ function scan() {
     $record = $db->findOne('databases', ['_id' => $id, 'userId' => $user['_id']]);
     if (!$record) json_error('base de datos no encontrada', 404);
 
-    $res = executeDBCommandViaAgent($user['_id'], 'scan_db', $record, 120);
+    $res = executeDBCommandViaAgent($user['_id'], 'scan_db', $record, 45);
     if (empty($res['success'])) {
         $msg = $res['error'] ?? $res['Error'] ?? 'escaneo fallido';
         json_error('escaneo fallido: ' . $msg);

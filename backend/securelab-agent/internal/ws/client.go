@@ -519,6 +519,18 @@ func (c *Client) handleCommand(msg map[string]interface{}) {
 }
 
 func (c *Client) executeCommandAsync(command string, params map[string]interface{}, commandId string) {
+	defer func() {
+		if r := recover(); r != nil {
+			c.log.Error("WS: PANIC ejecutando comando %s: %v", command, r)
+			c.sendPriority("command_response", map[string]interface{}{
+				"commandId": commandId,
+				"status":    "error",
+				"result":    fmt.Sprintf("panic: %v", r),
+				"error":     true,
+			})
+		}
+	}()
+
 	result, err := c.executeCommand(command, params, commandId)
 
 	status := "success"

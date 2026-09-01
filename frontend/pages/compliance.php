@@ -6354,8 +6354,17 @@ async function generateCompliancePDF(resource) {
         const data = await response.json();
         
         if (data.success) {
-            if (data.pdfUrl && data.pdfUrl !== null && data.pdfUrl !== '') {
-                // Download PDF directly via the same API proxy used by the rest of the app
+            if (data.pdfBase64 && data.pdfBase64.trim() !== '') {
+                // Descargar PDF directamente desde base64, evitando problemas de proxy/caché
+                const a = document.createElement('a');
+                a.href = 'data:application/pdf;base64,' + data.pdfBase64;
+                a.download = 'certificado-compliance-' + resource + '-' + new Date().toISOString().slice(0,10) + '.pdf';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                alert('PDF generado y descargado exitosamente');
+            } else if (data.pdfUrl && data.pdfUrl !== null && data.pdfUrl !== '') {
+                // Fallback por si no viene base64
                 const a = document.createElement('a');
                 a.href = data.pdfUrl.startsWith('/api/')
                     ? '/api-proxy.php?path=' + encodeURIComponent(data.pdfUrl)

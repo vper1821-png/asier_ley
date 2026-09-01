@@ -1175,6 +1175,7 @@ function generateCompliancePDF($resource) {
     json_response([
         'success' => true,
         'pdfUrl' => $result['pdfUrl'],
+        'pdfBase64' => $result['pdfBase64'],
         'html' => $result['html'],
         'message' => $result['message']
     ]);
