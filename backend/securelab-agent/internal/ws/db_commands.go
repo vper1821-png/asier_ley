@@ -8,7 +8,7 @@ import (
 	"securelab-agent/internal/logger"
 
 	_ "github.com/denisenkom/go-mssqldb"
-	mysql "github.com/go-sql-driver/mysql"
+	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
 	_ "modernc.org/sqlite"
 )
@@ -107,22 +107,12 @@ func (c *Client) openDB(dbType, host string, port int, database, user, password 
 	var dsn string
 	switch dbType {
 	case "mysql", "mariadb":
-		cfg := mysql.NewConfig()
-		cfg.User = user
-		cfg.Passwd = password
-		cfg.Net = "tcp"
-		cfg.Addr = fmt.Sprintf("%s:%d", host, port)
-		cfg.DBName = database
-		cfg.Timeout = 5 * time.Second
-		cfg.MultiStatements = true
-		cfg.ParseTime = true
-		cfg.Loc = time.Local
+		tlsOpt := "false"
 		if ssl {
-			cfg.TLSConfig = "true"
-		} else {
-			cfg.TLSConfig = "false"
+			tlsOpt = "true"
 		}
-		dsn = cfg.FormatDSN()
+		dsn = fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?timeout=5s&tls=%s&multiStatements=true",
+			user, password, host, port, database, tlsOpt)
 	case "postgres", "postgresql":
 		sslMode := "disable"
 		if ssl {
@@ -140,13 +130,7 @@ func (c *Client) openDB(dbType, host string, port int, database, user, password 
 		return nil, fmt.Errorf("tipo de base de datos no soportado: %s", dbType)
 	}
 
-	// mssql usa el driver "sqlserver"; el resto coincide con dbType
-	driverName := dbType
-	if dbType == "mssql" {
-		driverName = "sqlserver"
-	}
-
-	db, err := sql.Open(driverName, dsn)
+	db, err := sql.Open(dbType, dsn)
 	if err != nil {
 		return nil, err
 	}
@@ -167,22 +151,40 @@ func (c *Client) scanDB(dbType, host string, port int, database, user, password 
 
 	switch dbType {
 	case "mysql", "mariadb":
-		// information_schema.tables es mucho más rápido y evita bloqueos por SELECT COUNT(*) en tablas grandes
-		rows, err := db.Query("SELECT table_name, table_rows FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'")
-		if err != nil {
-			return DBScanResult{Success: false, Error: err.Error()}, nil
-		}
-		defer rows.Close()
-
-		for rows.Next() {
-			var tableName string
-			var rowCnt int64
-			if err := rows.Scan(&tableName, &rowCnt); err != nil {
-				continue
+		// Intentar information_schema (mucho más rápido); si falla, volver al método seguro
+		infoRows, err := db.Query("SELECT table_name, table_rows FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'")
+		if err == nil {
+			defer infoRows.Close()
+			for infoRows.Next() {
+				var tableName string
+				var rowCnt int64
+				if err := infoRows.Scan(&tableName, &rowCnt); err != nil {
+					continue
+				}
+				cnt := int(rowCnt)
+				result.TableList = append(result.TableList, DBTableInfo{Name: tableName, Rows: cnt})
+				result.Records += cnt
 			}
-			cnt := int(rowCnt)
-			result.TableList = append(result.TableList, DBTableInfo{Name: tableName, Rows: cnt})
-			result.Records += cnt
+		} else {
+			// Fallback: SHOW TABLES + SELECT COUNT(*) tabla por tabla
+			rows, err := db.Query("SHOW TABLES")
+			if err != nil {
+				return DBScanResult{Success: false, Error: err.Error()}, nil
+			}
+			defer rows.Close()
+
+			for rows.Next() {
+				var tableName string
+				if err := rows.Scan(&tableName); err != nil {
+					continue
+				}
+				var cnt int
+				if err := db.QueryRow("SELECT COUNT(*) FROM `" + tableName + "`").Scan(&cnt); err != nil {
+					cnt = 0
+				}
+				result.TableList = append(result.TableList, DBTableInfo{Name: tableName, Rows: cnt})
+				result.Records += cnt
+			}
 		}
 
 	case "postgres", "postgresql":

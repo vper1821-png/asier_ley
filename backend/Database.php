@@ -48,7 +48,7 @@ class Database {
     }
 
     private function writeCollection($collection, $data) {
-        file_put_contents($this->collectionFile($collection), json_encode($data, JSON_PRETTY_PRINT));
+        file_put_contents($this->collectionFile($collection), json_encode($data, JSON_PRETTY_PRINT), LOCK_EX);
     }
 
     // ── MongoDB operations ──

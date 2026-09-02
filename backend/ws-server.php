@@ -31,7 +31,7 @@ class AgentWebSocket implements MessageComponentInterface {
             $property->setAccessible(true);
             $useMongo = $property->getValue($this->db);
             echo "🔍 Database usando: " . ($useMongo ? "MongoDB" : "Archivos JSON") . "\n";
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             echo "❌ Error al inicializar la base de datos: " . $e->getMessage() . "\n";
         }
         echo "🔌 WebSocket Server iniciado en puerto 3839\n";
@@ -52,7 +52,7 @@ class AgentWebSocket implements MessageComponentInterface {
                     'serverTime' => date('c')
                 ]
             ]));
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             echo "🔥 Error en onOpen: " . $e->getMessage() . "\n";
             $conn->close();
         }
@@ -138,7 +138,7 @@ class AgentWebSocket implements MessageComponentInterface {
                         'payload' => ['message' => "Tipo de mensaje no soportado: {$type}"]
                     ]));
             }
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             echo "🔥 Error en onMessage: " . $e->getMessage() . "\n";
             $from->send(json_encode([
                 'type' => 'error',
@@ -301,7 +301,7 @@ class AgentWebSocket implements MessageComponentInterface {
                 ]
             ]));
             echo "✅ Archivo procesado: {$fileData['path']}\n";
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $from->send(json_encode([
                 'type' => 'file_response',
                 'payload' => [
@@ -576,7 +576,7 @@ class AgentWebSocket implements MessageComponentInterface {
                     'status' => $status,
                 ]);
                 echo "📨 Command response: {$commandId} - {$status}\n";
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 echo "❌ Error guardando respuesta: " . $e->getMessage() . "\n";
             }
         }
@@ -606,7 +606,7 @@ class AgentWebSocket implements MessageComponentInterface {
                     ]
                 ]));
                 echo "📨 Comando enviado a {$agentId}: " . json_encode($cmd['command']) . "\n";
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 echo "⚠️ No se pudo enviar comando a {$agentId}: " . $e->getMessage() . "\n";
             }
         }
@@ -780,7 +780,7 @@ $server->loop->addPeriodicTimer(1.0, function () use ($agentWsRef) {
                     ]
                 ]));
                 echo "⚡ PUSH DIRECTO -> {$agentId}: " . $cmd['command'] . " (ID: {$cmd['_id']})\n";
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 echo "⚠️ No se pudo enviar PUSH a {$agentId}: " . $e->getMessage() . "\n";
             }
         }

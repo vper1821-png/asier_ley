@@ -110,12 +110,22 @@ func GetHealth() Health {
 
 	// Número de procesos
 	if out, err := exec.Command("ps", "-e", "h").Output(); err == nil {
-		h.Processes = len(strings.Split(strings.TrimSpace(string(out)), "\n"))
+		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+		if len(lines) == 1 && lines[0] == "" {
+			h.Processes = 0
+		} else {
+			h.Processes = len(lines)
+		}
 	}
 
 	// Conexiones activas
 	if out, err := exec.Command("ss", "-t", "-a", "state", "established").Output(); err == nil {
-		h.Connections = len(strings.Split(strings.TrimSpace(string(out)), "\n"))
+		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+		if len(lines) == 1 && lines[0] == "" {
+			h.Connections = 0
+		} else {
+			h.Connections = len(lines)
+		}
 	}
 
 	// Uptime
