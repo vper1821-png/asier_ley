@@ -65,7 +65,8 @@ func (m *MSSQLMonitor) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("open: %w", err)
 	}
-	db.SetMaxOpenConns(2)
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 	if err := db.Ping(); err != nil {
 		db.Close()
 		return fmt.Errorf("ping: %w", err)

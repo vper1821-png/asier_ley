@@ -73,13 +73,13 @@ func (m *MySQLMonitor) Start(ctx context.Context) error {
 	}
 	m.mu.Unlock()
 
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?timeout=5s&multiStatements=true",
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?timeout=5s&parseTime=true&multiStatements=true",
 		m.conn.Username, m.conn.Password, m.conn.Host, m.conn.Port, m.conn.Database)
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return fmt.Errorf("open: %w", err)
 	}
-	db.SetMaxOpenConns(2)
+	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	if err := db.Ping(); err != nil {
 		db.Close()

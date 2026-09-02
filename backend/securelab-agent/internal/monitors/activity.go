@@ -2,6 +2,7 @@ package monitors
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"securelab-agent/internal/audit"
@@ -26,24 +27,35 @@ type ActivityMonitor struct {
 
 func NewActivityMonitor(store *audit.Store, wsClient *ws.Client, piiScanner *scanner.PIIScanner, log *logger.Logger) *ActivityMonitor {
 	ctx, cancel := context.WithCancel(context.Background())
-	am := &ActivityMonitor{
-		monitors:           make(map[string]DBMonitor),
-		lastConns:          make(map[string]DBConnection),
-		store:              store,
-		wsClient:           wsClient,
-		piiScanner:         piiScanner,
-		log:                log,
-		ctx:                ctx,
-		cancel:             cancel,
-		dbConnectionsChan:  make(chan []map[string]interface{}, 10),
+	return &ActivityMonitor{
+		monitors:          make(map[string]DBMonitor),
+		lastConns:         make(map[string]DBConnection),
+		store:             store,
+		wsClient:          wsClient,
+		piiScanner:        piiScanner,
+		log:               log,
+		ctx:               ctx,
+		cancel:            cancel,
+		dbConnectionsChan: make(chan []map[string]interface{}, 10),
 	}
-	am.monitors["mysql"] = NewMySQLMonitor(store, wsClient, piiScanner, log)
-	am.monitors["postgres"] = NewPostgresMonitor(store, wsClient, piiScanner, log)
-	am.monitors["mssql"] = NewMSSQLMonitor(store, wsClient, piiScanner, log)
-	am.monitors["mongodb"] = NewMongoDBMonitor(store, wsClient, piiScanner, log)
-	am.monitors["redis"] = NewRedisMonitor(store, wsClient, log)
-	am.monitors["sqlite"] = NewSQLiteMonitor(store, wsClient, log)
-	return am
+}
+
+func (am *ActivityMonitor) newMonitor(engine string) DBMonitor {
+	switch engine {
+	case "mysql":
+		return NewMySQLMonitor(am.store, am.wsClient, am.piiScanner, am.log)
+	case "postgres":
+		return NewPostgresMonitor(am.store, am.wsClient, am.piiScanner, am.log)
+	case "mssql":
+		return NewMSSQLMonitor(am.store, am.wsClient, am.piiScanner, am.log)
+	case "mongodb":
+		return NewMongoDBMonitor(am.store, am.wsClient, am.piiScanner, am.log)
+	case "redis":
+		return NewRedisMonitor(am.store, am.wsClient, am.log)
+	case "sqlite":
+		return NewSQLiteMonitor(am.store, am.wsClient, am.log)
+	}
+	return nil
 }
 
 func (am *ActivityMonitor) SetDBConnectionsChan(ch chan []map[string]interface{}) {
@@ -54,6 +66,43 @@ func (am *ActivityMonitor) GetDBConnectionsChan() chan []map[string]interface{} 
 	return am.dbConnectionsChan
 }
 
+func (am *ActivityMonitor) connKey(conn DBConnection) string {
+	return fmt.Sprintf("%s://%s:%d/%s/%s/%s/%v", conn.Engine, conn.Host, conn.Port, conn.Database, conn.Username, conn.Password, conn.SSL)
+}
+
+func (am *ActivityMonitor) startOne(conn DBConnection) {
+	if conn.Engine == "" || conn.Host == "" || conn.Port <= 0 || conn.Username == "" {
+		am.log.Warn("Invalid connection, skipping: engine=%s host=%s port=%d", conn.Engine, conn.Host, conn.Port)
+		return
+	}
+	key := am.connKey(conn)
+	if last, exists := am.lastConns[key]; exists && last == conn {
+		am.log.Debug("Monitor %s already connected to %s:%d/%s, skipping", conn.Engine, conn.Host, conn.Port, conn.Database)
+		return
+	}
+	if mon, exists := am.monitors[key]; exists {
+		am.log.Info("Updating monitor %s", key)
+		mon.Stop()
+	} else {
+		am.log.Info("Creating monitor %s for %s:%d/%s", conn.Engine, conn.Host, conn.Port, conn.Database)
+	}
+	mon := am.newMonitor(conn.Engine)
+	if mon == nil {
+		am.log.Warn("Monitor for engine %s not available", conn.Engine)
+		return
+	}
+	am.monitors[key] = mon
+	am.lastConns[key] = conn
+	mon.SetConnection(conn)
+	am.wg.Add(1)
+	go func(m DBMonitor) {
+		defer am.wg.Done()
+		if err := m.Start(am.ctx); err != nil {
+			am.log.Error("Monitor %s error: %v", m.Name(), err)
+		}
+	}(mon)
+}
+
 func (am *ActivityMonitor) StartDBConnectionsListener() {
 	am.wg.Add(1)
 	go func() {
@@ -62,6 +111,7 @@ func (am *ActivityMonitor) StartDBConnectionsListener() {
 			select {
 			case conns := <-am.dbConnectionsChan:
 				am.log.Info("ActivityMonitor: received %d connections", len(conns))
+				desired := make(map[string]DBConnection)
 				for _, connMap := range conns {
 					conn := DBConnection{
 						Engine:   getString(connMap, "engine"),
@@ -72,26 +122,26 @@ func (am *ActivityMonitor) StartDBConnectionsListener() {
 						Password: getString(connMap, "password"),
 						SSL:      getBool(connMap, "ssl"),
 					}
-					if mon, ok := am.monitors[conn.Engine]; ok && conn.Engine != "" && conn.Host != "" && conn.Port > 0 && conn.Database != "" && conn.Username != "" {
-						name := mon.Name()
-						if last, exists := am.lastConns[name]; exists && last == conn {
-							am.log.Debug("Monitor %s already connected to %s:%d/%s, skipping", name, conn.Host, conn.Port, conn.Database)
-							continue
-						}
-						am.log.Info("Connecting %s to %s:%d/%s", name, conn.Host, conn.Port, conn.Database)
-						am.lastConns[name] = conn
-						_ = mon.Stop()
-						mon.SetConnection(conn)
-						am.wg.Add(1)
-						go func(m DBMonitor) {
-							defer am.wg.Done()
-							if err := m.Start(am.ctx); err != nil {
-								am.log.Error("Monitor %s error: %v", m.Name(), err)
-							}
-						}(mon)
+					if conn.Engine != "" && conn.Host != "" && conn.Port > 0 && conn.Username != "" {
+						desired[am.connKey(conn)] = conn
 					} else {
 						am.log.Warn("Monitor for engine %s not available", conn.Engine)
 					}
+				}
+
+				// Detener monitores que ya no están en la lista deseada
+				for key, mon := range am.monitors {
+					if _, ok := desired[key]; !ok {
+						am.log.Info("ActivityMonitor: stopping monitor %s", key)
+						mon.Stop()
+						delete(am.monitors, key)
+						delete(am.lastConns, key)
+					}
+				}
+
+				// Arrancar o actualizar los que faltan
+				for _, conn := range desired {
+					am.startOne(conn)
 				}
 			case <-am.ctx.Done():
 				return
@@ -110,21 +160,16 @@ func (am *ActivityMonitor) AutoDiscoverAndConnect() {
 		Password: "",
 		Database: "",
 	}
-	if mon, ok := am.monitors["mysql"]; ok {
-		mon.SetConnection(conn)
-		am.wg.Add(1)
-		go func(m DBMonitor) {
-			defer am.wg.Done()
-			if err := m.Start(am.ctx); err != nil {
-				am.log.Error("Monitor error: %v", err)
-			}
-		}(mon)
-	}
+	am.startOne(conn)
 }
 
 func (am *ActivityMonitor) Stop() {
 	am.cancel()
 	am.wg.Wait()
+	for key, mon := range am.monitors {
+		am.log.Info("ActivityMonitor: stopping monitor %s", key)
+		mon.Stop()
+	}
 	am.log.Info("Stopped")
 }
 

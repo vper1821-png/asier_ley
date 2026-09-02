@@ -104,16 +104,18 @@ func (c *Client) testDBConnection(dbType, host string, port int, database, user,
 }
 
 func (c *Client) openDB(dbType, host string, port int, database, user, password string, ssl bool) (*sql.DB, error) {
-	var dsn string
+	var dsn, driverName string
 	switch dbType {
 	case "mysql", "mariadb":
+		driverName = "mysql"
 		tlsOpt := "false"
 		if ssl {
 			tlsOpt = "true"
 		}
-		dsn = fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?timeout=5s&tls=%s&multiStatements=true",
+		dsn = fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?timeout=5s&parseTime=true&tls=%s&multiStatements=true",
 			user, password, host, port, database, tlsOpt)
 	case "postgres", "postgresql":
+		driverName = "postgres"
 		sslMode := "disable"
 		if ssl {
 			sslMode = "require"
@@ -121,21 +123,31 @@ func (c *Client) openDB(dbType, host string, port int, database, user, password 
 		dsn = fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s connect_timeout=5",
 			host, port, user, password, database, sslMode)
 	case "mssql":
+		driverName = "mssql"
 		// encrypt=disable y trustservercertificate=true para compatibilidad con SQL Server antiguos
 		dsn = fmt.Sprintf("sqlserver://%s:%s@%s:%d?database=%s&connection+timeout=5&encrypt=disable&trustservercertificate=true",
 			user, password, host, port, database)
 	case "sqlite":
-		return sql.Open("sqlite", database)
+		db, err := sql.Open("sqlite", database)
+		if err != nil {
+			return nil, err
+		}
+		db.SetMaxOpenConns(1)
+		db.SetMaxIdleConns(0)
+		db.SetConnMaxLifetime(10 * time.Second)
+		return db, nil
 	default:
 		return nil, fmt.Errorf("tipo de base de datos no soportado: %s", dbType)
 	}
 
-	db, err := sql.Open(dbType, dsn)
+	db, err := sql.Open(driverName, dsn)
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(2)
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(0)
 	db.SetConnMaxLifetime(10 * time.Second)
+	db.SetConnMaxIdleTime(2 * time.Second)
 	return db, nil
 }
 
