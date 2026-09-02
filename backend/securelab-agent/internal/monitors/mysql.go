@@ -242,7 +242,7 @@ func (m *MySQLMonitor) checkGeneralLog(db *sql.DB) {
 
 	// Leer consultas posteriores a la última ejecución, excluyendo nuestro propio hilo
 	query := `
-		SELECT event_time, user_host, thread_id, command_type, argument, db
+		SELECT event_time, user_host, thread_id, command_type, argument
 		FROM mysql.general_log
 		WHERE event_time > ? AND thread_id != ?
 		  AND (command_type = 'Query' OR command_type = 'Execute' OR command_type = 'Prepare')
@@ -264,9 +264,9 @@ func (m *MySQLMonitor) checkGeneralLog(db *sql.DB) {
 	count := 0
 	for rows.Next() {
 		var eventTime time.Time
-		var userHost, commandType, argument, dbName sql.NullString
+		var userHost, commandType, argument sql.NullString
 		var tid int64
-		if err := rows.Scan(&eventTime, &userHost, &tid, &commandType, &argument, &dbName); err != nil {
+		if err := rows.Scan(&eventTime, &userHost, &tid, &commandType, &argument); err != nil {
 			continue
 		}
 		if argument.String == "" {
@@ -276,7 +276,7 @@ func (m *MySQLMonitor) checkGeneralLog(db *sql.DB) {
 		entry := audit.DBQueryEntry{
 			Timestamp: eventTime,
 			Engine:    "mysql",
-			Database:  dbName.String,
+			Database:  "",
 			User:      user,
 			Host:      host,
 			Query:     argument.String,
