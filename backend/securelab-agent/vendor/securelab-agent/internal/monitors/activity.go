@@ -13,6 +13,7 @@ import (
 type ActivityMonitor struct {
 	mu                sync.RWMutex
 	monitors          map[string]DBMonitor
+	lastConns         map[string]DBConnection
 	store             *audit.Store
 	wsClient          *ws.Client
 	piiScanner        *scanner.PIIScanner
@@ -27,6 +28,7 @@ func NewActivityMonitor(store *audit.Store, wsClient *ws.Client, piiScanner *sca
 	ctx, cancel := context.WithCancel(context.Background())
 	am := &ActivityMonitor{
 		monitors:           make(map[string]DBMonitor),
+		lastConns:          make(map[string]DBConnection),
 		store:              store,
 		wsClient:           wsClient,
 		piiScanner:         piiScanner,
@@ -71,7 +73,14 @@ func (am *ActivityMonitor) StartDBConnectionsListener() {
 						SSL:      getBool(connMap, "ssl"),
 					}
 					if mon, ok := am.monitors[conn.Engine]; ok && conn.Engine != "" && conn.Host != "" && conn.Port > 0 && conn.Database != "" && conn.Username != "" {
-						am.log.Info("Connecting %s to %s:%d/%s", conn.Engine, conn.Host, conn.Port, conn.Database)
+						name := mon.Name()
+						if last, exists := am.lastConns[name]; exists && last == conn {
+							am.log.Debug("Monitor %s already connected to %s:%d/%s, skipping", name, conn.Host, conn.Port, conn.Database)
+							continue
+						}
+						am.log.Info("Connecting %s to %s:%d/%s", name, conn.Host, conn.Port, conn.Database)
+						am.lastConns[name] = conn
+						_ = mon.Stop()
 						mon.SetConnection(conn)
 						am.wg.Add(1)
 						go func(m DBMonitor) {

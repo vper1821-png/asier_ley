@@ -2,7 +2,6 @@ package monitors
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"securelab-agent/internal/audit"
