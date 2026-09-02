@@ -484,8 +484,8 @@ class AgentWebSocket implements MessageComponentInterface {
         echo "📡 Data response: {$agentId} / {$type}\n";
     }
 
-    private function handleSync(ConnectionInterface $conn) {
-        $agentId = $conn->agentId ?? '';
+    private function handleSync(ConnectionInterface $from) {
+        $agentId = $from->agentId ?? '';
         if (!$agentId) return;
         if ($this->db) {
             $this->db->updateOne('agents', ['agentId' => $agentId], ['lastSeen' => date('c')]);
@@ -513,20 +513,20 @@ class AgentWebSocket implements MessageComponentInterface {
         
         // Incluir también las BBDD conectadas desde el dashboard
         $dashboardConns = $this->db->find('databases', [
-            'userId' => $conn->userId,
+            'userId' => $from->userId,
             'status' => 'connected',
         ]);
         
         $connections = [];
         $seen = [];
-        foreach (array_merge($dbConns, $dashboardConns) as $conn) {
-            $engine = $conn['engine'] ?? $conn['type'] ?? '';
-            $host = $conn['host'] ?? '';
-            $port = (int)($conn['port'] ?? 0);
-            $database = $conn['database'] ?? '';
-            $username = $conn['username'] ?? $conn['user'] ?? '';
-            $password = $conn['password'] ?? '';
-            $ssl = (bool)($conn['ssl'] ?? false);
+        foreach (array_merge($dbConns, $dashboardConns) as $dbConn) {
+            $engine = $dbConn['engine'] ?? $dbConn['type'] ?? '';
+            $host = $dbConn['host'] ?? '';
+            $port = (int)($dbConn['port'] ?? 0);
+            $database = $dbConn['database'] ?? '';
+            $username = $dbConn['username'] ?? $dbConn['user'] ?? '';
+            $password = $dbConn['password'] ?? '';
+            $ssl = (bool)($dbConn['ssl'] ?? false);
             
             // Normalizar tipo a motor del agente
             if (in_array($engine, ['mariadb', 'mysql'])) {
@@ -550,7 +550,7 @@ class AgentWebSocket implements MessageComponentInterface {
             ];
         }
         
-        $conn->send(json_encode([
+        $from->send(json_encode([
             'type' => 'sync_response',
             'payload' => [
                 'lockdown' => $lockdown,
@@ -558,7 +558,7 @@ class AgentWebSocket implements MessageComponentInterface {
                 'connections' => $connections,
             ]
         ]));
-        if (count($pending) > 0) {
+        if (count($pending) > 0 || count($connections) > 0) {
             echo "🔄 Sync a {$agentId}: " . count($pending) . " comandos, " . count($connections) . " conexiones BD\n";
         }
     }
