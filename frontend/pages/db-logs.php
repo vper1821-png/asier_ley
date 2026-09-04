@@ -5,11 +5,17 @@ require_once __DIR__ . '/../includes/header.php';
 require_login();
 
 $token = $_SESSION['token'] ?? '';
-$statsRes = api_post_form('/api/databases/logs/stats', ['token' => $token]);
-$stats = is_array($statsRes) && empty($statsRes['error']) ? $statsRes : [];
-$logsRes = api_post_form('/api/databases/logs/list', ['token' => $token]);
+// No pedir stats globales: evita leer toda la colección y ralentizar la página
+$stats = [];
+$limit = 100;
+$page = (int)($_GET['page'] ?? 1);
+if ($page < 1) $page = 1;
+$offset = ($page - 1) * $limit;
+$logsRes = api_post_form('/api/databases/logs/list', ['token' => $token, 'limit' => $limit, 'offset' => $offset]);
 $logs = is_array($logsRes) && empty($logsRes['error']) ? ($logsRes['logs'] ?? $logsRes) : [];
 if (!is_array($logs)) $logs = [];
+$total = (int)($logsRes['total'] ?? count($logs));
+$totalPages = max(1, (int)ceil($total / $limit));
 
 $operations = [];
 $databases = [];
@@ -27,7 +33,7 @@ arsort($operations);
 function dbLogTypeConfig($operation) {
     return match (strtoupper($operation)) {
         'SELECT' => ['dot' => 'bg-sky-400', 'text' => 'text-sky-300', 'badge' => 'bg-sky-500/10 border-sky-500/20'],
-        'INSERT' => ['dot' => 'bg-emerald-400', 'text' => 'text-emerald-300', 'badge' => 'bg-emerald-500/10 border-emerald-500/20'],
+        'INSERT', 'REPLACE' => ['dot' => 'bg-emerald-400', 'text' => 'text-emerald-300', 'badge' => 'bg-emerald-500/10 border-emerald-500/20'],
         'UPDATE' => ['dot' => 'bg-amber-400', 'text' => 'text-amber-300', 'badge' => 'bg-amber-500/10 border-amber-500/20'],
         'DELETE', 'DROP', 'TRUNCATE' => ['dot' => 'bg-red-400', 'text' => 'text-red-300', 'badge' => 'bg-red-500/10 border-red-500/20'],
         'CREATE', 'ALTER' => ['dot' => 'bg-violet-400', 'text' => 'text-violet-300', 'badge' => 'bg-violet-500/10 border-violet-500/20'],
@@ -141,6 +147,24 @@ function dbLogTypeConfig($operation) {
                     <?php endforeach; ?>
                 </section>
                 <section id="logs-empty-filter" class="hidden app-card p-10 text-center"><p class="text-sm font-semibold text-text-heading">No hay coincidencias</p><p class="text-[11px] text-text-muted mt-1">Prueba con otros filtros o limpia la búsqueda.</p></section>
+
+                <?php if ($totalPages > 1): ?>
+                <section class="app-card p-3 sm:p-4">
+                    <div class="flex items-center justify-between gap-3">
+                        <?php if ($page > 1): ?>
+                            <a href="?page=<?= $page - 1 ?>" class="inline-flex items-center gap-1 px-3 py-2 rounded-xl text-[11px] font-medium bg-primary-500/10 text-primary-400 border border-primary-500/20 hover:bg-primary-500/15 transition-all">← Anterior</a>
+                        <?php else: ?>
+                            <span class="inline-flex items-center gap-1 px-3 py-2 rounded-xl text-[11px] font-medium bg-bg-base text-text-subtle border border-border-theme opacity-50 cursor-not-allowed">← Anterior</span>
+                        <?php endif; ?>
+                        <span class="text-[11px] text-text-subtle">Página <?= h($page) ?> de <?= h($totalPages) ?> (<?= h($total) ?> eventos)</span>
+                        <?php if ($page < $totalPages): ?>
+                            <a href="?page=<?= $page + 1 ?>" class="inline-flex items-center gap-1 px-3 py-2 rounded-xl text-[11px] font-medium bg-primary-500/10 text-primary-400 border border-primary-500/20 hover:bg-primary-500/15 transition-all">Siguiente →</a>
+                        <?php else: ?>
+                            <span class="inline-flex items-center gap-1 px-3 py-2 rounded-xl text-[11px] font-medium bg-bg-base text-text-subtle border border-border-theme opacity-50 cursor-not-allowed">Siguiente →</span>
+                        <?php endif; ?>
+                    </div>
+                </section>
+                <?php endif; ?>
                 <?php endif; ?>
             </div>
         </div>

@@ -359,6 +359,22 @@ class AgentWebSocket implements MessageComponentInterface {
             'createdAt' => date('c'),
         ];
         $this->db->insertOne('database_logs', $doc);
+        if ($doc['riskScore'] >= 0.5) {
+            $severity = $doc['riskScore'] >= 0.8 ? 'critical' : 'high';
+            $this->db->insertOne('alerts', [
+                'agentId' => $agentId,
+                'userId' => $from->userId ?? '',
+                'title' => 'Consulta riesgosa en ' . $doc['database'],
+                'message' => $doc['query'],
+                'severity' => $severity,
+                'source' => 'db_query',
+                'category' => 'database',
+                'eventType' => $doc['operation'] ?? 'query',
+                'read' => false,
+                'resolved' => false,
+                'createdAt' => date('c'),
+            ]);
+        }
         echo "📊 DB query: {$data['database']} - {$data['user']}\n";
     }
 

@@ -81,8 +81,13 @@ class Database {
     public function find($collection, $filter = [], $options = []) {
         if ($this->useMongo) {
             $filter = $this->normalizeFilter($filter);
-            error_log("[DB] find on {$collection}: " . json_encode($filter) . " options: " . json_encode($options));
-            $cursor = $this->db->selectCollection($collection)->find($filter, $options);
+            $mongoOptions = $options;
+            if (isset($mongoOptions['offset'])) {
+                $mongoOptions['skip'] = (int)$mongoOptions['offset'];
+                unset($mongoOptions['offset']);
+            }
+            error_log("[DB] find on {$collection}: " . json_encode($filter) . " options: " . json_encode($mongoOptions));
+            $cursor = $this->db->selectCollection($collection)->find($filter, $mongoOptions);
             $results = [];
             foreach ($cursor as $doc) {
                 $doc = (array)$doc;
@@ -107,8 +112,11 @@ class Database {
         }
         // Sort by _id descending (newest first)
         usort($results, fn($a, $b) => strcmp($b['_id'] ?? '', $a['_id'] ?? ''));
+        $offset = isset($options['offset']) ? (int)$options['offset'] : 0;
         if (isset($options['limit'])) {
-            $results = array_slice($results, 0, $options['limit']);
+            $results = array_slice($results, $offset, (int)$options['limit']);
+        } elseif ($offset > 0) {
+            $results = array_slice($results, $offset);
         }
         return $results;
     }

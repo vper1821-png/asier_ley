@@ -487,8 +487,11 @@ function logList() {
     $filter = ['userId' => $user['_id']];
     if (!empty($body['databaseId'])) $filter['databaseId'] = $body['databaseId'];
     if (!empty($body['severity'])) $filter['severity'] = $body['severity'];
-    $logs = $db->find('database_logs', $filter, ['limit' => (int)($body['limit'] ?? 10000)]);
-    json_response(['logs' => $logs, 'total' => count($logs)]);
+    $limit = (int)($body['limit'] ?? 100);
+    $offset = (int)($body['offset'] ?? 0);
+    $total = count($db->find('database_logs', $filter));
+    $logs = $db->find('database_logs', $filter, ['limit' => $limit, 'offset' => $offset]);
+    json_response(['logs' => $logs, 'total' => $total]);
 }
 
 function logStats() {

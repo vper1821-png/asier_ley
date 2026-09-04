@@ -56,7 +56,7 @@ func (h *Hardener) ApplyUpdates() error {
 			severity = "warning"
 			title = "⚠️ Actualizaciones pendientes en el sistema"
 		}
-		h.store.SaveHostEvent(audit.HostEvent{
+		h.report(audit.HostEvent{
 			Timestamp: time.Now(),
 			Type:      "hardening",
 			Severity:  severity,

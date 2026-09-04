@@ -13,7 +13,7 @@ func (h *Hardener) ApplyUpdates() error {
 	h.log.Info("Verificando actualizaciones (no aplicable en este sistema operativo).")
 
 	if h.store != nil {
-		h.store.SaveHostEvent(audit.HostEvent{
+		h.report(audit.HostEvent{
 			Timestamp: time.Now(),
 			Type:      "hardening",
 			Severity:  "info",

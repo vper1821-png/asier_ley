@@ -20,6 +20,17 @@ func NewHardener(store *audit.Store, wsClient *ws.Client, log *logger.Logger) *H
 	return &Hardener{store: store, wsClient: wsClient, log: log}
 }
 
+func (h *Hardener) report(ev audit.HostEvent) {
+	if h.store != nil {
+		if err := h.store.SaveHostEvent(ev); err != nil {
+			h.log.Warn("SaveHostEvent: %v", err)
+		}
+	}
+	if h.wsClient != nil {
+		h.wsClient.SendHostEvent(ev)
+	}
+}
+
 // ApplyAll aplica todas las auditorías de hardening (solo consulta, NO MODIFICA)
 func (h *Hardener) ApplyAll() error {
 	if runtime.GOOS != "windows" {
@@ -46,7 +57,7 @@ func (h *Hardener) ApplyAll() error {
 	if len(errs) > 0 {
 		h.log.Warn("Auditoría completada con %d errores", len(errs))
 		if h.store != nil {
-			h.store.SaveHostEvent(audit.HostEvent{
+			h.report(audit.HostEvent{
 				Timestamp: time.Now(),
 				Type:      "hardening",
 				Severity:  "warning",
@@ -60,7 +71,7 @@ func (h *Hardener) ApplyAll() error {
 
 	h.log.Info("Auditoría de hardening completada correctamente")
 	if h.store != nil {
-		h.store.SaveHostEvent(audit.HostEvent{
+		h.report(audit.HostEvent{
 			Timestamp: time.Now(),
 			Type:      "hardening",
 			Severity:  "info",

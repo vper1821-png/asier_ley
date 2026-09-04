@@ -18,7 +18,7 @@ func (h *Hardener) ApplyEncryption() error {
 	if err != nil {
 		h.log.Warn("BitLocker no disponible o error: %v", err)
 		if h.store != nil {
-			h.store.SaveHostEvent(audit.HostEvent{
+			h.report(audit.HostEvent{
 				Timestamp: time.Now(),
 				Type:      "hardening",
 				Severity:  "warning",
@@ -43,7 +43,7 @@ func (h *Hardener) ApplyEncryption() error {
 		if output != "" {
 			detail = fmt.Sprintf("%s\n%s", detail, output[:min(len(output), 200)])
 		}
-		h.store.SaveHostEvent(audit.HostEvent{
+		h.report(audit.HostEvent{
 			Timestamp: time.Now(),
 			Type:      "hardening",
 			Severity:  "info",

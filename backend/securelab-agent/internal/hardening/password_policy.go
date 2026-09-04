@@ -19,7 +19,7 @@ func (h *Hardener) ApplyPasswordPolicy() error {
 	if err != nil {
 		h.log.Warn("Error ejecutando net accounts: %v", err)
 		if h.store != nil {
-			h.store.SaveHostEvent(audit.HostEvent{
+			h.report(audit.HostEvent{
 				Timestamp: time.Now(),
 				Type:      "hardening",
 				Severity:  "warning",
@@ -53,7 +53,7 @@ func (h *Hardener) ApplyPasswordPolicy() error {
 
 	// Guardar en la base de datos local
 	if h.store != nil {
-		h.store.SaveHostEvent(audit.HostEvent{
+		h.report(audit.HostEvent{
 			Timestamp: time.Now(),
 			Type:      "hardening",
 			Severity:  "info",
