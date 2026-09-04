@@ -5,8 +5,8 @@ require_once __DIR__ . '/../includes/header.php';
 require_login();
 
 $token = $_SESSION['token'] ?? '';
-// No pedir stats globales: evita leer toda la colección y ralentizar la página
-$stats = [];
+$statsRes = api_post_form('/api/databases/logs/stats', ['token' => $token]);
+$stats = is_array($statsRes) && empty($statsRes['error']) ? $statsRes : [];
 $limit = 100;
 $page = (int)($_GET['page'] ?? 1);
 if ($page < 1) $page = 1;

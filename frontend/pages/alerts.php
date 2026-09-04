@@ -49,11 +49,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // ── Fetch Data ─────────────────────────────────────────────────
-$alertsRes = api_post_form('/api/alerts/list', ['token' => $token]);
-$alerts = is_array($alertsRes) && empty($alertsRes['error']) ? ($alertsRes['alerts'] ?? $alertsRes) : [];
-if (!is_array($alerts)) $alerts = [];
+$limit = 50;
+$page = (int)($_GET['page'] ?? 1);
+if ($page < 1) $page = 1;
+$offset = ($page - 1) * $limit;
 
-// ── Filtros ────────────────────────────────────────────────────
 $sevFilter = $_GET['severity'] ?? '';
 $catFilter = $_GET['category'] ?? '';
 $srcFilter = $_GET['source'] ?? '';
@@ -66,102 +66,46 @@ $sortBy = $_GET['sort'] ?? 'createdAt';
 $sortDir = $_GET['dir'] ?? 'desc';
 $viewMode = $_GET['view'] ?? 'list'; // list, timeline, cards
 
-// Aplicar filtros
-$filtered = $alerts;
-if ($sevFilter) $filtered = array_filter($filtered, fn($a) => ($a['severity'] ?? '') === $sevFilter);
-if ($catFilter) $filtered = array_filter($filtered, fn($a) => ($a['category'] ?? '') === $catFilter);
-if ($srcFilter) $filtered = array_filter($filtered, fn($a) => ($a['source'] ?? '') === $srcFilter);
-if ($artFilter) $filtered = array_filter($filtered, fn($a) => ($a['lawArticle'] ?? '') === $artFilter);
-if ($statusFilter) {
-    $filtered = array_filter($filtered, function($a) use ($statusFilter) {
-        if ($statusFilter === 'active') return empty($a['resolved']) && empty($a['dismissed']);
-        if ($statusFilter === 'resolved') return !empty($a['resolved']);
-        if ($statusFilter === 'dismissed') return !empty($a['dismissed']);
-        return true;
-    });
-}
-if ($dateFrom) $filtered = array_filter($filtered, fn($a) => ($a['createdAt'] ?? '') >= $dateFrom);
-if ($dateTo) $filtered = array_filter($filtered, fn($a) => ($a['createdAt'] ?? '') <= $dateTo . 'T23:59:59');
-if ($search) {
-    $sl = strtolower($search);
-    $filtered = array_filter($filtered, function($a) use ($sl) {
-        return str_contains(strtolower($a['title'] ?? ''), $sl) ||
-               str_contains(strtolower($a['message'] ?? ''), $sl) ||
-               str_contains(strtolower($a['agentId'] ?? ''), $sl) ||
-               str_contains(strtolower($a['lawArticle'] ?? ''), $sl) ||
-               str_contains(strtolower($a['eventType'] ?? ''), $sl);
-    });
-}
+$apiFilters = [
+    'token' => $token,
+    'limit' => $limit,
+    'offset' => $offset,
+];
+if ($sevFilter) $apiFilters['severity'] = $sevFilter;
+if ($catFilter) $apiFilters['category'] = $catFilter;
+if ($srcFilter) $apiFilters['source'] = $srcFilter;
+if ($artFilter) $apiFilters['article'] = $artFilter;
+if ($search) $apiFilters['search'] = $search;
+if ($statusFilter) $apiFilters['status'] = $statusFilter;
+if ($dateFrom) $apiFilters['date_from'] = $dateFrom;
+if ($dateTo) $apiFilters['date_to'] = $dateTo;
+if ($sortBy) $apiFilters['sort'] = $sortBy;
+if ($sortDir) $apiFilters['dir'] = $sortDir;
 
-// Ordenar
-usort($filtered, function($a, $b) use ($sortBy, $sortDir) {
-    $va = $a[$sortBy] ?? '';
-    $vb = $b[$sortBy] ?? '';
-    $cmp = strcmp($va, $vb);
-    return $sortDir === 'desc' ? -$cmp : $cmp;
-});
-
-$totalFiltered = count($filtered);
+$alertsRes = api_post_form('/api/alerts/list', $apiFilters);
+$alerts = is_array($alertsRes) && empty($alertsRes['error']) ? ($alertsRes['alerts'] ?? []) : [];
+if (!is_array($alerts)) $alerts = [];
+$total = (int)($alertsRes['total'] ?? count($alerts));
+$stats = is_array($alertsRes) && empty($alertsRes['error']) ? ($alertsRes['stats'] ?? []) : [];
+$totalFiltered = count($alerts);
+$totalPages = max(1, (int)ceil($total / $limit));
 
 // ── Estadísticas ───────────────────────────────────────────────
-$total = count($alerts);
-$active = array_filter($alerts, fn($a) => empty($a['resolved']) && empty($a['dismissed']));
-$activeCount = count($active);
-$resolved = array_filter($alerts, fn($a) => !empty($a['resolved']));
-$resolvedCount = count($resolved);
-$dismissed = array_filter($alerts, fn($a) => !empty($a['dismissed']));
-$dismissedCount = count($dismissed);
-$critical = count(array_filter($alerts, fn($a) => ($a['severity'] ?? '') === 'critical' && empty($a['resolved'])));
-$high = count(array_filter($alerts, fn($a) => ($a['severity'] ?? '') === 'high' && empty($a['resolved'])));
-$unread = count(array_filter($alerts, fn($a) => empty($a['read'])));
+$activeCount = $stats['active'] ?? 0;
+$resolvedCount = $stats['resolved'] ?? 0;
+$dismissedCount = $stats['dismissed'] ?? 0;
+$critical = $stats['critical'] ?? 0;
+$high = $stats['high'] ?? 0;
+$unread = $stats['unread'] ?? 0;
+$trendData = $stats['trend'] ?? [];
+$sevDistribution = $stats['severity'] ?? ['critical' => 0, 'high' => 0, 'medium' => 0, 'low' => 0];
 
-// Tendencias - últimos 7 días
-$trendData = [];
-for ($i = 6; $i >= 0; $i--) {
-    $date = date('Y-m-d', strtotime("-$i days"));
-    $dayAlerts = array_filter($alerts, fn($a) => ($a['createdAt'] ?? '') >= $date . 'T00:00:00' && ($a['createdAt'] ?? '') <= $date . 'T23:59:59');
-    $trendData[] = [
-        'date' => date('d/m', strtotime("-$i days")),
-        'count' => count($dayAlerts),
-        'critical' => count(array_filter($dayAlerts, fn($a) => ($a['severity'] ?? '') === 'critical'))
-    ];
-}
-
-// Distribución por severidad
-$sevDistribution = [
-    'critical' => count(array_filter($alerts, fn($a) => ($a['severity'] ?? '') === 'critical')),
-    'high' => count(array_filter($alerts, fn($a) => ($a['severity'] ?? '') === 'high')),
-    'medium' => count(array_filter($alerts, fn($a) => ($a['severity'] ?? '') === 'medium')),
-    'low' => count(array_filter($alerts, fn($a) => ($a['severity'] ?? '') === 'low'))
-];
-
-// Alertas más recientes (últimas 24h)
+// Alertas más recientes (últimas 24h) en la página actual
 $recentAlerts = array_filter($alerts, fn($a) => ($a['createdAt'] ?? '') >= date('Y-m-d\TH:i:s', strtotime('-24 hours')));
 $recentCount = count($recentAlerts);
 
-// Por categoría legal
-$byCategory = [];
-foreach ($alerts as $a) {
-    $cat = $a['category'] ?? 'general';
-    $byCategory[$cat] = ($byCategory[$cat] ?? 0) + 1;
-}
-
-// Por artículo legal
-$byArticle = [];
-foreach ($alerts as $a) {
-    $art = $a['lawArticle'] ?? 'Sin artículo';
-    $byArticle[$art] = ($byArticle[$art] ?? 0) + 1;
-}
-
-// Por fuente
-$bySource = [];
-foreach ($alerts as $a) {
-    $src = $a['source'] ?? 'unknown';
-    $bySource[$src] = ($bySource[$src] ?? 0) + 1;
-}
-
 $alertsJson = json_encode(array_values($alerts), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
-$filteredJson = json_encode(array_values($filtered), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+$filteredJson = $alertsJson;
 
 // ── Helpers ────────────────────────────────────────────────────
 function sevBadge($s) {
@@ -484,7 +428,7 @@ function cIcon($name, $cls = 'w-4 h-4') {
                     <button onclick="clearSelection()" class="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-bg-elevated text-text-muted border border-border-theme hover:bg-bg-elevated/80 transition-all">Cancelar</button>
                 </div>
 
-                <?php if (empty($filtered)): ?>
+                <?php if (empty($alerts)): ?>
                 <!-- Empty State -->
                 <div class="rounded-2xl border border-border-theme bg-bg-panel/40 p-12 md:p-16 text-center">
                     <div class="w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mx-auto mb-5">
@@ -499,7 +443,7 @@ function cIcon($name, $cls = 'w-4 h-4') {
                 <!-- Vista: Lista (default) -->
                 <div id="view-list-container" class="<?= $viewMode === 'list' ? '' : 'hidden' ?>">
                     <div class="space-y-2">
-                        <?php foreach ($filtered as $ai => $alert):
+                        <?php foreach ($alerts as $ai => $alert):
                             $sev = sevBadge($alert['severity'] ?? 'low');
                             $resolvedAlert = !empty($alert['resolved']) || !empty($alert['dismissed']);
                             $read = !empty($alert['read']);
@@ -609,7 +553,7 @@ function cIcon($name, $cls = 'w-4 h-4') {
                 <!-- Vista: Tarjetas -->
                 <div id="view-cards-container" class="<?= $viewMode === 'cards' ? '' : 'hidden' ?>">
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                        <?php foreach ($filtered as $ai => $alert):
+                        <?php foreach ($alerts as $ai => $alert):
                             $sev = sevBadge($alert['severity'] ?? 'low');
                             $resolvedAlert = !empty($alert['resolved']) || !empty($alert['dismissed']);
                             $read = !empty($alert['read']);
@@ -675,7 +619,7 @@ function cIcon($name, $cls = 'w-4 h-4') {
                         <div class="space-y-4 pl-14">
                             <?php
                             $grouped = [];
-                            foreach ($filtered as $alert) {
+                            foreach ($alerts as $alert) {
                                 $date = substr($alert['createdAt'] ?? '', 0, 10);
                                 $grouped[$date][] = $alert;
                             }
@@ -718,6 +662,30 @@ function cIcon($name, $cls = 'w-4 h-4') {
                     </div>
                 </div>
 
+                <?php endif; ?>
+
+                <?php
+                $prevUrl = '?' . http_build_query(array_merge($_GET, ['page' => $page - 1]));
+                $nextUrl = '?' . http_build_query(array_merge($_GET, ['page' => $page + 1]));
+                ?>
+                <?php if ($totalPages > 1): ?>
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-3 md:p-4 flex items-center justify-between gap-4 mt-4">
+                    <?php if ($page > 1): ?>
+                    <a href="<?= h($prevUrl) ?>" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium bg-white/[0.03] hover:bg-white/[0.06] text-text-body border border-white/[0.05] transition-all">
+                        ← Anterior
+                    </a>
+                    <?php else: ?>
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium bg-white/[0.02] text-text-muted border border-white/[0.05] cursor-not-allowed opacity-50">← Anterior</span>
+                    <?php endif; ?>
+                    <span class="text-[11px] text-text-subtle">Página <?= h($page) ?> de <?= h($totalPages) ?> (<?= h($total) ?> alertas)</span>
+                    <?php if ($page < $totalPages): ?>
+                    <a href="<?= h($nextUrl) ?>" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium bg-white/[0.03] hover:bg-white/[0.06] text-text-body border border-white/[0.05] transition-all">
+                        Siguiente →
+                    </a>
+                    <?php else: ?>
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium bg-white/[0.02] text-text-muted border border-white/[0.05] cursor-not-allowed opacity-50">Siguiente →</span>
+                    <?php endif; ?>
+                </div>
                 <?php endif; ?>
             </div>
         </div>

@@ -103,6 +103,30 @@ require_once __DIR__ . '/../includes/turnstile.php';
             </p>
         </form>
 
+        <form id="2fa-form" class="space-y-4 hidden" onsubmit="handle2FA(event)">
+            <div class="text-center mb-6">
+                <div class="w-12 h-12 rounded-xl bg-primary-500/10 border border-primary-500/20 flex items-center justify-center mx-auto mb-3 text-primary-400">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                </div>
+                <h2 class="text-xl font-bold text-white">Verificacion de dos factores</h2>
+                <p class="text-sm text-text-muted mt-1">Ingresa el codigo de 6 digitos de tu aplicacion autenticadora</p>
+            </div>
+            <div id="2fa-error" class="hidden p-2.5 bg-red-500/10 border border-red-500/30 rounded-md text-red-400 text-xs text-center"></div>
+            <div>
+                <label class="label-premium">Codigo 2FA</label>
+                <input type="text" id="2fa-code" name="code" required pattern="[0-9]{6}" maxlength="6" inputmode="numeric" autocomplete="one-time-code"
+                       class="w-full bg-[#0f1419] border border-[#1f2937] rounded-md px-3 py-2 text-sm text-white text-center tracking-[0.5em] font-mono placeholder-text-subtle focus:outline-none focus:border-[#3b82f6] transition-colors"
+                       placeholder="000000">
+            </div>
+            <button type="submit" class="btn-primary w-full">
+                <span>Verificar</span>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </button>
+            <button type="button" onclick="backToLogin()" class="w-full px-3 py-2 rounded-md border border-border-theme text-text-muted hover:text-white text-sm transition-colors">
+                Volver al inicio de sesion
+            </button>
+        </form>
+
         <div id="forgot-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
             <div class="bg-[#0b0b0f] border border-[#1a1a1f] rounded-lg w-full max-w-md">
                 <div class="px-5 py-4 border-b border-[#1a1a1f] flex items-center justify-between">
@@ -138,6 +162,8 @@ require_once __DIR__ . '/../includes/turnstile.php';
 </div>
 
 <script>
+let tempToken = '';
+
 document.getElementById('login-form').addEventListener('submit', async function(e) {
     e.preventDefault();
 
@@ -181,6 +207,12 @@ document.getElementById('login-form').addEventListener('submit', async function(
             } else {
                 window.location.href = '/pending';
             }
+        } else if (data.requireTwoFactor) {
+            tempToken = data.tempToken || '';
+            document.getElementById('login-form').classList.add('hidden');
+            const tfaForm = document.getElementById('2fa-form');
+            tfaForm.classList.remove('hidden');
+            document.getElementById('2fa-code').focus();
         } else {
             showError(data.error || 'Error al iniciar sesión. Verifica tus credenciales.');
             submitBtn.disabled = false;
@@ -267,6 +299,62 @@ async function sendReset(e) {
         btn.disabled = false;
         btn.textContent = original;
     }
+}
+
+async function handle2FA(e) {
+    e.preventDefault();
+    const codeInput = document.getElementById('2fa-code');
+    const code = codeInput.value.trim();
+    const errorDiv = document.getElementById('2fa-error');
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+
+    errorDiv.classList.add('hidden');
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span>Verificando...</span>';
+
+    try {
+        const res = await fetch('<?= API_BASE_URL_BROWSER ?>/api/2fa/complete-login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tempToken, code })
+        });
+        const data = await res.json();
+
+        if (data.token) {
+            await fetch('/login?action=session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: data.token, user: data.user })
+            });
+
+            if (data.user && data.user.isActive) {
+                window.location.href = '/dashboard';
+            } else {
+                window.location.href = '/pending';
+            }
+        } else {
+            errorDiv.textContent = data.error || 'Codigo incorrecto. Intentalo de nuevo.';
+            errorDiv.classList.remove('hidden');
+            codeInput.value = '';
+            codeInput.focus();
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        }
+    } catch (err) {
+        errorDiv.textContent = 'Error de conexion. Intenta nuevamente.';
+        errorDiv.classList.remove('hidden');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+    }
+}
+
+function backToLogin() {
+    document.getElementById('2fa-form').classList.add('hidden');
+    document.getElementById('login-form').classList.remove('hidden');
+    document.getElementById('2fa-error').classList.add('hidden');
+    document.getElementById('2fa-code').value = '';
+    tempToken = '';
 }
 </script>
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
