@@ -12,9 +12,13 @@ function listAll() {
 }
 
 function all() {
-    Auth::requireAuth(); // Support users would be role-based; keep auth for now
+    $user = Auth::requireAuth();
     $db = Database::getInstance();
-    $tickets = $db->find('tickets', []);
+    if (isAdmin($user)) {
+        $tickets = $db->find('tickets', []);
+    } else {
+        $tickets = $db->find('tickets', ['userId' => $user['_id']]);
+    }
     json_response($tickets);
 }
 
@@ -135,10 +139,12 @@ function respond() {
 
     $ticket = $db->findOne('tickets', ['_id' => $id]);
     if (!$ticket) json_error('ticket no encontrado', 404);
+    if ($ticket['userId'] !== $user['_id'] && !isAdmin($user)) json_error('acceso denegado', 403);
 
+    $isAdmin = isAdmin($user);
     $messages = $ticket['messages'] ?? [];
     $messages[] = [
-        'role' => 'support',
+        'role' => $isAdmin ? 'support' : 'user',
         'content' => $message,
         'authorName' => $agentName,
         'createdAt' => date('c'),
