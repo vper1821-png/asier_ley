@@ -165,10 +165,28 @@ function waitForAgentCommand($commandId, $timeoutSeconds = 30) {
     return null;
 }
 
-function executeDBCommandViaAgent($userId, $command, $record, $timeout = 45) {
-    $agent = getOnlineAgentForUser($userId);
+function executeDBCommandViaAgent($userId, $command, $record, $timeout = 25) {
+    $db = Database::getInstance();
+    $agentId = $record['agentId'] ?? '';
+    if ($agentId === '') {
+        json_error('esta conexión no tiene un agente asignado');
+    }
+
+    // Resolver el agente asignado a esta conexión (no cualquier agente online)
+    $agent = $db->findOne('agents', [
+        '$or' => [['agentId' => $agentId], ['_id' => $agentId]],
+        'userId' => $userId
+    ]);
     if (!$agent) {
-        json_error('no hay agente online para ejecutar el comando');
+        json_error('el agente asignado a esta conexión ya no existe');
+    }
+
+    $recent = date('c', strtotime('-30 minutes'));
+    $isOnline = ($agent['status'] ?? '') === 'online'
+        && !empty($agent['lastSeen'])
+        && $agent['lastSeen'] >= $recent;
+    if (!$isOnline) {
+        json_error('el agente "' . ($agent['hostname'] ?? $agentId) . '" no está online. Inicia el agente y vuelve a intentarlo.');
     }
 
     $params = [
@@ -181,10 +199,10 @@ function executeDBCommandViaAgent($userId, $command, $record, $timeout = 45) {
         'ssl' => filter_var($record['ssl'] ?? false, FILTER_VALIDATE_BOOLEAN),
     ];
 
-    $commandId = sendAgentCommand($userId, $agent['agentId'], $command, $params);
+    $commandId = sendAgentCommand($userId, $agent['agentId'] ?? $agentId, $command, $params);
     $result = waitForAgentCommand($commandId, $timeout);
     if (!$result) {
-        json_error('timeout esperando respuesta del agente');
+        json_error('el agente no respondió a tiempo. Comprueba que está conectado y vuelve a intentarlo.');
     }
 
     $res = toArrayRec($result['result'] ?? []);
@@ -197,6 +215,35 @@ function executeDBCommandViaAgent($userId, $command, $record, $timeout = 45) {
 
     json_error('respuesta del agente inválida');
     return null;
+}
+
+// Listado directo de tablas/colecciones cuando no hay agente disponible
+function listTablesDirect($conn, $record) {
+    $tables = [];
+    $type = $record['type'] ?? '';
+    if (in_array($type, ['mysql', 'mariadb'])) {
+        $stmt = $conn->query("SELECT table_name, table_rows FROM information_schema.tables WHERE table_schema = '" . addslashes($record['database']) . "'");
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $tables[] = ['name' => $row['table_name'], 'rows' => (int)$row['table_rows']];
+        }
+    } elseif (in_array($type, ['postgres', 'postgresql'])) {
+        $stmt = $conn->query("SELECT relname AS table_name, n_live_tup AS row_count FROM pg_stat_user_tables");
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $tables[] = ['name' => $row['table_name'], 'rows' => (int)($row['row_count'] ?? 0)];
+        }
+    } elseif ($type === 'sqlite') {
+        $stmt = $conn->query("SELECT name FROM sqlite_master WHERE type='table'");
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $tables[] = ['name' => $row['name'], 'rows' => 0];
+        }
+    } elseif ($type === 'mongodb') {
+        $database = $conn->selectDatabase($record['database']);
+        foreach ($database->listCollections() as $collection) {
+            $name = $collection->getName();
+            $tables[] = ['name' => $name, 'rows' => $database->selectCollection($name)->countDocuments()];
+        }
+    }
+    return $tables;
 }
 
 // Convertir documentos BSON (MongoDB\Model\BSONDocument/Array) a arrays PHP recursivamente
@@ -286,12 +333,11 @@ function testConnection() {
     $record = $db->findOne('databases', ['_id' => $id, 'userId' => $user['_id']]);
     if (!$record) json_error('base de datos no encontrada', 404);
 
-    $res = executeDBCommandViaAgent($user['_id'], 'test_db', $record);
+    $res = executeDBCommandViaAgent($user['_id'], 'test_db', $record, 25);
     if (empty($res['success'])) {
         $msg = $res['error'] ?? $res['Error'] ?? 'conexión fallida';
         json_error('conexión fallida: ' . $msg);
     }
-
     $latency = (int)($res['latency'] ?? $res['Latency'] ?? 0);
     $status = $res['status'] ?? $res['Status'] ?? 'connected';
 
@@ -313,7 +359,7 @@ function scan() {
     $record = $db->findOne('databases', ['_id' => $id, 'userId' => $user['_id']]);
     if (!$record) json_error('base de datos no encontrada', 404);
 
-    $res = executeDBCommandViaAgent($user['_id'], 'scan_db', $record, 45);
+    $res = executeDBCommandViaAgent($user['_id'], 'scan_db', $record, 25);
     if (empty($res['success'])) {
         $msg = $res['error'] ?? $res['Error'] ?? 'escaneo fallido';
         json_error('escaneo fallido: ' . $msg);

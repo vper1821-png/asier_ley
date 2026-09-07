@@ -483,7 +483,7 @@ function crud() {
     }
 
     // PDF generation endpoints
-    if ($action === 'pdf' && in_array($resource, ['consents', 'inventory', 'breaches', 'trainings', 'pseudonymization', 'arco-requests', 'arco', 'incident_response', 'dpia', 'dpa'])) {
+    if ($action === 'pdf' && in_array($resource, ['consents', 'inventory', 'breaches', 'trainings', 'pseudonymization', 'arco-requests', 'arco', 'incident_response', 'dpia', 'dpa', 'breach_protocol', 'apdp', 'privacy', 'dpd'])) {
         generateCompliancePDF($resource);
         return;
     }
@@ -1179,6 +1179,51 @@ function generateCompliancePDF($resource) {
             $irData = (array)(!empty($irDoc['data']) ? $irDoc['data'] : $irDoc);
             $html = $pdfGenerator->generateGenericChecklistPDF('Plan de Respuesta a Incidentes', $irData);
             $result = $pdfGenerator->generatePDFFile($html, 'respuesta-incidentes');
+            break;
+        case 'breach_protocol':
+            $bpDoc = $db->findOne('compliance_breach_protocol', ['userId' => $user['_id']]) ?? [];
+            $bpCfg = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
+            $bpData = array_merge((array)$bpDoc, array_filter([
+                'URL del protocolo' => $bpCfg['breachProtocolUrl'] ?? null,
+                'Contenido del protocolo' => $bpCfg['breachProtocolContent'] ?? null,
+            ]));
+            $html = $pdfGenerator->generateGenericChecklistPDF('Protocolo de Brechas', $bpData);
+            $result = $pdfGenerator->generatePDFFile($html, 'protocolo-brechas');
+            break;
+        case 'apdp':
+            $aCfg = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
+            $aData = array_filter([
+                'Registrado ante la APDP' => isset($aCfg['apdpRegistered']) ? ($aCfg['apdpRegistered'] ? 'Sí' : 'No') : null,
+                'Número de registro' => $aCfg['apdpRegistrationNumber'] ?? null,
+                'Fecha de registro' => $aCfg['apdpRegistrationDate'] ?? null,
+                'Entidad certificadora' => $aCfg['apdpEntity'] ?? null,
+                'Observaciones' => $aCfg['apdpNotes'] ?? null,
+            ]);
+            $html = $pdfGenerator->generateGenericChecklistPDF('Modelo de Prevención Certificado (APDP)', $aData);
+            $result = $pdfGenerator->generatePDFFile($html, 'modelo-certificado');
+            break;
+        case 'privacy':
+            $pCfg = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
+            $pData = array_filter([
+                'URL de la política' => $pCfg['privacyPolicyUrl'] ?? null,
+                'Contenido de la política' => $pCfg['privacyPolicyContent'] ?? null,
+                'URL política de cookies' => $pCfg['cookiesPolicyUrl'] ?? null,
+                'Última actualización' => $pCfg['privacyPolicyUpdatedAt'] ?? ($pCfg['updatedAt'] ?? null),
+            ]);
+            $html = $pdfGenerator->generateGenericChecklistPDF('Política de Privacidad', $pData);
+            $result = $pdfGenerator->generatePDFFile($html, 'politica-privacidad');
+            break;
+        case 'dpd':
+            $dCfg = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
+            $dData = array_filter([
+                'Nombre del DPD' => $dCfg['dpdName'] ?? null,
+                'Email del DPD' => $dCfg['dpdEmail'] ?? null,
+                'Teléfono' => $dCfg['dpdPhone'] ?? null,
+                'Fecha de designación' => $dCfg['dpdAppointmentDate'] ?? null,
+                'Registro ante APDP' => $dCfg['dpdApdpRecord'] ?? null,
+            ]);
+            $html = $pdfGenerator->generateGenericChecklistPDF('Delegado de Protección de Datos (DPD)', $dData);
+            $result = $pdfGenerator->generatePDFFile($html, 'dpd-designado');
             break;
         default:
             json_error('Recurso no soportado para generación de PDF', 400);
