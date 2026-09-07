@@ -1328,7 +1328,7 @@ $formatDatabaseDate = static function ($value) {
             </button>
         </header>
         <div class="db-sidebar-body">
-            <form method="POST" class="db-form-body" autocomplete="off">
+            <form method="POST" id="new-db-form" class="db-form-body" autocomplete="off">
                 <div class="db-form-note">
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 11V8a4 4 0 00-8 0v3m0 0h12a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2v-6a2 2 0 012-2zm8-6h6v14a2 2 0 01-2 2h-2"/></svg>
                     <span>Utiliza una cuenta de servicio con los permisos mínimos necesarios. La plataforma usará estos datos para probar la conexión y ejecutar los escaneos solicitados.</span>
