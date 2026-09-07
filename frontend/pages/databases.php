@@ -22,8 +22,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'password' => $_POST['password'] ?? '',
             'agentId' => $_POST['agentId'] ?? '',
         ]);
-        if (!empty($res['success']) || !empty($res['_id'])) $msg = 'Base de datos conectada.';
-        else $err = $res['error'] ?? 'Error al conectar.';
+        if (!empty($res['success']) || !empty($res['_id'])) {
+            $msg = 'Base de datos conectada.';
+        } else {
+            $err = $res['error'] ?? 'Error al conectar.';
+        }
     } elseif (isset($_POST['delete_db'])) {
         $res = api_post_form('/api/databases/' . urlencode($_POST['db_id']) . '/delete', ['token' => $token]);
         if (!empty($res['success'])) $msg = 'Base de datos eliminada.'; else $err = $res['error'] ?? 'Error.';
@@ -84,6 +87,7 @@ $formatDatabaseDate = static function ($value) {
         --db-radius: 12px;
         --db-radius-sm: 8px;
         --db-control-height: 44px;
+        --sidebar-width: 480px;
         background: var(--bg-base);
         color: var(--text-body);
         font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -491,8 +495,80 @@ $formatDatabaseDate = static function ($value) {
         height: 15px;
     }
 
-    .databases-workspace .db-form-body {
+    /* ─── Sidebar Form ─── */
+    .databases-workspace .db-sidebar-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        backdrop-filter: blur(4px);
+        z-index: 100;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.25s ease, visibility 0.25s ease;
+    }
+
+    .databases-workspace .db-sidebar-overlay.is-open {
+        opacity: 1;
+        visibility: visible;
+    }
+
+    .databases-workspace .db-sidebar {
+        position: fixed;
+        top: 0;
+        right: 0;
+        height: 100vh;
+        width: var(--sidebar-width);
+        max-width: 100vw;
+        background: var(--bg-panel);
+        border-left: 1px solid var(--border-color);
+        box-shadow: -24px 0 48px color-mix(in srgb, var(--shadow-color) 35%, transparent);
+        z-index: 101;
+        display: flex;
+        flex-direction: column;
+        transform: translateX(100%);
+        transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .databases-workspace .db-sidebar.is-open {
+        transform: translateX(0);
+    }
+
+    .databases-workspace .db-sidebar-header {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 16px 18px;
+        border-bottom: 1px solid var(--border-subtle);
+        background: var(--bg-panel);
+    }
+
+    .databases-workspace .db-sidebar-title {
+        margin: 0;
+        color: var(--text-heading);
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: -.01em;
+        line-height: 1.35;
+    }
+
+    .databases-workspace .db-sidebar-body {
+        flex: 1 1 auto;
+        overflow-y: auto;
         padding: 18px;
+        scrollbar-gutter: stable;
+    }
+
+    .databases-workspace .db-sidebar-footer {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 16px 18px;
+        border-top: 1px solid var(--border-subtle);
+        background: var(--bg-panel);
     }
 
     .databases-workspace .db-form-note {
@@ -518,8 +594,8 @@ $formatDatabaseDate = static function ($value) {
     }
 
     .databases-workspace .db-form-sections {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        display: flex;
+        flex-direction: column;
         gap: 12px;
     }
 
@@ -631,16 +707,6 @@ $formatDatabaseDate = static function ($value) {
     .databases-workspace .db-password-toggle:hover {
         background: var(--bg-elevated);
         color: var(--text-heading);
-    }
-
-    .databases-workspace .db-form-actions {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        margin-top: 16px;
-        padding-top: 16px;
-        border-top: 1px solid var(--border-subtle);
     }
 
     .databases-workspace .db-form-required-note {
@@ -1084,11 +1150,6 @@ $formatDatabaseDate = static function ($value) {
             flex-direction: column;
         }
 
-        .databases-workspace > .app-mobile-header {
-            width: 100%;
-            flex: 0 0 auto;
-        }
-
         .databases-workspace .db-main {
             width: 100%;
         }
@@ -1202,6 +1263,12 @@ $formatDatabaseDate = static function ($value) {
         .databases-workspace .db-empty-state {
             padding: 42px 18px 46px;
         }
+
+        /* Sidebar full-width on mobile */
+        .databases-workspace .db-sidebar {
+            width: 100vw;
+            --sidebar-width: 100vw;
+        }
     }
 
     @media (max-width: 420px) {
@@ -1249,8 +1316,119 @@ $formatDatabaseDate = static function ($value) {
 <div class="databases-workspace flex h-screen overflow-hidden">
     <?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
 
-    <main class="db-main">
+    <!-- Sidebar Overlay -->
+    <div class="db-sidebar-overlay" id="sidebar-overlay" aria-hidden="true"></div>
 
+    <!-- Right Sidebar Form -->
+    <aside class="db-sidebar" id="new-db-sidebar" role="dialog" aria-labelledby="sidebar-title" aria-modal="true" aria-hidden="true">
+        <header class="db-sidebar-header">
+            <h2 id="sidebar-title" class="db-sidebar-title">Registrar una conexión</h2>
+            <button type="button" data-db-form-close class="db-icon-button" aria-label="Cerrar formulario">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </header>
+        <div class="db-sidebar-body">
+            <form method="POST" class="db-form-body" autocomplete="off">
+                <div class="db-form-note">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 11V8a4 4 0 00-8 0v3m0 0h12a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2v-6a2 2 0 012-2zm8-6h6v14a2 2 0 01-2 2h-2"/></svg>
+                    <span>Utiliza una cuenta de servicio con los permisos mínimos necesarios. La plataforma usará estos datos para probar la conexión y ejecutar los escaneos solicitados.</span>
+                </div>
+
+                <div class="db-form-sections">
+                    <fieldset class="db-fieldset">
+                        <legend>1. Identificación</legend>
+                        <div class="db-fields-grid">
+                            <div class="db-field db-field--full">
+                                <label for="db-name" class="db-label">Nombre visible <span class="db-required" aria-hidden="true">*</span><span class="db-sr-only">obligatorio</span></label>
+                                <input id="db-name" type="text" name="name" required class="db-control" value="<?= isset($_POST['connect_db']) ? h($_POST['name'] ?? '') : '' ?>" placeholder="Ej. ERP Producción">
+                                <p class="db-field-help">Nombre interno para reconocer la conexión.</p>
+                            </div>
+                            <div class="db-field db-field--full">
+                                <label for="db-type" class="db-label">Motor de base de datos <span class="db-required" aria-hidden="true">*</span><span class="db-sr-only">obligatorio</span></label>
+                                <select id="db-type" name="type" class="db-control" required>
+                                    <?php foreach ($engines as $val => $e): ?>
+                                    <option value="<?= h($val) ?>" <?= $selectedEngine === $val ? 'selected' : '' ?>><?= h($e['label']) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <p class="db-field-help">Selecciona el controlador compatible con el servidor.</p>
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <fieldset class="db-fieldset">
+                        <legend>2. Agente asignado</legend>
+                        <div class="db-fields-grid">
+                            <div class="db-field db-field--full">
+                                <label for="db-agent" class="db-label">Agente de monitoreo <span class="db-required" aria-hidden="true">*</span><span class="db-sr-only">obligatorio</span></label>
+                                <select id="db-agent" name="agentId" class="db-control" required>
+                                    <option value="">Seleccione un agente...</option>
+                                    <?php foreach ($agents as $agent): ?>
+                                    <?php $agentValue = h($agent['agentId'] ?? $agent['_id'] ?? ''); ?>
+                                    <option value="<?= $agentValue ?>" <?= (isset($_POST['connect_db']) && ($_POST['agentId'] ?? '') === ($agent['agentId'] ?? $agent['_id'] ?? '')) ? 'selected' : '' ?>>
+                                        <?= h(($agent['hostname'] ?? $agent['agentId'] ?? $agent['_id'] ?? 'Agente sin nombre') . ' (' . ($agent['status'] ?? 'desconocido') . ')') ?>
+                                    </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <p class="db-field-help">Agente que ejecutará el escaneo y monitoreo sobre esta base de datos.</p>
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <fieldset class="db-fieldset">
+                        <legend>3. Servidor y esquema</legend>
+                        <div class="db-fields-grid">
+                            <div class="db-field db-field--full">
+                                <label for="db-host" class="db-label">Host o dirección IP <span class="db-required" aria-hidden="true">*</span><span class="db-sr-only">obligatorio</span></label>
+                                <input id="db-host" type="text" name="host" required class="db-control" value="<?= isset($_POST['connect_db']) ? h($_POST['host'] ?? '') : '' ?>" placeholder="db.empresa.cl" spellcheck="false">
+                                <p class="db-field-help">Dominio o IP accesible desde el agente.</p>
+                            </div>
+                            <div class="db-field">
+                                <label for="db-port" class="db-label">Puerto <span class="db-required" aria-hidden="true">*</span><span class="db-sr-only">obligatorio</span></label>
+                                <input id="db-port" type="text" name="port" required inputmode="numeric" class="db-control" value="<?= isset($_POST['connect_db']) ? h($_POST['port'] ?? '') : '' ?>" placeholder="3306">
+                                <p id="db-port-help" class="db-field-help">Puerto habitual de MySQL: 3306.</p>
+                            </div>
+                            <div class="db-field">
+                                <label for="db-database" class="db-label">Base o esquema <span class="db-required" aria-hidden="true">*</span><span class="db-sr-only">obligatorio</span></label>
+                                <input id="db-database" type="text" name="database" required class="db-control" value="<?= isset($_POST['connect_db']) ? h($_POST['database'] ?? '') : '' ?>" placeholder="produccion" spellcheck="false">
+                                <p class="db-field-help">Nombre exacto del catálogo a analizar.</p>
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <fieldset class="db-fieldset">
+                        <legend>4. Credenciales</legend>
+                        <div class="db-fields-grid">
+                            <div class="db-field db-field--full">
+                                <label for="db-user" class="db-label">Usuario de servicio <span class="db-required" aria-hidden="true">*</span><span class="db-sr-only">obligatorio</span></label>
+                                <input id="db-user" type="text" name="user" required autocomplete="username" class="db-control" value="<?= isset($_POST['connect_db']) ? h($_POST['user'] ?? '') : '' ?>" placeholder="svc_auditoria" spellcheck="false">
+                                <p class="db-field-help">Prefiere una cuenta dedicada y de solo lectura.</p>
+                            </div>
+                            <div class="db-field db-field--full">
+                                <label for="db-password" class="db-label">Contraseña</label>
+                                <div class="db-password-wrap">
+                                    <input id="db-password" type="password" name="password" autocomplete="current-password" class="db-control" placeholder="Introduce la contraseña">
+                                    <button type="button" class="db-password-toggle" data-password-toggle aria-controls="db-password" aria-pressed="false">Mostrar</button>
+                                </div>
+                                <p class="db-field-help">Déjala vacía únicamente si el servidor no la requiere.</p>
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+            </form>
+        </div>
+        <footer class="db-sidebar-footer">
+            <p class="db-form-required-note"><span class="db-required" aria-hidden="true">*</span> Campos obligatorios para registrar la conexión.</p>
+            <div class="db-form-buttons">
+                <button type="button" data-db-form-close class="db-secondary-button">Cancelar</button>
+                <button type="submit" name="connect_db" value="1" form="new-db-form" class="db-primary-button">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                    Guardar conexión
+                </button>
+            </div>
+        </footer>
+    </aside>
+
+    <main class="db-main">
         <!-- Header -->
         <header class="db-page-header">
             <div class="db-container db-header-layout">
@@ -1274,7 +1452,7 @@ $formatDatabaseDate = static function ($value) {
                             <span>Sin conexiones registradas</span>
                         <?php endif; ?>
                     </div>
-                    <button type="button" data-db-form-open aria-controls="new-db-form" aria-expanded="<?= $showNewForm ? 'true' : 'false' ?>" class="db-primary-button tour-detail-1">
+                    <button type="button" data-db-form-open aria-controls="new-db-sidebar" aria-expanded="false" class="db-primary-button tour-detail-1">
                         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14M5 12h14"/></svg>
                         Añadir conexión
                     </button>
@@ -1372,123 +1550,6 @@ $formatDatabaseDate = static function ($value) {
                         </div>
                     </section>
 
-                    <!-- New DB Form -->
-                    <section id="new-db-form" class="db-panel <?= $showNewForm ? '' : 'hidden' ?>" aria-labelledby="new-db-form-title" aria-hidden="<?= $showNewForm ? 'false' : 'true' ?>">
-                        <div class="db-panel-header">
-                            <div class="db-panel-heading">
-                                <span class="db-panel-heading-icon" aria-hidden="true">
-                                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 5v14M5 12h14"/></svg>
-                                </span>
-                                <div>
-                                    <h2 id="new-db-form-title" class="db-panel-title">Registrar una conexión</h2>
-                                    <p class="db-panel-description">Completa la identificación, el destino y las credenciales del origen de datos.</p>
-                                </div>
-                            </div>
-                            <button type="button" data-db-form-close class="db-icon-button" aria-label="Cerrar formulario de conexión">
-                                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                            </button>
-                        </div>
-
-                        <form method="POST" class="db-form-body" autocomplete="off">
-                            <div class="db-form-note">
-                                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 11V8a4 4 0 00-8 0v3m0 0h12a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2v-6a2 2 0 012-2zm8-6h6v14a2 2 0 01-2 2h-2"/></svg>
-                                <span>Utiliza una cuenta de servicio con los permisos mínimos necesarios. La plataforma usará estos datos para probar la conexión y ejecutar los escaneos solicitados.</span>
-                            </div>
-
-                            <div class="db-form-sections">
-                                <fieldset class="db-fieldset">
-                                    <legend>1. Identificación</legend>
-                                    <div class="db-fields-grid">
-                                        <div class="db-field db-field--full">
-                                            <label for="db-name" class="db-label">Nombre visible <span class="db-required" aria-hidden="true">*</span><span class="db-sr-only">obligatorio</span></label>
-                                            <input id="db-name" type="text" name="name" required class="db-control" value="<?= isset($_POST['connect_db']) ? h($_POST['name'] ?? '') : '' ?>" placeholder="Ej. ERP Producción">
-                                            <p class="db-field-help">Nombre interno para reconocer la conexión.</p>
-                                        </div>
-                                        <div class="db-field db-field--full">
-                                            <label for="db-type" class="db-label">Motor de base de datos <span class="db-required" aria-hidden="true">*</span><span class="db-sr-only">obligatorio</span></label>
-                                            <select id="db-type" name="type" class="db-control" required>
-                                                <?php foreach ($engines as $val => $e): ?>
-                                                <option value="<?= h($val) ?>" <?= $selectedEngine === $val ? 'selected' : '' ?>><?= h($e['label']) ?></option>
-                                                <?php endforeach; ?>
-                                            </select>
-                                            <p class="db-field-help">Selecciona el controlador compatible con el servidor.</p>
-                                        </div>
-                                    </div>
-                                </fieldset>
-
-                                <fieldset class="db-fieldset">
-                                    <legend>2. Agente asignado</legend>
-                                    <div class="db-fields-grid">
-                                        <div class="db-field db-field--full">
-                                            <label for="db-agent" class="db-label">Agente de monitoreo <span class="db-required" aria-hidden="true">*</span><span class="db-sr-only">obligatorio</span></label>
-                                            <select id="db-agent" name="agentId" class="db-control" required>
-                                                <option value="">Seleccione un agente...</option>
-                                                <?php foreach ($agents as $agent): ?>
-                                                <?php $agentValue = h($agent['agentId'] ?? $agent['_id'] ?? ''); ?>
-                                                <option value="<?= $agentValue ?>" <?= (isset($_POST['connect_db']) && ($_POST['agentId'] ?? '') === ($agent['agentId'] ?? $agent['_id'] ?? '')) ? 'selected' : '' ?>>
-                                                    <?= h(($agent['hostname'] ?? $agent['agentId'] ?? $agent['_id'] ?? 'Agente sin nombre') . ' (' . ($agent['status'] ?? 'desconocido') . ')') ?>
-                                                </option>
-                                                <?php endforeach; ?>
-                                            </select>
-                                            <p class="db-field-help">Agente que ejecutará el escaneo y monitoreo sobre esta base de datos.</p>
-                                        </div>
-                                    </div>
-                                </fieldset>
-
-                                <fieldset class="db-fieldset">
-                                    <legend>3. Servidor y esquema</legend>
-                                    <div class="db-fields-grid">
-                                        <div class="db-field db-field--full">
-                                            <label for="db-host" class="db-label">Host o dirección IP <span class="db-required" aria-hidden="true">*</span><span class="db-sr-only">obligatorio</span></label>
-                                            <input id="db-host" type="text" name="host" required class="db-control" value="<?= isset($_POST['connect_db']) ? h($_POST['host'] ?? '') : '' ?>" placeholder="db.empresa.cl" spellcheck="false">
-                                            <p class="db-field-help">Dominio o IP accesible desde el agente.</p>
-                                        </div>
-                                        <div class="db-field">
-                                            <label for="db-port" class="db-label">Puerto <span class="db-required" aria-hidden="true">*</span><span class="db-sr-only">obligatorio</span></label>
-                                            <input id="db-port" type="text" name="port" required inputmode="numeric" class="db-control" value="<?= isset($_POST['connect_db']) ? h($_POST['port'] ?? '') : '' ?>" placeholder="3306">
-                                            <p id="db-port-help" class="db-field-help">Puerto habitual de MySQL: 3306.</p>
-                                        </div>
-                                        <div class="db-field">
-                                            <label for="db-database" class="db-label">Base o esquema <span class="db-required" aria-hidden="true">*</span><span class="db-sr-only">obligatorio</span></label>
-                                            <input id="db-database" type="text" name="database" required class="db-control" value="<?= isset($_POST['connect_db']) ? h($_POST['database'] ?? '') : '' ?>" placeholder="produccion" spellcheck="false">
-                                            <p class="db-field-help">Nombre exacto del catálogo a analizar.</p>
-                                        </div>
-                                    </div>
-                                </fieldset>
-
-                                <fieldset class="db-fieldset">
-                                    <legend>4. Credenciales</legend>
-                                    <div class="db-fields-grid">
-                                        <div class="db-field db-field--full">
-                                            <label for="db-user" class="db-label">Usuario de servicio <span class="db-required" aria-hidden="true">*</span><span class="db-sr-only">obligatorio</span></label>
-                                            <input id="db-user" type="text" name="user" required autocomplete="username" class="db-control" value="<?= isset($_POST['connect_db']) ? h($_POST['user'] ?? '') : '' ?>" placeholder="svc_auditoria" spellcheck="false">
-                                            <p class="db-field-help">Prefiere una cuenta dedicada y de solo lectura.</p>
-                                        </div>
-                                        <div class="db-field db-field--full">
-                                            <label for="db-password" class="db-label">Contraseña</label>
-                                            <div class="db-password-wrap">
-                                                <input id="db-password" type="password" name="password" autocomplete="current-password" class="db-control" placeholder="Introduce la contraseña">
-                                                <button type="button" class="db-password-toggle" data-password-toggle aria-controls="db-password" aria-pressed="false">Mostrar</button>
-                                            </div>
-                                            <p class="db-field-help">Déjala vacía únicamente si el servidor no la requiere.</p>
-                                        </div>
-                                    </div>
-                                </fieldset>
-                            </div>
-
-                            <div class="db-form-actions">
-                                <p class="db-form-required-note"><span class="db-required" aria-hidden="true">*</span> Campos obligatorios para registrar la conexión.</p>
-                                <div class="db-form-buttons">
-                                    <button type="button" data-db-form-close class="db-secondary-button">Cancelar</button>
-                                    <button type="submit" name="connect_db" value="1" class="db-primary-button">
-                                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                                        Guardar conexión
-                                    </button>
-                                </div>
-                            </div>
-                        </form>
-                    </section>
-
                     <!-- DB List Container -->
                     <section class="db-panel tour-detail-2" aria-labelledby="database-list-title">
                         <div class="db-panel-header">
@@ -1512,7 +1573,7 @@ $formatDatabaseDate = static function ($value) {
                             </div>
                             <h3 class="db-empty-title">Aún no hay conexiones registradas</h3>
                             <p class="db-empty-copy">Añade el primer origen de datos para validar su disponibilidad y construir el inventario de tablas y registros.</p>
-                            <button type="button" data-db-form-open aria-controls="new-db-form" aria-expanded="<?= $showNewForm ? 'true' : 'false' ?>" class="db-primary-button">
+                            <button type="button" data-db-form-open aria-controls="new-db-sidebar" aria-expanded="false" class="db-primary-button">
                                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14M5 12h14"/></svg>
                                 Añadir primera conexión
                             </button>
@@ -1642,41 +1703,80 @@ $formatDatabaseDate = static function ($value) {
 <script>
 (function () {
     const root = document.querySelector('.databases-workspace');
-    const formPanel = document.getElementById('new-db-form');
-    if (!root || !formPanel) return;
+    const sidebar = document.getElementById('new-db-sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    if (!root || !sidebar || !overlay) return;
 
     const openButtons = root.querySelectorAll('[data-db-form-open]');
     const closeButtons = root.querySelectorAll('[data-db-form-close]');
     const nameInput = document.getElementById('db-name');
+    let lastFocusedButton = null;
 
-    function setFormOpen(isOpen, shouldFocus) {
-        formPanel.classList.toggle('hidden', !isOpen);
-        formPanel.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+    function setSidebarOpen(isOpen, shouldFocus) {
+        sidebar.classList.toggle('is-open', isOpen);
+        overlay.classList.toggle('is-open', isOpen);
+        sidebar.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+        overlay.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
         openButtons.forEach(function (button) {
             button.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
         });
 
-        if (isOpen && shouldFocus) {
+        if (isOpen) {
+            lastFocusedButton = document.activeElement;
+            document.body.style.overflow = 'hidden';
             const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-            formPanel.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
             window.setTimeout(function () {
                 if (nameInput) nameInput.focus({ preventScroll: true });
-            }, reduceMotion ? 0 : 250);
+            }, reduceMotion ? 0 : 150);
+        } else {
+            document.body.style.overflow = '';
+            if (lastFocusedButton) {
+                lastFocusedButton.focus({ preventScroll: true });
+            }
         }
     }
 
     openButtons.forEach(function (button) {
         button.addEventListener('click', function () {
-            setFormOpen(true, true);
+            setSidebarOpen(true, true);
         });
     });
 
     closeButtons.forEach(function (button) {
         button.addEventListener('click', function () {
-            setFormOpen(false, false);
-            const firstOpenButton = openButtons.item(0);
-            if (firstOpenButton) firstOpenButton.focus({ preventScroll: true });
+            setSidebarOpen(false, false);
         });
+    });
+
+    // Close on overlay click
+    overlay.addEventListener('click', function () {
+        setSidebarOpen(false, false);
+    });
+
+    // Close on Escape key
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && sidebar.classList.contains('is-open')) {
+            setSidebarOpen(false, false);
+        }
+    });
+
+    // Trap focus inside sidebar when open
+    sidebar.addEventListener('keydown', function (e) {
+        if (e.key !== 'Tab' || !sidebar.classList.contains('is-open')) return;
+
+        const focusableElements = sidebar.querySelectorAll(
+            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+
+        if (e.shiftKey && document.activeElement === firstElement) {
+            e.preventDefault();
+            lastElement.focus({ preventScroll: true });
+        } else if (!e.shiftKey && document.activeElement === lastElement) {
+            e.preventDefault();
+            firstElement.focus({ preventScroll: true });
+        }
     });
 
     const passwordInput = document.getElementById('db-password');

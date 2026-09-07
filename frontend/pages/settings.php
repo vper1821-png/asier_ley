@@ -634,37 +634,6 @@ $initials = mb_strtoupper(mb_substr($displayName ?: ($userEmail ?: 'U'), 0, 2));
                                                 Desactivar Autenticación 2FA
                                             </button>
                                         </div>
-
-                                        <!-- Disable 2FA Modal Dialog -->
-                                        <div id="disable-2fa-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-                                            <div class="bg-bg-panel border border-border-theme rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-                                                <div class="flex items-center justify-between border-b border-border-theme pb-3">
-                                                    <h3 class="text-sm font-bold text-white flex items-center gap-2 text-red-400">
-                                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
-                                                        Confirmar desactivación de 2FA
-                                                    </h3>
-                                                    <button type="button" onclick="document.getElementById('disable-2fa-modal').classList.add('hidden')" class="text-text-subtle hover:text-white">
-                                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                                                    </button>
-                                                </div>
-                                                <p class="text-xs text-text-muted">Para desactivar el doble factor de autenticación, introduce tu código 2FA actual y tu contraseña:</p>
-                                                <form method="POST" class="space-y-3">
-                                                    <input type="hidden" name="action" value="disable_2fa">
-                                                    <div>
-                                                        <label class="label-premium">Código 2FA actual</label>
-                                                        <input type="text" name="code_2fa" required maxlength="6" placeholder="000000" class="input-premium font-mono">
-                                                    </div>
-                                                    <div>
-                                                        <label class="label-premium">Contraseña actual de la cuenta</label>
-                                                        <input type="password" name="password_2fa" required placeholder="Tu contraseña" class="input-premium">
-                                                    </div>
-                                                    <div class="flex justify-end gap-2 pt-2">
-                                                        <button type="button" onclick="document.getElementById('disable-2fa-modal').classList.add('hidden')" class="btn-secondary text-xs">Cancelar</button>
-                                                        <button type="submit" name="disable_2fa" value="1" class="btn-danger text-xs">Desactivar 2FA</button>
-                                                    </div>
-                                                </form>
-                                            </div>
-                                        </div>
                                     </div>
 
                                     <?php else: ?>
@@ -748,6 +717,37 @@ $initials = mb_strtoupper(mb_substr($displayName ?: ($userEmail ?: 'U'), 0, 2));
             </div>
         </div>
     </main>
+
+    <!-- Disable 2FA Modal Dialog (fuera de contenedores con blur/transform) -->
+    <div id="disable-2fa-modal" class="hidden fixed inset-0 z-[90] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-bg-panel border border-border-theme rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div class="flex items-center justify-between border-b border-border-theme pb-3">
+                <h3 class="text-sm font-bold flex items-center gap-2 text-red-400">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+                    Confirmar desactivación de 2FA
+                </h3>
+                <button type="button" onclick="document.getElementById('disable-2fa-modal').classList.add('hidden')" class="text-text-subtle hover:text-white">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <p class="text-xs text-text-muted">Para desactivar el doble factor de autenticación, introduce tu código 2FA actual y tu contraseña:</p>
+            <form method="POST" class="space-y-3">
+                <input type="hidden" name="action" value="disable_2fa">
+                <div>
+                    <label class="label-premium">Código 2FA actual</label>
+                    <input type="text" name="code_2fa" required maxlength="6" placeholder="000000" class="input-premium font-mono">
+                </div>
+                <div>
+                    <label class="label-premium">Contraseña actual de la cuenta</label>
+                    <input type="password" name="password_2fa" required placeholder="Tu contraseña" class="input-premium">
+                </div>
+                <div class="flex justify-end gap-2 pt-2">
+                    <button type="button" onclick="document.getElementById('disable-2fa-modal').classList.add('hidden')" class="btn-secondary text-xs">Cancelar</button>
+                    <button type="submit" name="disable_2fa" value="1" class="btn-danger text-xs">Desactivar 2FA</button>
+                </div>
+            </form>
+        </div>
+    </div>
 </div>
 
 <script>

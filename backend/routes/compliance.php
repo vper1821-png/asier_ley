@@ -483,7 +483,7 @@ function crud() {
     }
 
     // PDF generation endpoints
-    if ($action === 'pdf' && in_array($resource, ['consents', 'inventory', 'breaches', 'trainings', 'pseudonymization', 'arco-requests', 'dpia', 'dpa'])) {
+    if ($action === 'pdf' && in_array($resource, ['consents', 'inventory', 'breaches', 'trainings', 'pseudonymization', 'arco-requests', 'arco', 'incident_response', 'dpia', 'dpa'])) {
         generateCompliancePDF($resource);
         return;
     }
@@ -1167,6 +1167,18 @@ function generateCompliancePDF($resource) {
         case 'arco-requests':
             $html = $pdfGenerator->generateARCORequestsPDF($itemId);
             $result = $pdfGenerator->generatePDFFile($html, 'solicitudes-arco');
+            break;
+        case 'arco':
+            $arcoDoc = $db->findOne('compliance_checklist', ['userId' => $user['_id'], 'section' => 'arco']);
+            $arcoData = (array)($arcoDoc['data'] ?? []);
+            $html = $pdfGenerator->generateGenericChecklistPDF('Canal de Derechos ARCO', $arcoData);
+            $result = $pdfGenerator->generatePDFFile($html, 'arco');
+            break;
+        case 'incident_response':
+            $irDoc = $db->findOne('compliance_incident_response', ['userId' => $user['_id']]) ?? $db->findOne('compliance_checklist', ['userId' => $user['_id'], 'section' => 'incident_response']);
+            $irData = (array)(!empty($irDoc['data']) ? $irDoc['data'] : $irDoc);
+            $html = $pdfGenerator->generateGenericChecklistPDF('Plan de Respuesta a Incidentes', $irData);
+            $result = $pdfGenerator->generatePDFFile($html, 'respuesta-incidentes');
             break;
         default:
             json_error('Recurso no soportado para generación de PDF', 400);

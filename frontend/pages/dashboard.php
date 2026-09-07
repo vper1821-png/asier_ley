@@ -57,18 +57,6 @@ function kpi_card($label, $value, $sub, $color, $icon, $big = true) {
 
     <!-- Main Content -->
     <main class="flex-1 overflow-hidden bg-bg-base flex flex-col">
-        <!-- Ley 21.719 banner -->
-        <div class="flex-shrink-0 mx-4 md:mx-6 mt-3 px-4 py-2.5 rounded-lg bg-blue-500/[0.06] border border-blue-500/20 flex items-start gap-2.5" id="ley-banner">
-            <svg class="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
-            <p class="text-[11px] text-text-body leading-relaxed flex-1">
-                <span class="font-semibold text-blue-300">Aviso Importante – Ley N.º 21.719 (Protección de Datos Personales)</span><br>
-                Si tu organización trata datos personales, recuerda que debes iniciar el proceso de adecuación con al menos 6 meses de anticipación para cumplir con las exigencias de la Ley N.º 21.719. Prepárate con tiempo: te permitirá implementar las medidas necesarias y evitar riesgos de incumplimiento cuando la normativa entre en plena vigencia.
-            </p>
-            <button onclick="document.getElementById('ley-banner').remove()" class="text-text-subtle hover:text-text-heading flex-shrink-0">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-            </button>
-        </div>
-
         <!-- Header -->
         <div class="flex-shrink-0 px-5 md:px-8 py-5 border-b border-white/[0.04] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>

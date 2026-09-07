@@ -155,16 +155,38 @@ $readyCount = count(array_filter($reports, fn($r) => ($r['status'] ?? '') === 'l
                 </div>
 
                 <?php else: ?>
+                <!-- Filter Bar -->
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+                    <div class="relative flex-1 min-w-0">
+                        <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-subtle pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                        <input type="text" id="report-search" placeholder="Buscar reporte por nombre..." class="input-premium w-full pl-9 py-2 text-[11px]">
+                    </div>
+                    <select id="report-filter-type" class="input-premium text-[11px] py-2 sm:w-44">
+                        <option value="">Todos los tipos</option>
+                        <option value="compliance">Cumplimiento</option>
+                        <option value="security">Seguridad</option>
+                        <option value="training">Capacitación</option>
+                    </select>
+                    <input type="date" id="report-filter-date" class="input-premium text-[11px] py-2 sm:w-40" title="Filtrar por fecha">
+                    <button type="button" id="report-filter-clear" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-medium bg-white/[0.03] hover:bg-white/[0.06] text-text-muted border border-white/[0.05] transition-all">
+                        Limpiar
+                    </button>
+                </div>
+                <p id="report-results-count" class="text-[10px] text-text-subtle"></p>
+
                 <!-- Reports List -->
                 <div class="rounded-xl border border-border-theme bg-bg-panel/60 overflow-hidden">
-                    <div class="divide-y divide-border-theme">
+                    <div class="divide-y divide-border-theme" id="reports-list">
                         <?php foreach ($reports as $r):
                             $rType = $r['type'] ?? 'compliance';
                             $rColors = $typeColors[$rType] ?? $typeColors['compliance'];
                             $rLabel = $typeLabels[$rType] ?? ucfirst($rType);
                             $rStatus = $r['status'] ?? 'listo';
+                            $rName = $r['name'] ?? $r['title'] ?? ('Reporte ' . substr($r['_id'] ?? '', 0, 6));
+                            $rDate = substr($r['createdAt'] ?? '', 0, 10);
                         ?>
-                        <div class="px-5 py-4 flex items-center gap-4 hover:bg-white/[0.01] transition-colors">
+                        <div class="report-row px-5 py-4 flex items-center gap-4 hover:bg-white/[0.01] transition-colors"
+                             data-name="<?= h(mb_strtolower($rName)) ?>" data-type="<?= h($rType) ?>" data-date="<?= h($rDate) ?>">
                             <!-- Type Icon -->
                             <div class="flex-shrink-0">
                                 <div class="w-10 h-10 rounded-xl <?= $rColors['bg'] ?> border <?= $rColors['border'] ?> flex items-center justify-center">
@@ -179,7 +201,7 @@ $readyCount = count(array_filter($reports, fn($r) => ($r['status'] ?? '') === 'l
                             </div>
                             <!-- Content -->
                             <div class="flex-1 min-w-0">
-                                <p class="text-[13px] font-medium text-white truncate"><?= h($r['name'] ?? $r['title'] ?? ('Reporte ' . substr($r['_id'] ?? '', 0, 6))) ?></p>
+                                <p class="text-[13px] font-medium text-white truncate"><?= h($rName) ?></p>
                                 <div class="flex items-center gap-2.5 mt-1">
                                     <span class="text-[10px] px-1.5 py-0.5 rounded-full border <?= $rColors['badge'] ?> font-medium"><?= h($rLabel) ?></span>
                                     <span class="text-[10px] text-text-subtle"><?= h(substr($r['createdAt'] ?? '', 0, 16)) ?></span>
@@ -197,6 +219,14 @@ $readyCount = count(array_filter($reports, fn($r) => ($r['status'] ?? '') === 'l
                         </div>
                         <?php endforeach; ?>
                     </div>
+                    <div id="reports-empty" class="hidden p-10 text-center">
+                        <p class="text-[11px] text-text-subtle">Sin resultados para los filtros aplicados.</p>
+                    </div>
+                    <!-- Pagination -->
+                    <div id="reports-pagination" class="flex items-center justify-between px-5 py-3 border-t border-border-theme">
+                        <p id="reports-page-info" class="text-[10px] text-text-subtle"></p>
+                        <div class="flex items-center gap-1.5" id="reports-page-btns"></div>
+                    </div>
                 </div>
                 <?php endif; ?>
 
@@ -204,5 +234,80 @@ $readyCount = count(array_filter($reports, fn($r) => ($r['status'] ?? '') === 'l
         </div>
     </main>
 </div>
+
+<script>
+(function () {
+    const PER_PAGE = 10;
+    const rows = Array.from(document.querySelectorAll('.report-row'));
+    const searchEl = document.getElementById('report-search');
+    const typeEl = document.getElementById('report-filter-type');
+    const dateEl = document.getElementById('report-filter-date');
+    const clearBtn = document.getElementById('report-filter-clear');
+    const paginationEl = document.getElementById('reports-pagination');
+    const pageInfo = document.getElementById('reports-page-info');
+    const pageBtns = document.getElementById('reports-page-btns');
+    const emptyEl = document.getElementById('reports-empty');
+    const countEl = document.getElementById('report-results-count');
+    if (!rows.length) return;
+
+    let currentPage = 1;
+
+    function filtered() {
+        const q = (searchEl.value || '').trim().toLowerCase();
+        const t = typeEl.value;
+        const d = dateEl.value;
+        return rows.filter(r => {
+            if (q && !r.dataset.name.includes(q)) return false;
+            if (t && r.dataset.type !== t) return false;
+            if (d && r.dataset.date !== d) return false;
+            return true;
+        });
+    }
+
+    function render() {
+        const list = filtered();
+        const totalPages = Math.max(1, Math.ceil(list.length / PER_PAGE));
+        if (currentPage > totalPages) currentPage = totalPages;
+        const start = (currentPage - 1) * PER_PAGE;
+        const pageItems = list.slice(start, start + PER_PAGE);
+
+        rows.forEach(r => r.style.display = 'none');
+        pageItems.forEach(r => r.style.display = '');
+
+        emptyEl.classList.toggle('hidden', list.length > 0);
+        countEl.textContent = list.length + ' resultado' + (list.length !== 1 ? 's' : '');
+        pageInfo.textContent = 'Página ' + currentPage + ' de ' + totalPages + ' · ' + list.length + ' reportes';
+
+        pageBtns.innerHTML = '';
+        const mk = (label, page, opts = {}) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = label;
+            b.className = 'px-2.5 py-1.5 rounded-lg text-[10px] font-medium border transition-all ' +
+                (opts.active ? 'bg-cyan-600 text-white border-cyan-500' : 'bg-white/[0.03] text-text-muted border-white/[0.05] hover:bg-white/[0.06] hover:text-white');
+            if (opts.disabled) { b.disabled = true; b.className += ' opacity-40 cursor-not-allowed'; }
+            else b.addEventListener('click', () => { currentPage = page; render(); });
+            pageBtns.appendChild(b);
+        };
+        mk('‹', currentPage - 1, { disabled: currentPage === 1 });
+        for (let p = 1; p <= totalPages; p++) {
+            if (totalPages > 7 && p !== 1 && p !== totalPages && Math.abs(p - currentPage) > 1) {
+                if (pageBtns.lastChild && pageBtns.lastChild.textContent !== '…') {
+                    const s = document.createElement('span');
+                    s.textContent = '…'; s.className = 'text-text-subtle text-[10px] px-1';
+                    pageBtns.appendChild(s);
+                }
+                continue;
+            }
+            mk(p, p, { active: p === currentPage });
+        }
+        mk('›', currentPage + 1, { disabled: currentPage === totalPages });
+    }
+
+    [searchEl, typeEl, dateEl].forEach(el => el.addEventListener('input', () => { currentPage = 1; render(); }));
+    clearBtn.addEventListener('click', () => { searchEl.value = ''; typeEl.value = ''; dateEl.value = ''; currentPage = 1; render(); });
+    render();
+})();
+</script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

@@ -82,6 +82,12 @@ $foldersRes = api_post_form('/api/folders/list', ['token' => $token]);
 $folders = is_array($foldersRes) && empty($foldersRes['error']) ? $foldersRes : [];
 if (!is_array($folders)) $folders = [];
 
+$folderCounts = [];
+foreach ($agents as $a) {
+    $g = $a['group'] ?? '';
+    $folderCounts[$g] = ($folderCounts[$g] ?? 0) + 1;
+}
+
 $hostsRes = api_post_form('/api/host-monitor', ['token' => $token]);
 $hosts = is_array($hostsRes) && empty($hostsRes['error']) ? $hostsRes : [];
 $hostsByAgent = [];
@@ -155,21 +161,33 @@ $platforms = [
 
             <!-- Carpetas -->
             <div class="rounded-xl border border-white/[0.04] bg-white/[0.015] p-5 tour-detail-1">
-                <p class="text-[12px] font-semibold text-white mb-1">Carpetas</p>
-                <p class="text-[11px] text-text-subtle mb-4">Crea, visualiza y borra carpetas para organizar agentes.</p>
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+                        </div>
+                        <div>
+                            <p class="text-[12px] font-semibold text-white">Carpetas</p>
+                            <p class="text-[10px] text-text-subtle">Organiza agentes por secciones</p>
+                        </div>
+                    </div>
+                    <span class="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.06] text-text-subtle"><?= count($folders) ?> <?= count($folders) === 1 ? 'carpeta' : 'carpetas' ?></span>
+                </div>
                 <div class="flex items-center gap-2 mb-3">
                     <input id="new-folder" type="text" placeholder="Nombre de nueva carpeta..." class="flex-1 min-w-0 bg-bg-input border border-border-theme rounded-lg px-3 py-2 text-[12px] text-text-heading focus:border-primary-500 outline-none" />
                     <button onclick="createFolder()" class="px-4 py-2 rounded-lg text-[11px] font-medium bg-primary-600 hover:bg-primary-500 text-white transition-all">Crear</button>
                 </div>
-                <div id="folders-list" class="space-y-2">
-                    <?php foreach ($folders as $f): $fn = h($f['name'] ?? ''); ?>
-                    <div class="folder-row flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-border-theme/40 bg-bg-panel/40" data-folder="<?= $fn ?>">
-                        <div class="flex items-center gap-2 min-w-0">
-                            <svg class="w-4 h-4 text-primary-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
-                            <span class="text-[12px] text-text-heading truncate"><?= $fn ?></span>
-                        </div>
-                        <button onclick="deleteFolder('<?= addslashes($f['name'] ?? '') ?>')" title="Borrar carpeta" class="p-1.5 rounded-lg text-[11px] text-red-400 hover:bg-red-500/10 transition-all">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                <div id="folders-list" class="flex flex-wrap gap-2">
+                    <?php foreach ($folders as $f):
+                        $fn = h($f['name'] ?? '');
+                        $fCount = $folderCounts[$f['name'] ?? ''] ?? 0;
+                    ?>
+                    <div class="folder-row group inline-flex items-center gap-2 pl-2.5 pr-1.5 py-1.5 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] hover:bg-amber-500/[0.1] hover:border-amber-500/30 transition-all" data-folder="<?= $fn ?>">
+                        <svg class="w-3.5 h-3.5 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+                        <span class="text-[11px] font-medium text-text-heading"><?= $fn ?></span>
+                        <span class="text-[9px] px-1.5 py-px rounded-full bg-white/[0.06] border border-white/[0.06] text-text-subtle"><?= $fCount ?></span>
+                        <button onclick="deleteFolder('<?= addslashes($f['name'] ?? '') ?>')" title="Borrar carpeta" class="p-1 rounded-md text-[10px] text-text-subtle hover:text-red-400 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                         </button>
                     </div>
                     <?php endforeach; ?>
@@ -191,16 +209,20 @@ $platforms = [
             <?php else: ?>
             <div class="space-y-2 tour-detail-2">
                 <?php $lastGroup = '___unset___'; foreach ($agents as $i => $agent): $isOnline = ($agent['status'] ?? '') === 'online'; $isLocked = !empty($agent['lockdown']['enabled']); $g = $agent['group'] ?? ''; if ($g !== $lastGroup): if ($lastGroup !== '___unset___') echo '</div></details>'; $lastGroup = $g; ?>
-                <details class="agent-folder rounded-xl border border-border-theme/40 bg-bg-panel/40 overflow-hidden mb-3" data-group="<?= h($g) ?>" open>
-                    <summary class="px-4 py-3 flex items-center justify-between cursor-pointer list-none hover:bg-white/[0.02]" onclick="return true">
+                <details class="agent-folder rounded-xl border border-white/[0.06] bg-white/[0.01] overflow-hidden mb-3 group" data-group="<?= h($g) ?>" open>
+                    <summary class="px-4 py-3 flex items-center justify-between cursor-pointer list-none hover:bg-white/[0.02] transition-colors" onclick="return true">
                         <div class="flex items-center gap-3">
-                            <svg class="w-4 h-4 text-primary-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
-                            <span class="text-[13px] font-medium text-text-heading"><?= $g ? h($g) : 'Sin sección' ?></span>
-                            <span class="text-[10px] text-text-subtle folder-count">(0)</span>
+                            <div class="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 flex-shrink-0">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+                            </div>
+                            <div>
+                                <span class="text-[13px] font-semibold text-text-heading"><?= $g ? h($g) : 'Sin sección' ?></span>
+                                <span class="text-[10px] text-text-subtle folder-count ml-2 px-1.5 py-px rounded-full bg-white/[0.04] border border-white/[0.06]">0 agentes</span>
+                            </div>
                         </div>
-                        <svg class="w-4 h-4 text-text-subtle chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        <svg class="w-4 h-4 text-text-subtle chevron transition-transform duration-200 group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                     </summary>
-                    <div class="p-3 space-y-2 border-t border-border-theme/30">
+                    <div class="p-3 space-y-2 border-t border-white/[0.05] bg-black/[0.12]">
                 <?php endif; ?>
                 <div class="agent-card rounded-xl border p-4 flex flex-col md:flex-row md:items-center gap-3 <?= $isLocked ? 'border-red-500/30 bg-red-500/[0.04]' : 'border-white/[0.04] bg-white/[0.015]' ?>"
                      data-search="<?= h(strtolower(($agent['name'] ?? '') . ' ' . ($agent['hostname'] ?? '') . ' ' . ($agent['agentId'] ?? '') . ' ' . $g)) ?>"
@@ -267,6 +289,8 @@ $platforms = [
 </div>
 
 <style>
+details.agent-folder[open] > summary .chevron { transform: rotate(180deg); }
+details.agent-folder > summary::-webkit-details-marker { display: none; }
 .control-btn { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.375rem; padding:0.75rem; border-radius:0.75rem; border-width:1px; font-size:11px; font-weight:600; transition:all 0.2s; min-height:72px; }
 .control-btn svg { width:1.25rem; height:1.25rem; }
 .diag-btn { display:flex; align-items:center; justify-content:center; gap:0.5rem; padding:0.625rem 0.75rem; border-radius:0.5rem; font-size:11px; font-weight:500; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); color:#94a3b8; transition:all 0.2s; }
@@ -1005,7 +1029,7 @@ function filterAgents(q) {
         const shown = folder.querySelectorAll('.agent-card:not([style*="display: none"])');
         const count = shown.length;
         const badge = folder.querySelector('.folder-count');
-        if (badge) badge.textContent = '(' + count + ')';
+        if (badge) badge.textContent = count + (count === 1 ? ' agente' : ' agentes');
         if (count > 0) {
             folder.style.display = '';
             if (q) folder.setAttribute('open', '');

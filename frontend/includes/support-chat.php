@@ -56,13 +56,14 @@ const DEFAULT_BUTTONS = [
     { label: 'Datos personales', query: '¿Qué son los datos personales?' },
     { label: 'Brechas', query: '¿Cómo reportar una brecha de seguridad?' },
     { label: 'Conectar BD', query: '¿Cómo conectar mi base de datos?' },
+    { label: 'Mis tickets', query: 'Mis tickets' },
 ];
 
 const WELCOME_MSG = { role: 'bot', text: '¡Hola! Soy el **Asistente Virtual de Invisia/SecureLab**.\n\nPuedo ayudarte con la **Ley 21.719** de Protección de Datos Personales de Chile y los servicios de la plataforma.' };
 const OUT_OF_SCOPE_MSG = 'Lo siento, solo puedo ayudarte con temas relacionados a la **Ley 21.719 de Protección de Datos Personales de Chile** y los **servicios de la plataforma Invisia/SecureLab**.';
 
 // ── State ──
-const S = { open: false, tab: 'home', minimized: false, expanded: false, activeCategory: null, selectedArticle: null, messages: [WELCOME_MSG], loading: false, search: '' };
+const S = { open: false, tab: 'home', minimized: false, expanded: false, activeCategory: null, selectedArticle: null, messages: [WELCOME_MSG], loading: false, search: '', tickets: [], selectedTicket: null, ticketsLoading: false, ticketFormMode: null };
 const root = document.getElementById('sc-root');
 const PANEL_BG = 'background-color: var(--bg-base, #0b0b0f);';
 const CARD_BG = 'background-color: var(--surface-900, #13131a);';
@@ -162,6 +163,157 @@ function renderMessages() {
         '<button data-sc="send" ' + (S.loading ? 'disabled' : '') + ' class="px-4 py-2 rounded-xl text-white text-[12px] font-semibold bg-blue-800 hover:bg-blue-700 disabled:opacity-40 transition-colors">Enviar</button></div></div>';
 }
 
+// ── Tickets Tab ──
+const statusCfg = {
+    open: { label: 'Abierto', cls: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25', dot: 'bg-emerald-400' },
+    in_progress: { label: 'En Atención', cls: 'bg-amber-500/10 text-amber-400 border-amber-500/25', dot: 'bg-amber-400' },
+    pending: { label: 'Pendiente', cls: 'bg-amber-500/10 text-amber-400 border-amber-500/25', dot: 'bg-amber-400' },
+    closed: { label: 'Cerrado', cls: 'bg-white/[0.04] text-text-subtle border-white/[0.08]', dot: 'bg-slate-500' },
+};
+const prioCfg = {
+    low: { label: 'Baja', cls: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/25' },
+    medium: { label: 'Media', cls: 'bg-amber-500/10 text-amber-400 border-amber-500/25' },
+    high: { label: 'Alta', cls: 'bg-red-500/10 text-red-400 border-red-500/25' },
+    urgent: { label: 'Urgente', cls: 'bg-red-900/20 text-red-300 border-red-700/30' },
+};
+
+function renderTickets() {
+    const ticket = S.selectedTicket;
+
+    if (ticket) {
+        const st = statusCfg[ticket.status] || { label: ticket.status, cls: 'bg-white/5 text-text-muted border-white/10', dot: 'bg-slate-500' };
+        const pr = prioCfg[ticket.priority] || { label: ticket.priority, cls: 'bg-white/5 text-text-muted border-white/10' };
+        const createdAt = ticket.createdAt ? new Date(ticket.createdAt).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+        const updatedAt = ticket.updatedAt ? new Date(ticket.updatedAt).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+
+        return '<div class="flex-1 flex flex-col overflow-hidden" style="' + PANEL_BG + '">' +
+            '<div class="px-4 py-3.5 border-b border-border-theme flex-shrink-0" style="' + CARD_BG + '">' +
+            '<div class="flex items-center gap-2.5">' +
+            '<button data-sc="tickets-back" class="p-1.5 rounded-lg text-text-muted hover:text-white hover:bg-white/10 transition-colors"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg></button>' +
+            '<div class="w-8 h-8 rounded-lg bg-blue-800/20 border border-blue-600/25 flex items-center justify-center text-blue-400 flex-shrink-0">' +
+            '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z"/></svg></div>' +
+            '<div class="min-w-0 flex-1"><h2 class="text-[13px] font-bold text-white truncate">' + esc(ticket.subject) + '</h2>' +
+            '<p class="text-[9px] text-text-subtle font-mono">#' + esc(ticket._id?.slice(-8).toUpperCase() || '') + '</p></div>' +
+            '<span class="px-2 py-0.5 rounded-full text-[9px] font-medium flex-shrink-0 ' + st.cls + '"><span class="w-1 h-1 rounded-full ' + st.dot + ' mr-1 inline-block"></span>' + esc(st.label) + '</span>' +
+            '<span class="px-2 py-0.5 rounded-full text-[9px] font-medium flex-shrink-0 ' + pr.cls + '">' + esc(pr.label) + '</span>' +
+            '</div></div>' +
+            '<div class="flex-1 overflow-y-auto chat-scroll">' +
+            '<div class="p-4 space-y-3">' +
+            '<div class="text-center"><span class="text-[9px] text-text-subtle bg-white/[0.03] border border-white/[0.05] px-2.5 py-1 rounded-full">Creado ' + esc(createdAt) + (updatedAt !== createdAt ? ' · Actualizado ' + esc(updatedAt) : '') + '</span></div>' +
+            '<div class="flex justify-start"><div class="max-w-[85%] p-3 rounded-2xl rounded-tl-md bg-white/[0.04] border border-border-theme">' +
+            '<p class="text-[9px] font-semibold text-text-subtle mb-1">Tú</p>' +
+            '<p class="text-[12px] text-text-body whitespace-pre-wrap leading-relaxed">' + esc(ticket.description || ticket.messages?.[0]?.content || '') + '</p>' +
+            '</div></div>' +
+            (ticket.messages && ticket.messages.length > 1 ?
+            ticket.messages.slice(1).map((msg, idx) => {
+                const isSupport = msg.role === 'support';
+                const author = msg.authorName || (isSupport ? 'Soporte Invisia' : 'Tú');
+                const time = msg.createdAt ? new Date(msg.createdAt).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+                return '<div class="flex ' + (isSupport ? 'justify-start' : 'justify-end') + '">' +
+                    '<div class="max-w-[85%] p-3 rounded-2xl ' + (isSupport ? 'rounded-tl-md bg-blue-800/15 border border-blue-600/20' : 'rounded-tr-md bg-white/[0.06] border border-white/[0.08]') + '">' +
+                    '<div class="flex items-center justify-between gap-4 mb-1"><p class="text-[9px] font-semibold ' + (isSupport ? 'text-blue-300' : 'text-text-subtle') + '">' + esc(author) + '</p><span class="text-[8px] text-text-subtle">' + esc(time) + '</span></div>' +
+                    '<p class="text-[12px] text-text-body leading-relaxed whitespace-pre-wrap">' + esc(msg.content) + '</p>' +
+                    '</div></div>';
+            }).join('') :
+            '<div class="text-center py-8"><div class="w-11 h-11 mx-auto mb-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center text-text-subtle"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg></div><p class="text-text-muted text-[11px]">Sin respuestas aún</p></div>') +
+            '</div></div>' +
+            (ticket.status !== 'closed' ? '<div class="border-t border-border-theme flex-shrink-0" style="' + CARD_BG + '">' +
+            '<form onsubmit="ticketReply(event)" class="p-3">' +
+            '<input type="hidden" name="ticketId" value="' + esc(ticket._id) + '">' +
+            '<div class="flex items-end gap-2">' +
+            '<textarea name="reply" rows="2" placeholder="Escribe tu respuesta..." required class="flex-1 px-3.5 py-2.5 rounded-xl border border-border-theme text-[12px] text-white placeholder-text-subtle focus:outline-none focus:border-blue-600/50 resize-none" style="background-color: var(--bg-base, #0b0b0f);"></textarea>' +
+            '<button type="submit" class="w-10 h-10 rounded-xl bg-blue-800 hover:bg-blue-700 text-white flex items-center justify-center flex-shrink-0 transition-colors shadow-md" title="Enviar">' +
+            '<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 16 16"><path d="M4.394 14.7 13.75 9.3c1-.577 1-2.02 0-2.598L4.394 1.3A1.5 1.5 0 0 0 2.144 2.6v3.438l4.059 1.088c.494.132.494.833 0 .966l-4.06 1.087v4.224a1.5 1.5 0 0 0 2.25 1.299"/></svg>' +
+            '</button></div>' +
+            '<div class="flex justify-end mt-2"><button type="button" data-sc="ticket-close" data-id="' + esc(ticket._id) + '" class="text-[10px] text-text-subtle hover:text-red-400 transition-colors underline underline-offset-2">Cerrar ticket</button></div>' +
+            '</form></div>' : '<div class="p-4 border-t border-border-theme text-center flex-shrink-0" style="' + CARD_BG + '">' +
+            '<p class="text-[11px] text-text-muted mb-2.5">Este ticket está cerrado.</p>' +
+            '<button data-sc="ticket-reopen" data-id="' + esc(ticket._id) + '" class="px-4 py-2 rounded-xl border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 text-[11px] font-medium transition-colors">Reabrir ticket</button></div>') +
+            '</div>';
+    } else if (S.ticketFormMode === 'create') {
+        // Create Ticket Form
+        return '<div class="flex-1 flex flex-col overflow-hidden" style="' + PANEL_BG + '">' +
+            '<div class="flex items-center justify-between p-5 border-b border-border-theme flex-shrink-0" style="' + CARD_BG + '">' +
+            '<div class="flex items-center gap-3">' +
+            '<button data-sc="tickets-back" class="p-2 rounded-lg text-text-muted hover:text-white hover:bg-white/10 transition-colors"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg></button>' +
+            '<div><h2 class="text-[15px] font-bold text-white">Nuevo Ticket</h2>' +
+            '<p class="text-[11px] text-text-muted mt-0.5">Crea una solicitud de soporte</p></div></div>' +
+            '</div>' +
+            '<div class="flex-1 overflow-y-auto p-5 chat-scroll">' +
+            '<form onsubmit="createTicket(event)" class="space-y-4" style="' + CARD_BG + '">' +
+            '<div><label class="label-premium">Asunto <span class="text-red-400">*</span></label>' +
+            '<input type="text" name="subject" required placeholder="Resumen breve del problema" class="input-premium w-full"></div>' +
+            '<div><label class="label-premium">Categoría</label>' +
+            '<select name="category" class="input-premium w-full">' +
+            '<option value="general">General</option>' +
+            '<option value="technical">Técnico / Bug</option>' +
+            '<option value="billing">Facturación</option>' +
+            '<option value="compliance">Compliance / Legal</option>' +
+            '<option value="feature">Sugerencia / Feature</option>' +
+            '</select></div>' +
+            '<div><label class="label-premium">Prioridad</label>' +
+            '<select name="priority" class="input-premium w-full">' +
+            '<option value="low">Baja</option>' +
+            '<option value="medium" selected>Media</option>' +
+            '<option value="high">Alta</option>' +
+            '<option value="urgent">Urgente</option>' +
+            '</select></div>' +
+            '<div><label class="label-premium">Descripción <span class="text-red-400">*</span></label>' +
+            '<textarea name="description" rows="5" required placeholder="Describe tu problema o consulta con detalle..." class="input-premium w-full"></textarea></div>' +
+            '<div class="flex gap-3 pt-2">' +
+            '<button type="button" data-sc="tickets-back" class="flex-1 px-4 py-2.5 rounded-xl border border-border-theme text-text-muted hover:text-white hover:bg-white/5 text-sm font-medium transition-colors">Cancelar</button>' +
+            '<button type="submit" class="flex-1 px-4 py-2.5 rounded-xl bg-blue-800 hover:bg-blue-700 text-white text-sm font-semibold transition-colors">Crear ticket</button>' +
+            '</div></form></div></div>';
+    } else {
+        // Tickets List View
+        return '<div class="flex-1 flex flex-col overflow-hidden" style="' + PANEL_BG + '">' +
+            '<div class="flex items-center justify-between px-5 py-4 border-b border-border-theme flex-shrink-0" style="' + CARD_BG + '">' +
+            '<div class="flex items-center gap-3">' +
+            '<div class="w-9 h-9 rounded-xl bg-blue-800/20 border border-blue-600/25 flex items-center justify-center text-blue-400">' +
+            '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z"/></svg></div>' +
+            '<div><h2 class="text-[15px] font-bold text-white">Mis Tickets</h2>' +
+            '<p class="text-[10px] text-text-muted mt-0.5">' + S.tickets.length + ' ticket' + (S.tickets.length !== 1 ? 's' : '') + ' · Soporte Invisia</p></div></div>' +
+            '<button data-sc="ticket-new" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-800 hover:bg-blue-700 text-white text-[11px] font-semibold transition-colors shadow-sm"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14M5 12h14"/></svg>Nuevo</button>' +
+            '</div>' +
+            '<div class="flex-1 overflow-y-auto chat-scroll">' +
+            (S.ticketsLoading ? '<div class="p-10 text-center text-text-muted">Cargando tickets...</div>' :
+            S.tickets.length === 0 ? '<div class="p-10 text-center">' +
+            '<div class="w-14 h-14 mx-auto mb-4 rounded-2xl bg-blue-800/15 border border-blue-600/20 flex items-center justify-center text-blue-400"><svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z"/></svg></div>' +
+            '<h3 class="text-white font-semibold mb-1">No tienes tickets</h3>' +
+            '<p class="text-text-muted text-sm mb-4">Crea tu primer ticket para contactar con soporte.</p>' +
+            '<button data-sc="ticket-new" class="px-4 py-2 rounded-xl bg-blue-800 hover:bg-blue-700 text-white text-sm font-semibold transition-colors">Crear ticket</button>' +
+            '</div>' :
+            '<div class="p-3 space-y-1.5">' +
+            S.tickets.map(t => {
+                const stc = statusCfg[t.status] || { label: t.status, cls: 'bg-white/5 text-text-muted border-white/10', dot: 'bg-slate-500' };
+                const prc = prioCfg[t.priority] || { label: t.priority, cls: 'bg-white/5 text-text-muted border-white/10' };
+                const updated = t.updatedAt ? new Date(t.updatedAt).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+                const isClosed = t.status === 'closed';
+                return '<button data-sc="ticket-open" data-id="' + esc(t._id) + '" class="w-full px-3.5 py-3 rounded-xl border border-border-theme text-left hover:border-blue-600/40 hover:bg-white/[0.03] transition-all group' + (isClosed ? ' opacity-60' : '') + '" style="' + CARD_BG + '">' +
+                    '<div class="flex items-center gap-3">' +
+                    '<div class="w-8 h-8 rounded-lg ' + stc.dot + '/15 border border-white/[0.06] flex items-center justify-center flex-shrink-0 text-text-muted group-hover:text-blue-400 transition-colors">' +
+                    '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z"/></svg></div>' +
+                    '<div class="min-w-0 flex-1">' +
+                    '<div class="flex items-center gap-2">' +
+                    '<h3 class="text-[12px] font-semibold text-white truncate">' + esc(t.subject) + '</h3>' +
+                    '<span class="text-[9px] text-text-subtle font-mono flex-shrink-0">#' + esc(t._id?.slice(-6).toUpperCase() || '') + '</span>' +
+                    '</div>' +
+                    '<div class="flex items-center gap-1.5 mt-1">' +
+                    '<span class="inline-flex items-center gap-1 px-1.5 py-px rounded-full text-[9px] font-medium ' + stc.cls + '"><span class="w-1 h-1 rounded-full ' + stc.dot + '"></span>' + esc(stc.label) + '</span>' +
+                    '<span class="px-1.5 py-px rounded-full text-[9px] font-medium ' + prc.cls + '">' + esc(prc.label) + '</span>' +
+                    '<span class="text-[9px] text-text-subtle ml-auto">' + esc(updated) + '</span>' +
+                    '</div>' +
+                    (t.description ? '<p class="text-[10px] text-text-muted mt-1.5 truncate">' + esc(t.description) + '</p>' : '') +
+                    '</div>' +
+                    '<svg class="w-3.5 h-3.5 text-text-subtle flex-shrink-0 group-hover:text-blue-400 group-hover:translate-x-0.5 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>' +
+                    '</div></button>';
+            }).join('') +
+            '</div>'
+            ) +
+            '</div></div>';
+    }
+}
+
 function renderCategory() {
     const arts = ARTICLES.filter(a => a.category === S.activeCategory);
     const dims = S.expanded ? 'md:w-[520px] md:h-[680px]' : 'md:w-[380px] md:h-[600px]';
@@ -221,15 +373,20 @@ function renderPanel() {
     let body = '';
     if (S.tab === 'home') body = renderHome();
     else if (S.tab === 'help') body = renderHelp();
+    else if (S.tab === 'tickets') body = renderTickets();
     else body = renderMessages();
 
     const homeIco = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>';
     const helpIco = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="1.8"/><path stroke-linecap="round" stroke-width="1.8" d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><circle cx="12" cy="17" r="0.5" fill="currentColor"/></svg>';
     const msgIco = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>';
+    const ticketsIco = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z"/></svg>';
     const minIco = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/></svg>';
 
+    // Larger panel when tickets tab is active
+    const dims = S.tab === 'tickets' ? 'md:w-[520px] md:h-[700px]' : 'md:w-[380px] md:h-[600px]';
+
     return (S.activeCategory ? renderCategory() : '') +
-        '<div data-sc="panel" class="fixed z-[200] bottom-0 right-0 left-0 top-0 w-full h-full rounded-none md:bottom-6 md:right-6 md:left-auto md:top-auto md:w-[380px] md:h-[600px] md:rounded-3xl border border-border-theme shadow-2xl shadow-black/40 flex flex-col overflow-hidden transition-all" style="' + PANEL_BG + '">' +
+        '<div data-sc="panel" class="fixed z-[200] bottom-0 right-0 left-0 top-0 w-full h-full rounded-none md:bottom-6 md:right-6 md:left-auto md:top-auto ' + dims + ' md:rounded-3xl border border-border-theme shadow-2xl shadow-black/40 flex flex-col overflow-hidden transition-all duration-300" style="' + PANEL_BG + '">' +
         '<div class="flex items-center justify-between px-5 py-4 border-b border-border-theme flex-shrink-0" style="' + CARD_BG + '">' +
         '<div><p class="text-[15px] font-bold text-white tracking-tight">Asistente Invisia</p>' +
         '<div class="flex items-center gap-1.5 mt-0.5"><span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span><p class="text-[11px] text-text-muted">En línea</p></div></div>' +
@@ -238,7 +395,7 @@ function renderPanel() {
         '<button data-sc="close" title="Cerrar" class="p-2 rounded-lg text-text-muted hover:text-white hover:bg-red-500/20 transition-colors">' + icoX() + '</button></div></div>' +
         '<div class="flex-1 flex flex-col min-h-0">' + body + '</div>' +
         '<div class="flex items-center justify-around px-2 py-2 border-t border-border-theme flex-shrink-0" style="' + CARD_BG + '">' +
-        tabBtn('home', 'Inicio', homeIco) + tabBtn('help', 'Ayuda', helpIco) + tabBtn('messages', 'Mensajes', msgIco) +
+        tabBtn('home', 'Inicio', homeIco) + tabBtn('help', 'Ayuda', helpIco) + tabBtn('messages', 'Mensajes', msgIco) + tabBtn('tickets', 'Tickets', ticketsIco) +
         '</div></div>';
 }
 
@@ -250,6 +407,156 @@ function render() {
     if (list) list.scrollTop = list.scrollHeight;
     const inp = root.querySelector('[data-sc="input"]');
     if (inp && !S.loading) inp.focus();
+}
+
+// ── Tickets API ──
+async function fetchTickets() {
+    S.ticketsLoading = true;
+    render();
+    try {
+        const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/tickets/all'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: '<?= $_SESSION['token'] ?? '' ?>' })
+        });
+        const data = await res.json();
+        S.tickets = Array.isArray(data) ? data : (data.tickets || []);
+        // Sort by updatedAt desc
+        S.tickets.sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+    } catch (e) {
+        S.tickets = [];
+    }
+    S.ticketsLoading = false;
+    S.ticketFormMode = null;
+    S.selectedTicket = null;
+    render();
+}
+
+async function fetchTicketDetail(id) {
+    try {
+        const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/tickets/' + id), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: '<?= $_SESSION['token'] ?? '' ?>' })
+        });
+        const data = await res.json();
+        if (data && data._id) {
+            S.selectedTicket = data;
+            render();
+        }
+    } catch (e) {
+        console.error('Error fetching ticket:', e);
+    }
+}
+
+async function ticketReply(e) {
+    e.preventDefault();
+    const form = e.target;
+    const ticketId = form.ticketId.value;
+    const reply = form.reply.value.trim();
+    if (!reply) return;
+
+    const btn = form.querySelector('button[type="submit"]');
+    const original = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = 'Enviando...';
+
+    try {
+        const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/tickets/respond'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                token: '<?= $_SESSION['token'] ?? '' ?>',
+                ticketId,
+                message: reply,
+                agentName: '<?= $_SESSION['user']['name'] ?? $_SESSION['user']['email'] ?? 'Usuario' ?>'
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            await fetchTicketDetail(ticketId);
+        } else {
+            alert(data.error || 'Error al enviar respuesta');
+        }
+    } catch (err) {
+        alert('Error de conexión');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = original;
+    }
+}
+
+async function reopenTicket(id) {
+    if (!confirm('¿Reabrir este ticket?')) return;
+    try {
+        const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/tickets/status'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: '<?= $_SESSION['token'] ?? '' ?>', id, status: 'open' })
+        });
+        const data = await res.json();
+        if (data.success) {
+            await fetchTicketDetail(id);
+        }
+    } catch (e) {
+        alert('Error al reabrir');
+    }
+}
+
+async function closeTicket(id) {
+    if (!confirm('¿Cerrar este ticket? Podrás reabrirlo después.')) return;
+    try {
+        const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/tickets/status'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: '<?= $_SESSION['token'] ?? '' ?>', id, status: 'closed' })
+        });
+        const data = await res.json();
+        if (data.success) {
+            await fetchTicketDetail(id);
+        } else {
+            alert(data.error || 'Error al cerrar');
+        }
+    } catch (e) {
+        alert('Error al cerrar');
+    }
+}
+
+async function createTicket(e) {
+    e.preventDefault();
+    const form = e.target;
+    const subject = form.subject.value.trim();
+    const description = form.description.value.trim();
+    const category = form.category.value;
+    const priority = form.priority.value;
+    if (!subject || !description) return;
+
+    const btn = form.querySelector('button[type="submit"]');
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Creando...';
+
+    const fullMessage = category !== 'general' ? '[Categoría: ' + category.toUpperCase() + ']\n' + description : description;
+
+    try {
+        const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/tickets/create'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: '<?= $_SESSION['token'] ?? '' ?>', subject, description: fullMessage, message: fullMessage, priority })
+        });
+        const data = await res.json();
+        if (data.success || data.ticket || data._id) {
+            S.ticketFormMode = null;
+            await fetchTickets();
+        } else {
+            alert(data.error || 'Error al crear ticket');
+        }
+    } catch (err) {
+        alert('Error de conexión');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+    }
 }
 
 // ── API (client-side rule-based, no Ollama) ──
@@ -354,12 +661,19 @@ root.addEventListener('click', function (e) {
         case 'tab-home': S.tab = 'home'; S.search = ''; render(); break;
         case 'tab-help': S.tab = 'help'; S.search = ''; render(); break;
         case 'tab-messages': S.tab = 'messages'; render(); break;
+        case 'tab-tickets': S.tab = 'tickets'; S.selectedTicket = null; S.ticketFormMode = null; fetchTickets(); break;
         case 'category': S.activeCategory = btn.getAttribute('data-cat'); S.expanded = true; S.selectedArticle = null; render(); break;
         case 'cat-close': S.activeCategory = null; S.selectedArticle = null; S.expanded = false; render(); break;
         case 'article-open': S.selectedArticle = ARTICLES[parseInt(btn.getAttribute('data-idx'), 10)] || null; render(); break;
         case 'article-back': S.selectedArticle = null; render(); break;
         case 'article-ask': case 'cat-ask': case 'ask': send(btn.getAttribute('data-q')); break;
         case 'send': { const inp = root.querySelector('[data-sc="input"]'); if (inp) send(inp.value); break; }
+        // Tickets
+        case 'ticket-new': S.ticketFormMode = 'create'; S.selectedTicket = null; render(); break;
+        case 'tickets-back': S.tab = 'tickets'; S.ticketFormMode = null; S.selectedTicket = null; fetchTickets(); break;
+        case 'ticket-open': fetchTicketDetail(btn.getAttribute('data-id')); break;
+        case 'ticket-reopen': reopenTicket(btn.getAttribute('data-id')); break;
+case 'ticket-close': closeTicket(btn.getAttribute('data-id')); break;
     }
 });
 
@@ -381,5 +695,9 @@ root.addEventListener('keydown', function (e) {
 });
 
 render();
+
+// Expose to global scope for inline onsubmit handlers
+window.createTicket = createTicket;
+window.ticketReply = ticketReply;
 })();
 </script>

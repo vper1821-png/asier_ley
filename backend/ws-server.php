@@ -100,6 +100,9 @@ class AgentWebSocket implements MessageComponentInterface {
                 case 'file_detected':
                     $this->handleFileDetected($from, $payload);
                     break;
+                case 'inventory_item':
+                    $this->handleInventoryItem($from, $payload);
+                    break;
                 case 'file_event':
                     $this->handleFileEvent($from, $payload);
                     break;
@@ -311,6 +314,91 @@ class AgentWebSocket implements MessageComponentInterface {
             ]));
             echo "❌ Error procesando archivo: " . $e->getMessage() . "\n";
         }
+    }
+
+    // ─── HANDLER: INVENTORY_ITEM ────────────────────────────────────
+
+    private function handleInventoryItem(ConnectionInterface $from, $data) {
+        $agentId = $from->agentId ?? $data['agentId'] ?? '';
+        $userId = $from->userId ?? '';
+
+        if (!$agentId || !$userId || !$this->db) {
+            echo "⚠️ inventory_item ignorado (sin agente, usuario o BD)\n";
+            return;
+        }
+
+        $path = $data['path'] ?? '';
+        $hash = $data['hash'] ?? '';
+        if (!$path || !$hash) {
+            echo "⚠️ inventory_item: path y hash requeridos\n";
+            return;
+        }
+
+        $db = $this->db;
+        $existing = $db->findOne('compliance_files', ['agentId' => $agentId, 'path' => $path, 'sourceType' => 'agent']);
+
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $sensitive = !empty($data['sensitive']);
+        $categories = $data['categories'] ?? [];
+        $personalData = $data['personalData'] ?? [];
+
+        $doc = [
+            'userId'        => $userId,
+            'sourceType'    => 'agent',
+            'agentId'       => $agentId,
+            'hostname'      => $data['hostname'] ?? 'unknown',
+            'path'          => $path,
+            'originalName'  => basename($path),
+            'ext'           => $ext,
+            'size'          => (int)($data['size'] ?? 0),
+            'hash'          => $hash,
+            'status'        => 'scanned',
+            'analysisResult' => [
+                'sensitive'   => $sensitive,
+                'patterns'    => $personalData,
+                'categories'  => $categories,
+                'analyzedAt'  => date('c'),
+                'analyzedBy'  => 'agent',
+            ],
+            'createdAt'     => $data['firstSeen'] ?? date('c'),
+            'updatedAt'     => date('c'),
+        ];
+
+        if ($existing) {
+            $db->updateOne('compliance_files', ['_id' => $existing['_id']], $doc);
+            $fileId = $existing['_id'];
+            $inventoryId = $existing['analysisResult']['inventoryId'] ?? null;
+        } else {
+            $inserted = $db->insertOne('compliance_files', $doc);
+            $fileId = $inserted['_id'];
+            $inventoryId = null;
+        }
+
+        $inventoryData = [
+            'userId'         => $userId,
+            'sourceType'     => 'file',
+            'sourceId'       => $fileId,
+            'name'           => '📄 Archivo: ' . basename($path),
+            'dataCategories' => implode(', ', $categories),
+            'records'        => (int)($data['scanCount'] ?? 0),
+            'sensitive'      => $sensitive,
+            'legalBasis'     => 'Pendiente de definir',
+            'active'         => true,
+            'storage'        => $data['hostname'] ?? 'Agente',
+            'updatedAt'      => date('c'),
+        ];
+
+        if ($inventoryId) {
+            $db->updateOne('compliance_inventory', ['_id' => $inventoryId], $inventoryData);
+        } else {
+            $inventoryData['createdAt'] = $data['firstSeen'] ?? date('c');
+            $inv = $db->insertOne('compliance_inventory', $inventoryData);
+            $db->updateOne('compliance_files', ['_id' => $fileId], [
+                'analysisResult.inventoryId' => $inv['_id']
+            ]);
+        }
+
+        echo "🗂️  Inventario recibido: {$path} (sensitive=" . ($sensitive ? 'true' : 'false') . ")\n";
     }
 
     // ─── HANDLERS: FILE_EVENT, DB_QUERY, HOST_EVENT, TELEMETRY, EVENT ──

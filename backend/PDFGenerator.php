@@ -27,211 +27,136 @@ class PDFGenerator {
 
     private function getHeaderHTML($title, $subtitle = '') {
         $company = $this->getCompanyInfo();
-        $generatedAt = date('d/m/Y H:i:s');
+        $generatedAt = date('d/m/Y H:i');
 
         $html = '<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>' . $title . ' - ' . $company['name'] . '</title>
     <style>
+        @page { margin: 0; }
         body {
-            font-family: \'Times New Roman\', Times, serif;
-            font-size: 11px;
+            font-family: \'DejaVu Sans\', Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            color: #1a1a1a;
+            font-size: 9px;
             line-height: 1.5;
-            color: #000;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 40px;
         }
-        .header {
-            text-align: center;
-            border-bottom: 3px solid #000;
-            padding-bottom: 20px;
-            margin-bottom: 30px;
+        .footer-fixed {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            height: 22px;
+            background: #f5f5f5;
+            border-top: 0.5px solid #cccccc;
+            color: #999999;
+            font-size: 7px;
+            padding: 6px 45px 0 45px;
         }
-        .header h1 {
-            color: #000;
-            font-size: 18px;
-            margin: 0 0 8px 0;
-            font-weight: bold;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        .header p {
-            color: #333;
-            margin: 4px 0;
-            font-size: 10px;
-        }
-        .section {
-            margin-bottom: 20px;
-            page-break-inside: avoid;
-        }
+        /* ═══ Portada (estilo Reportes) ═══ */
+        .cover { page-break-after: always; padding: 0; }
+        .cover-topline { height: 2px; background: #000000; width: 100%; }
+        .cover-body { padding: 0 45px; text-align: center; }
+        .cover-label { color: #777777; font-size: 9px; margin-top: 100px; }
+        .cover-law { color: #777777; font-size: 8px; margin-top: 6px; }
+        .cover-sep { border-top: 0.5px solid #000000; margin: 24px 60px 0 60px; }
+        .cover-company { color: #1a1a1a; font-size: 14px; font-weight: bold; margin-top: 26px; text-transform: uppercase; }
+        .cover-title { color: #1a1a1a; font-size: 18px; font-weight: bold; margin-top: 14px; }
+        .cover-sub { color: #555555; font-size: 10px; margin-top: 22px; }
+        .cover-sep2 { border-top: 0.5px solid #000000; margin: 22px 60px 0 60px; }
+        .cover-box { background: #f5f5f5; border: 0.5px solid #bbbbbb; margin: 26px 60px 0 60px; padding: 8px 10px; text-align: center; }
+        .cover-box .lbl { color: #555555; font-size: 8px; }
+        .cover-box .val { color: #1a1a1a; font-size: 10px; font-weight: bold; margin-top: 3px; }
+        .cover-box2 { background: #f5f5f5; border: 0.5px solid #bbbbbb; margin: 14px 60px 0 60px; padding: 8px 10px; text-align: center; color: #1a1a1a; font-size: 8px; font-weight: bold; }
+        /* ═══ Banda de página interior ═══ */
+        .page { page-break-before: always; }
+        .page-band { background: #000000; padding: 9px 45px 10px 45px; }
+        .band-sub { color: #ffffff; font-size: 8px; }
+        .band-title { color: #ffffff; font-size: 10px; font-weight: bold; margin-top: 2px; }
+        .content { padding: 20px 45px 50px 45px; }
+        /* ═══ Secciones ═══ */
+        .section { margin-bottom: 20px; page-break-inside: avoid; }
         .section h2 {
-            color: #000;
-            font-size: 13px;
-            border-bottom: 2px solid #000;
-            padding-bottom: 6px;
-            margin-bottom: 12px;
-            font-weight: bold;
-            text-transform: uppercase;
-        }
-        .section h3 {
-            color: #000;
-            margin: 10px 0 6px 0;
-            font-weight: bold;
-            font-size: 11px;
-        }
-        .info-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin-bottom: 15px;
-        }
-        .info-item {
-            background: #fff;
-            padding: 8px 10px;
-            border-left: 3px solid #000;
-        }
-        .info-item label {
-            font-weight: bold;
-            color: #000;
-            display: block;
-            margin-bottom: 3px;
-            font-size: 10px;
-        }
-        .info-item span {
-            color: #333;
-            font-size: 11px;
-        }
-        .status-box {
-            background: #fff;
-            border: 2px solid #000;
-            padding: 12px;
-            text-align: center;
-            margin-bottom: 15px;
-        }
-        .status-box h3 {
-            color: #000;
-            margin: 0 0 6px 0;
+            color: #1a1a1a;
             font-size: 14px;
             font-weight: bold;
+            border-left: 4px solid #000000;
+            padding: 2px 0 2px 10px;
+            margin: 14px 0 10px 0;
+            text-transform: none;
         }
-        .legal-notice {
-            background: #fff;
-            border: 1px solid #000;
-            padding: 12px;
-            margin-top: 15px;
-            page-break-inside: avoid;
-        }
-        .legal-notice h3 {
-            color: #000;
-            margin: 0 0 8px 0;
-            font-size: 11px;
-            font-weight: bold;
-            text-transform: uppercase;
-        }
-        .legal-notice p {
-            margin: 4px 0;
-            font-size: 10px;
-        }
-        .legal-notice ul {
-            margin: 6px 0;
-            padding-left: 18px;
-        }
-        .legal-notice li {
-            margin-bottom: 3px;
-            font-size: 10px;
-        }
-        .data-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 10px 0;
-            font-size: 10px;
-        }
-        .data-table th {
-            background: #000;
-            color: white;
-            padding: 6px 8px;
-            text-align: left;
-            font-weight: bold;
-            border: 1px solid #000;
-        }
-        .data-table td {
-            border: 1px solid #000;
-            padding: 6px 8px;
-        }
-        .data-table tr:nth-child(even) {
-            background: #f0f0f0;
-        }
-        .checklist {
-            background: #fff;
-            padding: 10px;
-            border: 1px solid #000;
-        }
+        .section h3 { color: #1a1a1a; margin: 10px 0 6px 0; font-weight: bold; font-size: 10px; }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 15px; }
+        .info-item { background: #f5f5f5; padding: 8px 10px; border-left: 4px solid #000000; }
+        .info-item label { font-weight: bold; color: #555555; display: block; margin-bottom: 3px; font-size: 8px; text-transform: uppercase; }
+        .info-item span { color: #1a1a1a; font-size: 9px; font-weight: bold; }
+        .status-box { background: #f5f5f5; border: 0.5px solid #bbbbbb; padding: 12px; text-align: center; margin-bottom: 15px; }
+        .status-box h3 { color: #1a1a1a; margin: 0 0 6px 0; font-size: 13px; font-weight: bold; }
+        .legal-notice { background: #f5f5f5; border: 0.5px solid #bbbbbb; padding: 12px; margin-top: 15px; page-break-inside: avoid; }
+        .legal-notice h3 { color: #1a1a1a; margin: 0 0 8px 0; font-size: 10px; font-weight: bold; }
+        .legal-notice p { margin: 4px 0; font-size: 8px; color: #1a1a1a; }
+        .legal-notice ul { margin: 6px 0; padding-left: 18px; }
+        .legal-notice li { margin-bottom: 3px; font-size: 8px; color: #1a1a1a; }
+        .data-table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 8px; }
+        .data-table th { background: #1a1a1a; color: #cccccc; font-size: 8px; font-weight: bold; text-align: left; padding: 7px 8px; border: none; }
+        .data-table td { color: #1a1a1a; font-size: 8px; padding: 5px 8px; border: none; border-bottom: 0.3px solid #e0e0e0; }
+        .data-table tr:nth-child(even) td { background: #f1f5f9; }
+        .checklist { background: #fff; padding: 6px; border: 0.5px solid #bbbbbb; }
         .checklist-item {
-            display: flex;
-            align-items: flex-start;
-            margin-bottom: 6px;
-            padding: 6px;
-            background: #fff;
-            border-bottom: 1px solid #ccc;
-            font-size: 10px;
+            display: flex; align-items: flex-start;
+            margin-bottom: 6px; padding: 6px;
+            border-bottom: 0.3px solid #e0e0e0;
+            font-size: 8px; color: #1a1a1a;
         }
-        .checklist-item:last-child {
-            border-bottom: none;
-            margin-bottom: 0;
-        }
-        .checklist-item input[type="checkbox"] {
-            margin-right: 8px;
-            margin-top: 2px;
-            accent-color: #000;
-        }
-        .footer {
-            margin-top: 30px;
-            padding-top: 15px;
-            border-top: 2px solid #000;
-            text-align: center;
-            color: #333;
-            font-size: 9px;
-        }
-        .badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border: 1px solid #000;
-            border-radius: 2px;
-            font-size: 9px;
-            font-weight: bold;
-            background: #fff;
-        }
+        .checklist-item:last-child { border-bottom: none; margin-bottom: 0; }
+        .checklist-item input[type="checkbox"] { margin-right: 8px; margin-top: 2px; }
+        .footer { display: none; }
+        .badge { display: inline-block; padding: 2px 8px; border: 0.5px solid #000; font-size: 8px; font-weight: bold; background: #fff; }
+        .badge-success { color: #166534; }
+        .badge-warning { color: #4a4a4a; }
         @media print {
-            body { padding: 20px; }
             .section { page-break-inside: avoid; }
             .legal-notice { page-break-inside: avoid; }
-            .footer { display: none; }
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>' . $title . '</h1>
-        <p>' . $subtitle . '</p>
-        <p><strong>' . $company['name'] . '</strong></p>
-    </div>';
+    <div class="footer-fixed">Ley 21.719 - ' . $title . ' · ' . $company['name'] . '</div>
+    <div class="cover">
+        <div class="cover-topline"></div>
+        <div class="cover-body">
+            <div class="cover-label">REPÚBLICA DE CHILE</div>
+            <div class="cover-law">Ley 21.719 - Protección de Datos Personales</div>
+            <div class="cover-sep"></div>
+            <div class="cover-company">' . $company['name'] . '</div>
+            <div class="cover-title">' . $title . '</div>
+            <div class="cover-sub">' . ($subtitle ?: 'Documento de Cumplimiento') . '</div>
+            <div class="cover-sep2"></div>
+            <div class="cover-box"><div class="lbl">FECHA DE EMISIÓN</div><div class="val">' . $generatedAt . '</div></div>
+            <div class="cover-box2">CLASIFICACIÓN: CONFIDENCIAL</div>
+        </div>
+    </div>
+    <div class="page">
+        <div class="page-band">
+            <div class="band-sub">' . $company['name'] . ' · Ley 21.719</div>
+            <div class="band-title">' . $title . '</div>
+        </div>
+        <div class="content">';
 
         return $html;
     }
 
     private function getFooterHTML($documentType) {
-        $generatedAt = date('d/m/Y H:i:s');
         $company = $this->getCompanyInfo();
+        $generatedAt = date('d/m/Y H:i');
 
-        $html = '<div class="footer">
-        <p>Este documento ha sido generado automáticamente por SecureLab</p>
-        <p>Fecha de generación: ' . $generatedAt . '</p>
-        <p>Este documento es válido como evidencia del cumplimiento de la Ley 21.719 - Protección de Datos Personales</p>
-        <p>Empresa: ' . $company['name'] . ' | DPD: ' . $company['dpdName'] . ' (' . $company['dpdEmail'] . ')</p>
+        $html = '        <div class="legal-notice">
+            <h3>Información del documento</h3>
+            <p><strong>Empresa:</strong> ' . $company['name'] . ' | <strong>DPD:</strong> ' . $company['dpdName'] . ' (' . $company['dpdEmail'] . ')</p>
+            <p>Documento generado automáticamente por SecureLab el ' . $generatedAt . '.</p>
+            <p>Válido como evidencia del cumplimiento de la Ley 21.719 - Protección de Datos Personales.</p>
+        </div>
+        </div>
     </div>
 </body>
 </html>';
@@ -1126,6 +1051,29 @@ class PDFGenerator {
         } catch (Exception $e) {
             return 'Fecha inválida';
         }
+    }
+
+    public function generateGenericChecklistPDF($title, $data) {
+        $company = $this->getCompanyInfo();
+        $html = $this->getHeaderHTML($title);
+        $html .= '<div class="section"><h2>Registro de ' . htmlspecialchars($title) . '</h2>';
+        $html .= '<p><strong>Empresa:</strong> ' . $company['name'] . '</p>';
+        $html .= '<p><strong>DPD:</strong> ' . $company['dpdName'] . ' (' . $company['dpdEmail'] . ')</p>';
+        $html .= '<p><strong>Generado:</strong> ' . date('d/m/Y H:i:s') . '</p>';
+        $html .= '<hr style="border:0;border-top:1px solid #ccc;margin:15px 0;">';
+        if (empty($data)) {
+            $html .= '<p>No hay datos registrados para esta sección.</p>';
+        } else {
+            $html .= '<table style="width:100%;border-collapse:collapse;">';
+            foreach ($data as $key => $value) {
+                if (is_array($value)) $value = implode(', ', $value);
+                $html .= '<tr><td style="border:1px solid #ccc;padding:8px;width:35%;font-weight:bold;">' . htmlspecialchars($key) . '</td>';
+                $html .= '<td style="border:1px solid #ccc;padding:8px;">' . nl2br(htmlspecialchars((string)$value)) . '</td></tr>';
+            }
+            $html .= '</table>';
+        }
+        $html .= '</div></body></html>';
+        return $html;
     }
 
     public function generatePDFFile($html, $filename) {

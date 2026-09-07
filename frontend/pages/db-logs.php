@@ -20,6 +20,10 @@ $totalPages = max(1, (int)ceil($total / $limit));
 $operations = [];
 $databases = [];
 $engines = [];
+$riskCount = 0;
+$selects = 0;
+$writes = 0;
+$ddl = 0;
 foreach ($logs as $log) {
     $operation = strtoupper($log['operation'] ?? strtok(trim($log['query'] ?? ''), " \t\r\n") ?: 'QUERY');
     $database = $log['database'] ?? $log['databaseName'] ?? 'Sin base';
@@ -27,93 +31,217 @@ foreach ($logs as $log) {
     $operations[$operation] = ($operations[$operation] ?? 0) + 1;
     $databases[$database] = true;
     $engines[$engine] = true;
+    if ((float)($log['riskScore'] ?? 0) > 0) $riskCount++;
+    if (in_array($operation, ['SELECT', 'SHOW', 'DESCRIBE'], true)) $selects++;
+    if (in_array($operation, ['INSERT', 'UPDATE', 'DELETE', 'REPLACE'], true)) $writes++;
+    if (in_array($operation, ['CREATE', 'ALTER', 'DROP', 'TRUNCATE'], true)) $ddl++;
 }
 arsort($operations);
 
 function dbLogTypeConfig($operation) {
     return match (strtoupper($operation)) {
-        'SELECT' => ['dot' => 'bg-sky-400', 'text' => 'text-sky-300', 'badge' => 'bg-sky-500/10 border-sky-500/20'],
-        'INSERT', 'REPLACE' => ['dot' => 'bg-emerald-400', 'text' => 'text-emerald-300', 'badge' => 'bg-emerald-500/10 border-emerald-500/20'],
-        'UPDATE' => ['dot' => 'bg-amber-400', 'text' => 'text-amber-300', 'badge' => 'bg-amber-500/10 border-amber-500/20'],
-        'DELETE', 'DROP', 'TRUNCATE' => ['dot' => 'bg-red-400', 'text' => 'text-red-300', 'badge' => 'bg-red-500/10 border-red-500/20'],
-        'CREATE', 'ALTER' => ['dot' => 'bg-violet-400', 'text' => 'text-violet-300', 'badge' => 'bg-violet-500/10 border-violet-500/20'],
-        default => ['dot' => 'bg-slate-400', 'text' => 'text-slate-300', 'badge' => 'bg-slate-500/10 border-slate-500/20'],
+        'SELECT', 'SHOW', 'DESCRIBE' => [
+            'dot' => 'bg-sky-400', 'text' => 'text-sky-300', 'badge' => 'bg-sky-500/10 border-sky-500/25',
+            'border' => 'border-sky-500/25 hover:border-sky-500/45', 'bg' => 'bg-sky-500/[0.03] hover:bg-sky-500/[0.06]',
+            'iconBox' => 'bg-sky-500/15 border-sky-500/30 text-sky-400',
+        ],
+        'INSERT', 'REPLACE' => [
+            'dot' => 'bg-emerald-400', 'text' => 'text-emerald-300', 'badge' => 'bg-emerald-500/10 border-emerald-500/25',
+            'border' => 'border-emerald-500/25 hover:border-emerald-500/45', 'bg' => 'bg-emerald-500/[0.03] hover:bg-emerald-500/[0.06]',
+            'iconBox' => 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400',
+        ],
+        'UPDATE' => [
+            'dot' => 'bg-amber-400', 'text' => 'text-amber-300', 'badge' => 'bg-amber-500/10 border-amber-500/25',
+            'border' => 'border-amber-500/25 hover:border-amber-500/45', 'bg' => 'bg-amber-500/[0.03] hover:bg-amber-500/[0.06]',
+            'iconBox' => 'bg-amber-500/15 border-amber-500/30 text-amber-400',
+        ],
+        'DELETE', 'DROP', 'TRUNCATE' => [
+            'dot' => 'bg-red-400', 'text' => 'text-red-300', 'badge' => 'bg-red-500/10 border-red-500/25',
+            'border' => 'border-red-500/30 hover:border-red-500/50', 'bg' => 'bg-red-500/[0.04] hover:bg-red-500/[0.07]',
+            'iconBox' => 'bg-red-500/15 border-red-500/30 text-red-400',
+        ],
+        'CREATE', 'ALTER' => [
+            'dot' => 'bg-violet-400', 'text' => 'text-violet-300', 'badge' => 'bg-violet-500/10 border-violet-500/25',
+            'border' => 'border-violet-500/25 hover:border-violet-500/45', 'bg' => 'bg-violet-500/[0.03] hover:bg-violet-500/[0.06]',
+            'iconBox' => 'bg-violet-500/15 border-violet-500/30 text-violet-400',
+        ],
+        default => [
+            'dot' => 'bg-slate-400', 'text' => 'text-slate-300', 'badge' => 'bg-slate-500/10 border-slate-500/25',
+            'border' => 'border-border-theme hover:border-surface-600', 'bg' => 'bg-bg-panel/40 hover:bg-bg-panel/70',
+            'iconBox' => 'bg-slate-500/15 border-slate-500/30 text-slate-400',
+        ],
     };
 }
+function dbLogIcon($operation, $cls = 'w-4 h-4') {
+    $paths = [
+        'SELECT' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>',
+        'SHOW' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>',
+        'INSERT' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 4v16m8-8H4"/>',
+        'UPDATE' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>',
+        'DELETE' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>',
+        'DROP' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>',
+        'TRUNCATE' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>',
+        'CREATE' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>',
+        'ALTER' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>',
+    ];
+    $p = $paths[strtoupper($operation)] ?? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/>';
+    return '<svg class="' . $cls . '" fill="none" viewBox="0 0 24 24" stroke="currentColor">' . $p . '</svg>';
+}
+$totalEvents = (int)($stats['total'] ?? $total);
+$selectTotal = (int)($stats['selects'] ?? $selects);
+$writeTotal = (int)($stats['writes'] ?? $writes);
+$riskTotal = (int)($stats['suspicious'] ?? $riskCount);
 ?>
 
 <div class="flex h-screen bg-bg-base text-[13px] text-text-body overflow-hidden">
     <?php require_once __DIR__ . '/../includes/sidebar.php'; ?>
-    <main class="flex-1 min-w-0 overflow-hidden bg-bg-base flex flex-col">
-        <header class="hidden md:flex flex-shrink-0 border-b border-border-theme px-6 lg:px-8 py-4 items-center justify-between gap-4 bg-bg-surface/60 backdrop-blur-xl">
-            <div class="flex items-center gap-3 min-w-0">
-                <div class="w-10 h-10 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-violet-300">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>
+
+    <main class="flex-1 overflow-hidden bg-bg-base flex flex-col">
+        <!-- Header -->
+        <header class="flex-shrink-0 border-b border-border-theme px-4 md:px-8 pt-4 pb-3 bg-bg-base">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-violet-500/10 text-violet-400 border border-violet-500/20 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>
+                    </div>
+                    <div>
+                        <p class="text-[10px] text-text-subtle uppercase tracking-wider font-medium">Auditoría SQL · Ley 21.719 Art. 25</p>
+                        <h1 class="text-[18px] md:text-[20px] font-bold text-text-heading tracking-tight inline-flex items-center gap-2">Actividad de Bases de Datos <?= infoIcon('Registro de consultas capturadas por los agentes: operación, usuario, base de datos, origen y nivel de riesgo.') ?></h1>
+                    </div>
                 </div>
-                <div class="min-w-0"><h1 class="text-[16px] font-semibold text-text-heading">Actividad de bases de datos</h1><p class="text-[11px] text-text-subtle mt-0.5">Auditoría, trazabilidad y análisis de consultas</p></div>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <span class="hidden lg:inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/[0.05] bg-white/[0.03] text-[10px] text-text-muted"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span><?= count($logs) ?> eventos cargados</span>
+                    <button onclick="location.reload()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-white/[0.03] hover:bg-white/[0.06] text-text-muted hover:text-text-body border border-white/[0.05] transition-all" title="Refrescar">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                        Refrescar
+                    </button>
+                </div>
             </div>
-            <div class="flex items-center gap-2">
-                <span class="hidden lg:inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-border-theme bg-bg-panel text-[10px] text-text-muted"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span><?= count($logs) ?> eventos cargados</span>
-                <button onclick="location.reload()" class="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-medium bg-primary-500/10 text-primary-400 border border-primary-500/20 hover:bg-primary-500/15 transition-all"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>Actualizar</button>
+
+            <!-- Stats Bar -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 md:gap-3 mb-4">
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-3 md:p-4 flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-slate-500/10 border border-slate-500/20 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                    </div>
+                    <div class="min-w-0"><p class="text-[18px] md:text-[20px] font-bold text-white"><?= $totalEvents ?></p><p class="text-[9px] text-text-muted">Total eventos</p></div>
+                </div>
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-3 md:p-4 flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                    </div>
+                    <div class="min-w-0"><p class="text-[18px] md:text-[20px] font-bold text-sky-400"><?= $selectTotal ?></p><p class="text-[9px] text-text-muted">Lecturas</p></div>
+                </div>
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-3 md:p-4 flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                    </div>
+                    <div class="min-w-0"><p class="text-[18px] md:text-[20px] font-bold text-amber-400"><?= $writeTotal ?></p><p class="text-[9px] text-text-muted">Escrituras</p></div>
+                </div>
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-3 md:p-4 flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+                    </div>
+                    <div class="min-w-0"><p class="text-[18px] md:text-[20px] font-bold text-violet-400"><?= $ddl ?></p><p class="text-[9px] text-text-muted">Estructura (DDL)</p></div>
+                </div>
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-3 md:p-4 flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+                    </div>
+                    <div class="min-w-0"><p class="text-[18px] md:text-[20px] font-bold text-red-400"><?= $riskTotal ?></p><p class="text-[9px] text-text-muted">Con riesgo</p></div>
+                </div>
+            </div>
+
+            <?php if (!empty($operations)): ?>
+            <!-- Operation Distribution -->
+            <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-4 mb-4">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-[12px] font-semibold text-text-heading">Distribución de operaciones</h3>
+                    <span class="text-[10px] text-text-subtle"><?= count($operations) ?> tipos detectados</span>
+                </div>
+                <div class="space-y-2">
+                    <?php $maxOperation = max($operations); $opTotal = array_sum($operations); foreach (array_slice($operations, 0, 6, true) as $operation => $count):
+                        $tc = dbLogTypeConfig($operation);
+                        $pct = $opTotal > 0 ? round(($count / $opTotal) * 100) : 0;
+                    ?>
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-[11px] text-text-body flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full <?= $tc['dot'] ?>"></span>
+                                <span class="font-mono font-semibold <?= $tc['text'] ?>"><?= h($operation) ?></span>
+                            </span>
+                            <span class="text-[11px] font-medium <?= $tc['text'] ?>"><?= $count ?> (<?= $pct ?>%)</span>
+                        </div>
+                        <div class="w-full bg-bg-elevated rounded-full h-1.5">
+                            <div class="h-1.5 rounded-full <?= $tc['dot'] ?> transition-all" style="width: <?= max(2, $pct) ?>%"></div>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <!-- Filters & Search -->
+            <div class="rounded-xl border border-border-theme bg-bg-panel/40 p-3 md:p-4">
+                <div class="flex flex-col md:flex-row gap-3 mb-3">
+                    <div class="flex-1 relative min-w-0">
+                        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-subtle" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                        <input type="search" id="log-search" placeholder="Buscar consulta, usuario, base de datos, host…" class="w-full bg-bg-input border border-border-theme text-[12px] text-white rounded-lg pl-10 pr-3 py-2 focus:outline-none focus:border-accent transition-all" oninput="applyLogFilters()">
+                    </div>
+                    <select id="log-operation" onchange="applyLogFilters()" class="bg-bg-input border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all w-auto min-w-[150px]">
+                        <option value="">Todas las operaciones</option>
+                        <?php foreach (array_keys($operations) as $operation): ?><option value="<?= h($operation) ?>"><?= h($operation) ?></option><?php endforeach; ?>
+                    </select>
+                    <select id="log-database" onchange="applyLogFilters()" class="bg-bg-input border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all w-auto min-w-[150px]">
+                        <option value="">Todas las bases</option>
+                        <?php foreach (array_keys($databases) as $database): ?><option value="<?= h($database) ?>"><?= h($database) ?></option><?php endforeach; ?>
+                    </select>
+                    <select id="log-engine" onchange="applyLogFilters()" class="bg-bg-input border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all w-auto min-w-[130px]">
+                        <option value="">Todos los motores</option>
+                        <?php foreach (array_keys($engines) as $engine): ?><option value="<?= h($engine) ?>"><?= h(ucfirst($engine)) ?></option><?php endforeach; ?>
+                    </select>
+                    <select id="log-risk" onchange="applyLogFilters()" class="bg-bg-input border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all w-auto min-w-[130px]">
+                        <option value="">Todo riesgo</option>
+                        <option value="risk">⚠️ Con riesgo</option>
+                        <option value="safe">✅ Sin riesgo</option>
+                    </select>
+                    <button type="button" onclick="resetLogFilters()" class="px-3 py-2 rounded-lg border border-border-theme text-[11px] text-text-muted hover:text-white hover:bg-white/[0.04] transition-all whitespace-nowrap">Limpiar</button>
+                </div>
+
+                <!-- Resultados -->
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-3 border-t border-border-theme/30">
+                    <div class="text-[11px] text-text-subtle">
+                        Mostrando <span class="font-semibold text-white" id="log-result-count"><?= count($logs) ?></span> de <span class="font-semibold text-white"><?= $total ?></span> eventos
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button type="button" onclick="toggleLogDensity()" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] text-text-muted hover:text-white bg-white/[0.02] border border-white/[0.04] transition-all" title="Cambiar densidad">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                            Densidad
+                        </button>
+                    </div>
+                </div>
             </div>
         </header>
 
-        <div class="flex-1 overflow-y-auto scrollbar-custom">
-            <div class="w-full max-w-[1600px] mx-auto p-3 sm:p-5 lg:p-8 space-y-4 sm:space-y-6">
-                <section class="app-card overflow-hidden p-4 sm:p-5 relative">
-                    <div class="absolute inset-0 pointer-events-none bg-gradient-to-r from-violet-500/[0.06] via-transparent to-sky-500/[0.04]"></div>
-                    <div class="relative flex flex-col lg:flex-row lg:items-end justify-between gap-4">
-                        <div><p class="text-[10px] font-semibold uppercase tracking-[.18em] text-violet-300">Observabilidad SQL</p><h2 class="text-xl sm:text-2xl font-bold text-text-heading mt-1">Consultas y actividad</h2><p class="text-[11px] sm:text-xs text-text-muted mt-2 max-w-2xl">Busca operaciones, revisa usuarios y bases afectadas, y abre cada consulta para analizarla sin perder contexto.</p></div>
-                        <div class="flex items-center gap-2 text-[10px] text-text-subtle"><span>Última actualización</span><span class="font-mono text-text-body"><?= date('d/m/Y H:i') ?></span></div>
-                    </div>
-                </section>
-
-                <section class="grid grid-cols-2 xl:grid-cols-4 gap-3">
-                    <?php
-                    $cards = [
-                        ['label' => 'Consultas', 'value' => $stats['total'] ?? count($logs), 'sub' => 'Eventos auditados', 'color' => 'text-text-heading', 'bar' => 'bg-slate-400'],
-                        ['label' => 'Lecturas', 'value' => $stats['selects'] ?? ($operations['SELECT'] ?? 0), 'sub' => 'Operaciones SELECT', 'color' => 'text-sky-300', 'bar' => 'bg-sky-400'],
-                        ['label' => 'Escrituras', 'value' => $stats['writes'] ?? (($operations['INSERT'] ?? 0) + ($operations['UPDATE'] ?? 0) + ($operations['DELETE'] ?? 0)), 'sub' => 'Cambios de datos', 'color' => 'text-amber-300', 'bar' => 'bg-amber-400'],
-                        ['label' => 'Riesgo', 'value' => $stats['suspicious'] ?? count(array_filter($logs, fn($l) => (float)($l['riskScore'] ?? 0) > 0)), 'sub' => 'Consultas señaladas', 'color' => 'text-red-300', 'bar' => 'bg-red-400'],
-                    ];
-                    foreach ($cards as $card): ?>
-                    <div class="app-card app-kpi p-4 sm:p-5">
-                        <span class="absolute left-0 top-4 bottom-4 w-1 rounded-r-full <?= $card['bar'] ?>"></span>
-                        <p class="relative z-10 text-[9px] sm:text-[10px] font-semibold uppercase tracking-[.14em] text-text-subtle"><?= h($card['label']) ?></p>
-                        <p class="relative z-10 text-2xl sm:text-3xl font-bold mt-2 <?= $card['color'] ?>"><?= h($card['value']) ?></p>
-                        <p class="relative z-10 text-[9px] sm:text-[10px] text-text-muted mt-1"><?= h($card['sub']) ?></p>
-                    </div>
-                    <?php endforeach; ?>
-                </section>
-
-                <?php if (!empty($operations)): ?>
-                <section class="app-card p-4 sm:p-5">
-                    <div class="flex items-center justify-between gap-3 mb-4"><div><h3 class="text-xs font-semibold text-text-heading">Distribución de operaciones</h3><p class="text-[10px] text-text-subtle mt-1">Volumen relativo por tipo SQL</p></div><span class="text-[10px] text-text-subtle"><?= count($operations) ?> tipos</span></div>
-                    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    <?php $maxOperation = max($operations); foreach (array_slice($operations, 0, 6, true) as $operation => $count): $tc = dbLogTypeConfig($operation); ?>
-                        <div class="rounded-xl border border-border-theme bg-bg-base/35 p-3">
-                            <div class="flex items-center justify-between text-[10px] mb-2"><span class="font-mono font-semibold <?= $tc['text'] ?>"><?= h($operation) ?></span><span class="text-text-body font-semibold"><?= $count ?></span></div>
-                            <div class="h-1.5 rounded-full bg-white/[0.04] overflow-hidden"><div class="h-full rounded-full <?= $tc['dot'] ?>" style="width:<?= max(4, ($count / $maxOperation) * 100) ?>%"></div></div>
-                        </div>
-                    <?php endforeach; ?>
-                    </div>
-                </section>
-                <?php endif; ?>
-
-                <section class="app-toolbar sticky top-0 md:top-0 z-20 shadow-theme-sm">
-                    <div class="relative flex-1 min-w-[220px]"><svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-subtle" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg><input id="log-search" type="search" placeholder="Buscar consulta, usuario, base de datos…" class="w-full h-10 rounded-xl bg-bg-input border border-border-theme text-text-heading pl-10 pr-3 text-xs focus:outline-none focus:border-primary-500" oninput="applyLogFilters()"></div>
-                    <select id="log-operation" onchange="applyLogFilters()" class="h-10 rounded-xl bg-bg-input border border-border-theme text-text-body px-3 text-xs"><option value="">Todas las operaciones</option><?php foreach (array_keys($operations) as $operation): ?><option value="<?= h($operation) ?>"><?= h($operation) ?></option><?php endforeach; ?></select>
-                    <select id="log-database" onchange="applyLogFilters()" class="h-10 rounded-xl bg-bg-input border border-border-theme text-text-body px-3 text-xs"><option value="">Todas las bases</option><?php foreach (array_keys($databases) as $database): ?><option value="<?= h($database) ?>"><?= h($database) ?></option><?php endforeach; ?></select>
-                    <select id="log-risk" onchange="applyLogFilters()" class="h-10 rounded-xl bg-bg-input border border-border-theme text-text-body px-3 text-xs"><option value="">Todo riesgo</option><option value="risk">Con riesgo</option><option value="safe">Sin riesgo</option></select>
-                    <button type="button" onclick="resetLogFilters()" class="h-10 px-3 rounded-xl border border-border-theme text-xs text-text-muted hover:text-text-heading">Limpiar</button>
-                </section>
-
-                <div class="flex items-center justify-between gap-3"><p id="log-result-count" class="text-[10px] text-text-subtle"><?= count($logs) ?> resultados</p><button type="button" onclick="toggleLogDensity()" class="text-[10px] text-primary-400 hover:text-primary-300">Cambiar densidad</button></div>
+        <!-- Content -->
+        <div class="flex-1 overflow-y-auto p-4 md:p-6 scrollbar-custom">
+            <div class="max-w-7xl mx-auto space-y-4">
 
                 <?php if (empty($logs)): ?>
-                <section class="app-card p-8 sm:p-14 text-center"><div class="w-16 h-16 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center mx-auto mb-4 text-violet-300"><svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/></svg></div><h3 class="text-base font-semibold text-text-heading">Todavía no hay actividad</h3><p class="text-xs text-text-muted max-w-lg mx-auto mt-2">Cuando el agente reciba conexiones y capture consultas, aparecerán aquí con su operación, usuario, origen y nivel de riesgo.</p><div class="flex flex-col sm:flex-row justify-center gap-2 mt-5"><a href="/databases" class="px-4 py-2.5 rounded-xl bg-primary-500/10 border border-primary-500/20 text-primary-400 text-xs">Revisar conexiones</a><a href="/agents" class="px-4 py-2.5 rounded-xl border border-border-theme text-text-body text-xs">Ver agentes</a></div></section>
+                <div class="rounded-2xl border border-border-theme bg-bg-panel/40 p-12 md:p-16 text-center">
+                    <div class="w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center mx-auto mb-5 text-violet-400">
+                        <svg class="w-8 h-8 md:w-10 md:h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/></svg>
+                    </div>
+                    <h3 class="text-white font-semibold text-lg md:text-xl mb-2">Todavía no hay actividad</h3>
+                    <p class="text-text-muted text-[13px] max-w-md mx-auto">Cuando el agente capture consultas sobre las bases de datos monitoreadas, aparecerán aquí con su operación, usuario, origen y nivel de riesgo.</p>
+                    <div class="flex flex-col sm:flex-row justify-center gap-2 mt-5">
+                        <a href="/databases" class="px-4 py-2 rounded-lg text-[11px] font-medium bg-primary-500/20 hover:bg-primary-500/30 text-primary-300 border border-primary-500/30 transition-all">Revisar conexiones</a>
+                        <a href="/agents" class="px-4 py-2 rounded-lg text-[11px] font-medium border border-border-theme text-text-body hover:bg-white/[0.04] transition-all">Ver agentes</a>
+                    </div>
+                </div>
+
                 <?php else: ?>
-                <section id="logs-container" class="space-y-2.5">
+                <div id="logs-container" class="space-y-2">
                     <?php foreach ($logs as $index => $log):
                         $query = trim($log['query'] ?? '');
                         $operation = strtoupper($log['operation'] ?? strtok($query, " \t\r\n") ?: 'QUERY');
@@ -124,46 +252,82 @@ function dbLogTypeConfig($operation) {
                         $risk = (float)($log['riskScore'] ?? 0);
                         $tc = dbLogTypeConfig($operation);
                     ?>
-                    <article class="db-log-card app-card app-card-interactive overflow-hidden" data-search="<?= h(strtolower($query . ' ' . $database . ' ' . $dbUser . ' ' . $engine)) ?>" data-operation="<?= h($operation) ?>" data-database="<?= h($database) ?>" data-risk="<?= $risk > 0 ? 'risk' : 'safe' ?>">
-                        <button type="button" onclick="toggleLogDetail('log-detail-<?= $index ?>', this)" class="log-summary w-full text-left p-3 sm:p-4 flex items-start gap-3 sm:gap-4">
-                            <span class="mt-1.5 w-2 h-2 rounded-full flex-shrink-0 <?= $tc['dot'] ?>"></span>
-                            <div class="flex-1 min-w-0">
-                                <div class="flex flex-wrap items-center gap-2">
-                                    <span class="text-[9px] px-2 py-1 rounded-lg border font-mono font-semibold <?= $tc['badge'] ?> <?= $tc['text'] ?>"><?= h($operation) ?></span>
-                                    <span class="text-[9px] px-2 py-1 rounded-lg border border-border-theme bg-bg-base/50 text-text-muted"><?= h($engine) ?></span>
-                                    <?php if ($risk > 0): ?><span class="text-[9px] px-2 py-1 rounded-lg border border-red-500/20 bg-red-500/10 text-red-300">Riesgo <?= h($risk) ?></span><?php endif; ?>
-                                    <span class="sm:ml-auto text-[9px] sm:text-[10px] text-text-subtle font-mono"><?= h(substr($timestamp, 0, 19)) ?></span>
+                    <article class="db-log-card px-5 py-4 rounded-xl border <?= $tc['border'] ?> <?= $tc['bg'] ?> transition-all duration-200 hover:shadow-lg"
+                             data-search="<?= h(strtolower($query . ' ' . $database . ' ' . $dbUser . ' ' . $engine . ' ' . ($log['host'] ?? ''))) ?>"
+                             data-operation="<?= h($operation) ?>" data-database="<?= h($database) ?>" data-engine="<?= h($engine) ?>"
+                             data-risk="<?= $risk > 0 ? 'risk' : 'safe' ?>">
+                        <button type="button" onclick="toggleLogDetail('log-detail-<?= $index ?>', this)" class="log-summary w-full text-left flex items-start gap-4">
+                            <!-- Type icon -->
+                            <div class="flex-shrink-0 mt-0.5">
+                                <div class="w-9 h-9 rounded-xl border <?= $tc['iconBox'] ?> flex items-center justify-center">
+                                    <?= dbLogIcon($operation, 'w-4 h-4') ?>
                                 </div>
-                                <code class="block mt-2 text-[11px] sm:text-xs leading-relaxed text-text-body font-mono break-all sm:line-clamp-2"><?= h($query ?: 'Consulta no disponible') ?></code>
-                                <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-[9px] sm:text-[10px] text-text-subtle"><span>DB: <strong class="text-text-muted font-medium"><?= h($database) ?></strong></span><span>Usuario: <strong class="text-text-muted font-medium"><?= h($dbUser) ?></strong></span><span class="hidden sm:inline">Host: <strong class="text-text-muted font-medium"><?= h($log['host'] ?? '—') ?></strong></span></div>
                             </div>
-                            <svg class="log-chevron w-4 h-4 text-text-subtle flex-shrink-0 mt-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+
+                            <div class="flex-1 min-w-0">
+                                <!-- Badges row -->
+                                <div class="flex items-center gap-2 mb-2 flex-wrap">
+                                    <span class="text-[9px] px-2 py-1 rounded-lg border font-mono font-semibold <?= $tc['badge'] ?> <?= $tc['text'] ?>"><?= h($operation) ?></span>
+                                    <span class="text-[9px] px-2 py-1 rounded-lg border border-border-theme bg-bg-base/50 text-text-muted"><?= h(ucfirst($engine)) ?></span>
+                                    <span class="text-[9px] px-2 py-1 rounded-lg border border-white/[0.06] bg-white/[0.03] text-text-muted font-mono"><?= h($database) ?></span>
+                                    <?php if ($risk > 0): ?>
+                                    <span class="text-[9px] px-2 py-1 rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 font-medium inline-flex items-center gap-1">
+                                        <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+                                        Riesgo <?= h($risk) ?>
+                                    </span>
+                                    <?php endif; ?>
+                                </div>
+
+                                <!-- Query -->
+                                <code class="block text-[11px] sm:text-xs leading-relaxed text-text-body font-mono break-all line-clamp-2"><?= h($query ?: 'Consulta no disponible') ?></code>
+
+                                <!-- Meta footer -->
+                                <div class="flex items-center gap-2 text-[9px] text-text-subtle mt-2 flex-wrap">
+                                    <span class="font-mono"><?= h(substr($timestamp, 0, 19)) ?></span>
+                                    <span>·</span>
+                                    <span>Usuario: <strong class="text-text-muted font-medium"><?= h($dbUser) ?></strong></span>
+                                    <?php if (!empty($log['host'])): ?>
+                                    <span class="hidden sm:inline">·</span>
+                                    <span class="hidden sm:inline">Host: <strong class="text-text-muted font-medium"><?= h($log['host']) ?></strong></span>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+
+                            <svg class="log-chevron w-4 h-4 text-text-subtle flex-shrink-0 mt-1.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                         </button>
-                        <div id="log-detail-<?= $index ?>" class="hidden border-t border-border-theme bg-bg-base/35 p-3 sm:p-4">
-                            <div class="flex items-center justify-between gap-3 mb-2"><p class="text-[10px] uppercase tracking-wider text-text-subtle">Consulta completa</p><button type="button" onclick="copyLogQuery(this)" data-query="<?= h($query) ?>" class="px-2.5 py-1.5 rounded-lg border border-border-theme text-[10px] text-primary-400 hover:bg-primary-500/10">Copiar SQL</button></div>
-                            <pre class="max-h-72 overflow-auto rounded-xl border border-border-theme bg-black/25 p-3 text-[11px] leading-relaxed text-text-body font-mono whitespace-pre-wrap break-words"><?= h($query) ?></pre>
+                        <div id="log-detail-<?= $index ?>" class="hidden mt-3 pt-3 border-t border-white/[0.06]">
+                            <div class="flex items-center justify-between gap-3 mb-2">
+                                <p class="text-[10px] uppercase tracking-wider text-text-subtle">Consulta completa</p>
+                                <button type="button" onclick="copyLogQuery(this)" data-query="<?= h($query) ?>" class="px-2.5 py-1.5 rounded-lg border border-border-theme text-[10px] text-primary-400 hover:bg-primary-500/10 transition-all">Copiar SQL</button>
+                            </div>
+                            <pre class="max-h-72 overflow-auto rounded-xl border border-border-theme bg-black/25 p-3 text-[11px] leading-relaxed text-text-body font-mono whitespace-pre-wrap break-words scrollbar-custom"><?= h($query) ?></pre>
                         </div>
                     </article>
                     <?php endforeach; ?>
-                </section>
-                <section id="logs-empty-filter" class="hidden app-card p-10 text-center"><p class="text-sm font-semibold text-text-heading">No hay coincidencias</p><p class="text-[11px] text-text-muted mt-1">Prueba con otros filtros o limpia la búsqueda.</p></section>
+                </div>
+
+                <div id="logs-empty-filter" class="hidden rounded-2xl border border-border-theme bg-bg-panel/40 p-10 text-center">
+                    <p class="text-sm font-semibold text-text-heading">No hay coincidencias</p>
+                    <p class="text-[11px] text-text-muted mt-1">Prueba con otros filtros o limpia la búsqueda.</p>
+                    <button onclick="resetLogFilters()" class="mt-4 px-4 py-2 rounded-lg text-[11px] font-medium bg-primary-500/20 hover:bg-primary-500/30 text-primary-300 border border-primary-500/30 transition-all">Limpiar filtros</button>
+                </div>
 
                 <?php if ($totalPages > 1): ?>
-                <section class="app-card p-3 sm:p-4">
+                <div class="rounded-xl border border-border-theme bg-bg-panel/40 p-3 md:p-4">
                     <div class="flex items-center justify-between gap-3">
                         <?php if ($page > 1): ?>
-                            <a href="?page=<?= $page - 1 ?>" class="inline-flex items-center gap-1 px-3 py-2 rounded-xl text-[11px] font-medium bg-primary-500/10 text-primary-400 border border-primary-500/20 hover:bg-primary-500/15 transition-all">← Anterior</a>
+                            <a href="?page=<?= $page - 1 ?>" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-primary-500/10 text-primary-400 border border-primary-500/20 hover:bg-primary-500/15 transition-all">← Anterior</a>
                         <?php else: ?>
-                            <span class="inline-flex items-center gap-1 px-3 py-2 rounded-xl text-[11px] font-medium bg-bg-base text-text-subtle border border-border-theme opacity-50 cursor-not-allowed">← Anterior</span>
+                            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-bg-base text-text-subtle border border-border-theme opacity-50 cursor-not-allowed">← Anterior</span>
                         <?php endif; ?>
-                        <span class="text-[11px] text-text-subtle">Página <?= h($page) ?> de <?= h($totalPages) ?> (<?= h($total) ?> eventos)</span>
+                        <span class="text-[11px] text-text-subtle">Página <?= h($page) ?> de <?= h($totalPages) ?> · <?= h($total) ?> eventos</span>
                         <?php if ($page < $totalPages): ?>
-                            <a href="?page=<?= $page + 1 ?>" class="inline-flex items-center gap-1 px-3 py-2 rounded-xl text-[11px] font-medium bg-primary-500/10 text-primary-400 border border-primary-500/20 hover:bg-primary-500/15 transition-all">Siguiente →</a>
+                            <a href="?page=<?= $page + 1 ?>" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-primary-500/10 text-primary-400 border border-primary-500/20 hover:bg-primary-500/15 transition-all">Siguiente →</a>
                         <?php else: ?>
-                            <span class="inline-flex items-center gap-1 px-3 py-2 rounded-xl text-[11px] font-medium bg-bg-base text-text-subtle border border-border-theme opacity-50 cursor-not-allowed">Siguiente →</span>
+                            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-bg-base text-text-subtle border border-border-theme opacity-50 cursor-not-allowed">Siguiente →</span>
                         <?php endif; ?>
                     </div>
-                </section>
+                </div>
                 <?php endif; ?>
                 <?php endif; ?>
             </div>
@@ -177,19 +341,24 @@ function applyLogFilters() {
     const search = (document.getElementById('log-search')?.value || '').toLowerCase().trim();
     const operation = document.getElementById('log-operation')?.value || '';
     const database = document.getElementById('log-database')?.value || '';
+    const engine = document.getElementById('log-engine')?.value || '';
     const risk = document.getElementById('log-risk')?.value || '';
     let visible = 0;
     document.querySelectorAll('.db-log-card').forEach(card => {
-        const matches = (!search || card.dataset.search.includes(search)) && (!operation || card.dataset.operation === operation) && (!database || card.dataset.database === database) && (!risk || card.dataset.risk === risk);
+        const matches = (!search || card.dataset.search.includes(search))
+            && (!operation || card.dataset.operation === operation)
+            && (!database || card.dataset.database === database)
+            && (!engine || card.dataset.engine === engine)
+            && (!risk || card.dataset.risk === risk);
         card.classList.toggle('hidden', !matches);
         if (matches) visible++;
     });
     const counter = document.getElementById('log-result-count');
-    if (counter) counter.textContent = visible + (visible === 1 ? ' resultado' : ' resultados');
+    if (counter) counter.textContent = visible;
     document.getElementById('logs-empty-filter')?.classList.toggle('hidden', visible !== 0);
 }
 function resetLogFilters() {
-    ['log-search', 'log-operation', 'log-database', 'log-risk'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    ['log-search', 'log-operation', 'log-database', 'log-engine', 'log-risk'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     applyLogFilters();
 }
 function toggleLogDetail(id, button) {
@@ -198,7 +367,10 @@ function toggleLogDetail(id, button) {
 }
 function toggleLogDensity() {
     compactLogs = !compactLogs;
-    document.querySelectorAll('.log-summary').forEach(el => el.classList.toggle('sm:py-2', compactLogs));
+    document.querySelectorAll('.db-log-card').forEach(el => {
+        el.classList.toggle('py-4', !compactLogs);
+        el.classList.toggle('py-2', compactLogs);
+    });
 }
 async function copyLogQuery(button) {
     try { await navigator.clipboard.writeText(button.dataset.query || ''); button.textContent = 'Copiado'; setTimeout(() => button.textContent = 'Copiar SQL', 1200); } catch (e) { button.textContent = 'No disponible'; }

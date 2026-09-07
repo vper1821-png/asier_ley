@@ -233,6 +233,29 @@ func RunInitialMassiveScan(
 
 			inventoryItems = append(inventoryItems, item)
 			log.Info("📁 DATOS SENSIBLES ENCONTRADOS: %s (cats: %v)", result.RelativePath, getCategoriesList(result.Categories))
+		} else {
+			// Enviar tambien archivos no sensibles para completar el inventario
+			if sender != nil {
+				sender.SendInitialInventory(InitialInventoryItem{
+					AgentID:      getAgentID(),
+					UserID:       getUserID(),
+					CompanyID:    getCompanyID(),
+					Hostname:     getHostname(),
+					Path:         result.Path,
+					RelativePath: result.RelativePath,
+					Size:         result.Size,
+					Extension:    result.Extension,
+					Categories:   getCategoriesList(result.Categories),
+					Sensitive:    false,
+					PersonalData: result.PersonalData,
+					Hash:         result.Hash,
+					FirstSeen:    time.Now(),
+					LastScanned:  time.Now(),
+					LastModified: result.ModifiedAt,
+					ScanCount:    1,
+					Status:       "active",
+				})
+			}
 		}
 	}
 

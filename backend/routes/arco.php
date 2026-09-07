@@ -222,26 +222,43 @@ function downloadResponse() {
 
     $html = "<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'><title>Respuesta ARCO - {$h($typeLabel)}</title>";
     $html .= "<style>
-        @page{margin:80px 60px}
-        body{font-family:'DejaVu Sans',Arial,sans-serif;font-size:11px;line-height:1.6;color:#1a1a1a}
-        .header{border-bottom:1.5px solid #000;padding-bottom:10px;margin-bottom:30px}
-        .header h1{font-size:16px;font-weight:bold;margin:0}
-        .header p{margin:4px 0;font-size:10px;color:#444}
-        .meta{margin-bottom:20px}
-        .meta div{margin-bottom:4px}
-        .label{font-weight:bold;color:#333}
-        .subject{font-size:13px;font-weight:bold;margin:25px 0 15px}
-        .body p{margin-bottom:12px;text-align:justify}
-        .data-table{width:100%;border-collapse:collapse;margin:15px 0}
-        .data-table td{border:0.5px solid #bbb;padding:6px 8px}
-        .footer{margin-top:40px;border-top:1px solid #ccc;padding-top:10px;font-size:9px;color:#555}
-        .signature{margin-top:50px}
-        .signature p{margin:4px 0}
+        @page{margin:0}
+        body{font-family:'DejaVu Sans',Arial,sans-serif;font-size:10px;line-height:1.6;color:#1a1a1a;margin:0}
+        .footer-fixed{position:fixed;bottom:0;left:0;right:0;height:22px;background:#f5f5f5;border-top:0.5px solid #cccccc;color:#999999;font-size:7px;padding:6px 45px 0 45px}
+        .topline{height:2px;background:#000000}
+        .band{background:#000000;padding:9px 45px 10px 45px}
+        .band .sub{color:#ffffff;font-size:8px}
+        .band .ttl{color:#ffffff;font-size:10px;font-weight:bold;margin-top:2px}
+        .head-wrap{padding:30px 60px 0 60px;text-align:center}
+        .head-label{color:#777777;font-size:9px}
+        .head-law{color:#777777;font-size:8px;margin-top:4px}
+        .head-sep{border-top:0.5px solid #000000;margin:18px 40px 0 40px}
+        .head-company{color:#1a1a1a;font-size:14px;font-weight:bold;margin-top:16px;text-transform:uppercase}
+        .head-title{color:#1a1a1a;font-size:15px;font-weight:bold;margin-top:8px}
+        .head-box{background:#f5f5f5;border:0.5px solid #bbbbbb;margin:16px 40px 0 40px;padding:7px 10px;color:#1a1a1a;font-size:8px;font-weight:bold}
+        .content{padding:20px 60px 50px 60px}
+        .meta{margin-bottom:18px;background:#f5f5f5;border:0.5px solid #bbbbbb;padding:12px 14px}
+        .meta div{margin-bottom:4px;font-size:9px}
+        .label{font-weight:bold;color:#555555;font-size:8px;text-transform:uppercase}
+        .subject{font-size:12px;font-weight:bold;margin:20px 0 12px;border-left:4px solid #000000;padding:2px 0 2px 10px}
+        .body p{margin-bottom:10px;text-align:justify;font-size:10px}
+        .data-table{width:100%;border-collapse:collapse;margin:12px 0}
+        .data-table th{background:#1a1a1a;color:#cccccc;font-size:8px;font-weight:bold;text-align:left;padding:6px 8px}
+        .data-table td{border-bottom:0.3px solid #e0e0e0;padding:6px 8px;font-size:9px}
+        .signature{margin-top:45px}
+        .signature p{margin:4px 0;font-size:10px}
     </style></head><body>";
-    $html .= "<div class='header'><h1>{$h($companyName)}</h1>";
-    $html .= "<p>Delegado de Protección de Datos: {$h($dpdName)}</p>";
-    $html .= "<p>Email DPD: {$h($dpdEmail)}</p></div>";
-
+    $html .= "<div class='footer-fixed'>Ley 21.719 - Respuesta a Derecho ARCO · {$h($companyName)}</div>";
+    $html .= "<div class='topline'></div>";
+    $html .= "<div class='head-wrap'>";
+    $html .= "<div class='head-label'>REPÚBLICA DE CHILE</div>";
+    $html .= "<div class='head-law'>Ley 21.719 - Protección de Datos Personales</div>";
+    $html .= "<div class='head-sep'></div>";
+    $html .= "<div class='head-company'>{$h($companyName)}</div>";
+    $html .= "<div class='head-title'>Respuesta a Solicitud de {$h($typeLabel)}</div>";
+    $html .= "<div class='head-box'>CLASIFICACIÓN: CONFIDENCIAL · DPD: {$h($dpdName)} ({$h($dpdEmail)})</div>";
+    $html .= "</div>";
+    $html .= "<div class='content'>";
     $html .= "<div class='meta'>";
     $html .= "<div><span class='label'>Número de solicitud:</span> {$h($requestId)}</div>";
     $html .= "<div><span class='label'>Tipo de derecho:</span> {$h($typeLabel)}</div>";
@@ -267,8 +284,7 @@ function downloadResponse() {
     $html .= "<div class='signature'><p>Atentamente,</p>";
     $html .= "<p><strong>{$h($dpdName)}</strong><br>Delegado de Protección de Datos</p></div>";
 
-    $html .= "<div class='footer'>Documento generado conforme a la Ley 21.719 - Protección de Datos Personales · República de Chile · Fecha: {$h($responseDate)}</div>";
-    $html .= "</body></html>";
+    $html .= "</div></body></html>";
 
     $dompdf = new Dompdf\Dompdf();
     $dompdf->setPaper('A4', 'portrait');
@@ -408,26 +424,38 @@ function downloadReceipt() {
 
     $html = "<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'><title>Comprobante ARCO - {$h($typeLabel)}</title>";
     $html .= "<style>
-        @page{margin:80px 60px}
-        body{font-family:'DejaVu Sans',Arial,sans-serif;font-size:11px;line-height:1.6;color:#1a1a1a}
-        .header{border-bottom:1.5px solid #000;padding-bottom:10px;margin-bottom:30px}
-        .header h1{font-size:16px;font-weight:bold;margin:0}
-        .header p{margin:4px 0;font-size:10px;color:#444}
-        .meta{margin-bottom:20px}
-        .meta div{margin-bottom:4px}
-        .label{font-weight:bold;color:#333}
-        .subject{font-size:13px;font-weight:bold;margin:25px 0 15px}
-        .body p{margin-bottom:12px;text-align:justify}
-        .data-table{width:100%;border-collapse:collapse;margin:15px 0}
-        .data-table td{border:0.5px solid #bbb;padding:6px 8px}
-        .footer{margin-top:40px;border-top:1px solid #ccc;padding-top:10px;font-size:9px;color:#555}
-        .stamp{display:inline-block;margin-top:30px;padding:8px 15px;border:1.5px dashed #22c55e;color:#22c55e;font-weight:bold;border-radius:4px}
+        @page{margin:0}
+        body{font-family:'DejaVu Sans',Arial,sans-serif;font-size:10px;line-height:1.6;color:#1a1a1a;margin:0}
+        .footer-fixed{position:fixed;bottom:0;left:0;right:0;height:22px;background:#f5f5f5;border-top:0.5px solid #cccccc;color:#999999;font-size:7px;padding:6px 45px 0 45px}
+        .topline{height:2px;background:#000000}
+        .head-wrap{padding:30px 60px 0 60px;text-align:center}
+        .head-label{color:#777777;font-size:9px}
+        .head-law{color:#777777;font-size:8px;margin-top:4px}
+        .head-sep{border-top:0.5px solid #000000;margin:18px 40px 0 40px}
+        .head-company{color:#1a1a1a;font-size:14px;font-weight:bold;margin-top:16px;text-transform:uppercase}
+        .head-title{color:#1a1a1a;font-size:15px;font-weight:bold;margin-top:8px}
+        .head-box{background:#f5f5f5;border:0.5px solid #bbbbbb;margin:16px 40px 0 40px;padding:7px 10px;color:#1a1a1a;font-size:8px;font-weight:bold}
+        .content{padding:20px 60px 50px 60px}
+        .meta{margin-bottom:16px;background:#f5f5f5;border:0.5px solid #bbbbbb;padding:12px 14px}
+        .meta div{margin-bottom:4px;font-size:9px}
+        .label{font-weight:bold;color:#555555;font-size:8px;text-transform:uppercase}
+        .subject{font-size:12px;font-weight:bold;margin:18px 0 12px;border-left:4px solid #000000;padding:2px 0 2px 10px}
+        .body p{margin-bottom:10px;text-align:justify;font-size:10px}
+        .data-table{width:100%;border-collapse:collapse;margin:12px 0}
+        .data-table td{border-bottom:0.3px solid #e0e0e0;padding:6px 8px;font-size:9px}
+        .stamp{display:inline-block;margin-top:26px;padding:8px 15px;border:1.5px dashed #166534;color:#166534;font-weight:bold;font-size:10px}
     </style></head><body>";
-    $html .= "<div class='header'><h1>{$h($companyName)}</h1>";
-    $html .= "<p>Delegado de Protección de Datos: {$h($dpdName)}</p>";
-    $html .= "<p>Email DPD: {$h($dpdEmail)}</p></div>";
-
-    $html .= "<div class='subject'>Comprobante de recepción de solicitud ARCO - {$h($typeLabel)}</div>";
+    $html .= "<div class='footer-fixed'>Ley 21.719 - Comprobante de Recepción ARCO · {$h($companyName)}</div>";
+    $html .= "<div class='topline'></div>";
+    $html .= "<div class='head-wrap'>";
+    $html .= "<div class='head-label'>REPÚBLICA DE CHILE</div>";
+    $html .= "<div class='head-law'>Ley 21.719 - Protección de Datos Personales</div>";
+    $html .= "<div class='head-sep'></div>";
+    $html .= "<div class='head-company'>{$h($companyName)}</div>";
+    $html .= "<div class='head-title'>Comprobante de Recepción - {$h($typeLabel)}</div>";
+    $html .= "<div class='head-box'>CLASIFICACIÓN: CONFIDENCIAL · DPD: {$h($dpdName)} ({$h($dpdEmail)})</div>";
+    $html .= "</div>";
+    $html .= "<div class='content'>";
 
     $html .= "<div class='meta'>";
     $html .= "<div><span class='label'>Número de solicitud:</span> {$h($requestId)}</div>";
@@ -453,8 +481,7 @@ function downloadReceipt() {
 
     $html .= "<div class='stamp'>SOLICITUD RECIBIDA</div>";
 
-    $html .= "<div class='footer'>Documento generado conforme a la Ley 21.719 - Protección de Datos Personales · República de Chile · Fecha: {$h($receiptDate)}</div>";
-    $html .= "</body></html>";
+    $html .= "</div></body></html>";
 
     $dompdf = new Dompdf\Dompdf();
     $dompdf->setPaper('A4', 'portrait');

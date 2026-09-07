@@ -139,25 +139,33 @@ function cIcon($name, $cls = 'w-4 h-4') {
         'info' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>',
         'pen' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>',
         'arrowRight' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>',
+        'globe' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>',
+        'scale' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"/>',
+        'academic' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-4 6v-7.5l4-2.222"/>',
+        'folder' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>',
+        'history' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>',
+        'id' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2"/>',
+        'lock' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>',
+        'clipboard' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>',
     ];
     return '<svg class="' . $cls . '" fill="none" viewBox="0 0 24 24" stroke="currentColor">' . ($paths[$name] ?? '') . '</svg>';
 }
 
 $tabs = [
-    ['id' => 'overview', 'label' => 'Resumen', 'icon' => 'shield'],
-    ['id' => 'inventory', 'label' => 'Inventario', 'icon' => 'database'],
-    ['id' => 'consents', 'label' => 'Consentimientos', 'icon' => 'check'],
-    ['id' => 'privacy', 'label' => 'Política Privacidad', 'icon' => 'fileText'],
-    ['id' => 'breaches', 'label' => 'Brechas', 'icon' => 'alert'],
-    ['id' => 'violations', 'label' => 'Violaciones', 'icon' => 'alert'],
-    ['id' => 'dpia', 'label' => 'Eval. Impacto', 'icon' => 'shield'],
-    ['id' => 'pseudonymization', 'label' => 'Seudonimización', 'icon' => 'search'],
-    ['id' => 'trainings', 'label' => 'Capacitaciones', 'icon' => 'info'],
-    ['id' => 'invites', 'label' => 'Firmas', 'icon' => 'pen'],
-    ['id' => 'processors', 'label' => 'Encargados', 'icon' => 'users'],
-    ['id' => 'transfers', 'label' => 'Transferencias', 'icon' => 'globe'],
-    ['id' => 'files', 'label' => 'Archivos', 'icon' => 'fileText'],
-    ['id' => 'file-audit', 'label' => 'Auditoría Archivos', 'icon' => 'fileText'],
+    ['id' => 'overview', 'label' => 'Resumen', 'icon' => 'shield', 'desc' => 'Panorama general del programa de privacidad'],
+    ['id' => 'inventory', 'label' => 'Inventario', 'icon' => 'database', 'desc' => 'Registro de Actividades de Tratamiento (RAT)'],
+    ['id' => 'consents', 'label' => 'Consentimientos', 'icon' => 'check', 'desc' => 'Bases de licitud · Art. 12 Ley 21.719'],
+    ['id' => 'privacy', 'label' => 'Privacidad', 'icon' => 'fileText', 'desc' => 'Política de privacidad y DPD · Arts. 25 y 28'],
+    ['id' => 'breaches', 'label' => 'Brechas', 'icon' => 'alert', 'desc' => 'Protocolo y notificación de brechas · Art. 26'],
+    ['id' => 'violations', 'label' => 'Violaciones', 'icon' => 'scale', 'desc' => 'Infracciones y sanciones · Arts. 32-36'],
+    ['id' => 'dpia', 'label' => 'Eval. Impacto', 'icon' => 'clipboard', 'desc' => 'Evaluación de impacto (EIPD) · Art. 29'],
+    ['id' => 'pseudonymization', 'label' => 'Seudonimización', 'icon' => 'lock', 'desc' => 'Medida de seguridad · Art. 30'],
+    ['id' => 'trainings', 'label' => 'Capacitación', 'icon' => 'academic', 'desc' => 'Programa de formación del personal'],
+    ['id' => 'invites', 'label' => 'Firmas', 'icon' => 'pen', 'desc' => 'Evidencia firmada de capacitaciones'],
+    ['id' => 'processors', 'label' => 'Encargados', 'icon' => 'users', 'desc' => 'Encargados del tratamiento · Art. 22'],
+    ['id' => 'transfers', 'label' => 'Transferencias', 'icon' => 'globe', 'desc' => 'Transferencias internacionales · Art. 21'],
+    ['id' => 'files', 'label' => 'Archivos', 'icon' => 'folder', 'desc' => 'Archivos detectados por los agentes'],
+    ['id' => 'file-audit', 'label' => 'Auditoría', 'icon' => 'history', 'desc' => 'Trazabilidad de acceso a archivos'],
 ];
 $activeLabel = 'Compliance';
 foreach ($tabs as $t) { if ($t['id'] === $tab) $activeLabel = $t['label']; }
@@ -173,11 +181,11 @@ require_once __DIR__ . '/../includes/header.php';
 .compliance-workspace select,
 .compliance-workspace .compliance-input,
 .compliance-workspace .compliance-select,
-.compliance-workspace .compliance-textarea { background-color: #f9fafb !important; color: #111827 !important; }
-.compliance-workspace ::placeholder { color: #6b7280 !important; opacity: 1; }
+.compliance-workspace .compliance-textarea { background-color: color-mix(in srgb, var(--bg-input, #0d1017) 94%, transparent) !important; color: var(--text-heading, #f3f4f6) !important; border-color: var(--border-color, rgba(255,255,255,0.08)) !important; }
+.compliance-workspace ::placeholder { color: var(--text-subtle, #6b7280) !important; opacity: 1; }
 .compliance-workspace input:-webkit-autofill,
 .compliance-workspace textarea:-webkit-autofill,
-.compliance-workspace select:-webkit-autofill { -webkit-text-fill-color: #111827 !important; -webkit-box-shadow: 0 0 0px 1000px #f9fafb inset !important; }
+.compliance-workspace select:-webkit-autofill { -webkit-text-fill-color: var(--text-heading, #f3f4f6) !important; -webkit-box-shadow: 0 0 0px 1000px var(--bg-input, #0d1017) inset !important; }
 .compliance-workspace .compliance-header-inner { max-width: 1500px; margin: 0 auto; }
 .compliance-workspace .compliance-context { display: flex; align-items: center; gap: 10px; color: var(--text-subtle, #6b7280); font-size: 10px; }
 .compliance-workspace .compliance-context span { display: inline-flex; align-items: center; gap: 6px; }
@@ -324,9 +332,13 @@ require_once __DIR__ . '/../includes/header.php';
 
 /* Wizard submit button visibility - use class instead of inline style */
 .compliance-workspace .wizard-submit-btn,
-.compliance-workspace .wizard-btn-submit { display: none !important; }
+.compliance-workspace .wizard-btn-submit,
+.compliance-workspace .wizard-nav-btn-submit,
+.compliance-workspace .transfer-wizard-btn-submit { display: none !important; }
 .compliance-workspace .wizard-submit-btn.visible,
-.compliance-workspace .wizard-btn-submit.visible { display: inline-flex !important; }
+.compliance-workspace .wizard-btn-submit.visible,
+.compliance-workspace .wizard-nav-btn-submit.visible,
+.compliance-workspace .transfer-wizard-btn-submit.visible { display: inline-flex !important; }
 
 /* In-page error messages */
 .compliance-workspace .wizard-error-message {
@@ -497,6 +509,360 @@ require_once __DIR__ . '/../includes/header.php';
 #generic-edit-modal .compliance-select:focus { border-color: var(--accent, #3b82f6); box-shadow: 0 0 0 3px rgba(59,130,246,0.2); }
 #generic-edit-modal .compliance-textarea { min-height: 96px; resize: vertical; }
 #generic-edit-modal ::placeholder { color: #9ca3af; opacity: 1; }
+
+/* ═══ Dock vertical de secciones (estilo macOS, junto al sidebar) ═══ */
+main.compliance-workspace { position: relative; }
+.compliance-workspace .workspace-content { padding-left: 6.5rem; }
+.compliance-dock {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 55;
+    max-height: calc(100% - 32px);
+    pointer-events: none;
+}
+.compliance-dock-inner {
+    pointer-events: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 8px;
+    border-radius: 18px;
+    border: 1px solid color-mix(in srgb, var(--border-color, rgba(255,255,255,0.08)) 140%, transparent);
+    background: color-mix(in srgb, var(--bg-panel, #0f0f14) 82%, transparent);
+    backdrop-filter: blur(20px) saturate(1.3);
+    -webkit-backdrop-filter: blur(20px) saturate(1.3);
+    box-shadow: 0 18px 45px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.05);
+}
+.dock-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    width: 46px;
+    height: 46px;
+    padding: 6px;
+    border-radius: 13px;
+    color: var(--text-muted, #9ca3af);
+    text-decoration: none;
+    transition: transform .12s ease-out, width .22s ease, background-color .18s ease, color .18s ease;
+    transform-origin: left center;
+    will-change: transform;
+    overflow: hidden;
+    white-space: nowrap;
+}
+.dock-item:hover { color: var(--text-heading, #f9fafb); background: color-mix(in srgb, var(--accent, #3b82f6) 12%, transparent); width: 168px; }
+.dock-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--bg-elevated, #141419) 90%, transparent);
+    border: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+    transition: background-color .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.dock-item:hover .dock-icon { border-color: var(--accent-border, rgba(59,130,246,.35)); box-shadow: 0 4px 14px rgba(59,130,246,.18); }
+.dock-label {
+    display: block;
+    flex-shrink: 0;
+    margin-left: 8px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .02em;
+    opacity: 0;
+    transform: translateX(-6px);
+    transition: opacity .18s ease .06s, transform .18s ease .06s;
+    max-width: 110px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.dock-item:hover .dock-label { opacity: 1; transform: translateX(0); }
+.dock-dot {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%) scale(0);
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--accent, #3b82f6);
+    transition: transform .18s ease;
+}
+.dock-item.is-active { color: var(--accent, #60a5fa); }
+.dock-item.is-active .dock-icon {
+    background: linear-gradient(135deg, rgba(59,130,246,.30), rgba(99,102,241,.20));
+    border-color: var(--accent-border, rgba(59,130,246,.45));
+    color: #93c5fd;
+    box-shadow: 0 4px 16px rgba(59,130,246,.28);
+}
+.dock-item.is-active .dock-dot { transform: translateY(-50%) scale(1); }
+.dock-tip {
+    position: absolute;
+    left: calc(100% + 14px);
+    top: 50%;
+    transform: translateY(-50%) translateX(-6px);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--bg-panel, #0f0f14) 97%, transparent);
+    border: 1px solid var(--border-color, rgba(255,255,255,0.09));
+    box-shadow: 0 10px 28px rgba(0,0,0,.45);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .15s ease, transform .15s ease;
+    white-space: nowrap;
+    z-index: 10;
+}
+.dock-tip::after {
+    content: '';
+    position: absolute;
+    right: 100%;
+    top: 50%;
+    transform: translateY(-50%);
+    border: 5px solid transparent;
+    border-right-color: color-mix(in srgb, var(--bg-panel, #0f0f14) 97%, transparent);
+}
+.dock-tip { display: none; }
+.dock-tip-title { font-size: 10px; font-weight: 700; color: var(--text-heading, #f9fafb); }
+.dock-tip-sub { font-size: 8px; color: var(--text-subtle, #6b7280); }
+
+/* Pantallas bajas: ítems más compactos para que quepa todo el dock */
+@media (min-width: 768px) and (max-height: 780px) {
+    .dock-item { height: 38px; width: 40px; padding: 4px; }
+    .dock-item:hover { width: 150px; }
+    .dock-icon { width: 28px; height: 28px; }
+    .compliance-dock-inner { gap: 2px; padding: 6px; }
+}
+
+/* ═══ Pulido formal para todas las secciones ═══ */
+.compliance-workspace .workspace-section,
+.compliance-workspace .rounded-xl.border,
+.compliance-workspace .compliance-panel {
+    position: relative;
+    border-radius: 14px;
+}
+.compliance-workspace .workspace-section-head,
+.compliance-workspace .compliance-section-header {
+    background: linear-gradient(90deg, color-mix(in srgb, var(--accent, #3b82f6) 4%, transparent), transparent 60%);
+}
+.compliance-workspace .compliance-section-title,
+.compliance-workspace .workspace-section-title {
+    position: relative;
+    padding-left: 12px;
+}
+.compliance-workspace .compliance-section-title::before,
+.compliance-workspace .workspace-section-title::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 16px;
+    border-radius: 2px;
+    background: linear-gradient(180deg, var(--accent, #3b82f6), #6366f1);
+}
+.compliance-workspace .compliance-stat { transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
+.compliance-workspace .compliance-stat:hover { transform: translateY(-2px); border-color: var(--accent-border, rgba(59,130,246,.28)); box-shadow: 0 10px 26px rgba(0,0,0,.3); }
+.compliance-workspace .compliance-list-row { transition: border-color .18s ease, background-color .18s ease, transform .15s ease; }
+.compliance-workspace .compliance-list-row:hover { transform: translateX(2px); }
+.compliance-workspace table thead th { padding: 10px 14px; border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.07)); }
+.compliance-workspace table tbody td { border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.04)); }
+.compliance-workspace .compliance-empty { border-style: dashed; }
+.compliance-workspace .compliance-form-label { letter-spacing: .01em; }
+.compliance-workspace legend { letter-spacing: .1em; }
+
+/* Títulos de paso de los wizards (la clase colisiona con las etiquetas del indicador) */
+.compliance-workspace .wizard-step-content .wizard-step-title,
+.compliance-workspace .wizard-step .wizard-step-title,
+.compliance-workspace .inventory-wizard-step .inventory-wizard-step-title,
+.compliance-workspace .transfer-wizard-step .transfer-wizard-step-title {
+    max-width: none !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    color: var(--text-heading, #f9fafb) !important;
+    text-align: left !important;
+    letter-spacing: -.01em;
+    padding: 0 0 .75rem !important;
+    margin-bottom: 1rem !important;
+    border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,.05)) !important;
+}
+/* El botón × del drawer no debe tapar el header del formulario */
+.cp-drawer-mode > .flex:first-child { padding-right: 48px; }
+.cp-drawer-mode .wizard-navigation,
+.cp-drawer-mode .inventory-wizard-navigation,
+.cp-drawer-mode .transfer-wizard-navigation {
+    position: sticky; bottom: -1.75rem; z-index: 5;
+    margin: 1rem -1.75rem -1.75rem; padding: 1rem 1.75rem;
+    background: var(--bg-panel, #0e1016);
+    border-top: 1px solid var(--border-color, rgba(255,255,255,.08));
+}
+
+/* ═══ Panel lateral derecho (drawer) para formularios de creación ═══ */
+@keyframes cpDrawerIn { from { transform: translateX(80px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+#cp-drawer-backdrop {
+    position: fixed; inset: 0; z-index: 84;
+    background: rgba(3,5,9,.62);
+    backdrop-filter: blur(3px);
+    opacity: 0; pointer-events: none;
+    transition: opacity .22s ease;
+}
+#cp-drawer-backdrop.show { opacity: 1; pointer-events: auto; }
+.cp-drawer-mode {
+    position: fixed !important;
+    top: 0 !important; right: 0 !important; bottom: 0 !important; left: auto !important;
+    width: min(840px, 96vw) !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    border: none !important;
+    border-left: 1px solid var(--border-color, rgba(255,255,255,.08)) !important;
+    background: var(--bg-panel, #0e1016) !important;
+    box-shadow: -40px 0 90px rgba(0,0,0,.6);
+    overflow-y: auto !important;
+    z-index: 90 !important;
+    padding: 1.75rem !important;
+    animation: cpDrawerIn .3s cubic-bezier(.32,.72,0,1);
+}
+.cp-drawer-mode .wizard-container,
+.cp-drawer-mode .inventory-wizard-container,
+.cp-drawer-mode .transfer-wizard-container { max-width: none; margin: 0; }
+.cp-drawer-close {
+    position: absolute; top: 14px; right: 14px; z-index: 5;
+    width: 34px; height: 34px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--border-color, rgba(255,255,255,.09));
+    background: color-mix(in srgb, var(--bg-elevated, #16181f) 90%, transparent);
+    color: var(--text-muted, #9ca3af); font-size: 18px; line-height: 1;
+    cursor: pointer; transition: all .15s ease;
+}
+.cp-drawer-close:hover { color: var(--text-heading, #f9fafb); border-color: rgba(239,68,68,.4); background: rgba(239,68,68,.08); }
+.cp-new-btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 9px 16px; border-radius: 11px; border: none;
+    background: linear-gradient(135deg, #2563eb, #4f46e5);
+    color: #fff; font-size: 11px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 6px 18px rgba(37,99,235,.3);
+    transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+}
+.cp-new-btn:hover { transform: translateY(-1px); filter: brightness(1.1); box-shadow: 0 10px 24px rgba(37,99,235,.4); }
+.cp-new-btn svg { width: 13px; height: 13px; }
+
+/* Todos los modales de compliance → drawer lateral derecho */
+#generic-edit-modal:not(.hidden),
+#breach-protocol-modal:not(.hidden),
+#apdp-modal:not(.hidden),
+#inventory-detail-modal:not(.hidden),
+#inventory-edit-modal:not(.hidden),
+#map-modal:not(.hidden),
+#assign-modal:not(.hidden),
+#bulk-import-modal:not(.hidden) {
+    justify-content: flex-end !important;
+    align-items: stretch !important;
+    padding: 0 !important;
+}
+#generic-edit-modal:not(.hidden) > :first-child,
+#breach-protocol-modal:not(.hidden) > :first-child,
+#apdp-modal:not(.hidden) > :first-child,
+#inventory-detail-modal:not(.hidden) > :first-child,
+#inventory-edit-modal:not(.hidden) > :first-child,
+#map-modal:not(.hidden) > :first-child,
+#assign-modal:not(.hidden) > :first-child,
+#bulk-import-modal:not(.hidden) > :first-child {
+    width: min(820px, 96vw) !important;
+    max-width: none !important;
+    height: 100% !important;
+    max-height: none !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    border-left: 1px solid var(--border-color, rgba(255,255,255,.08)) !important;
+    overflow-y: auto !important;
+    animation: cpDrawerIn .3s cubic-bezier(.32,.72,0,1);
+}
+@media (max-width: 767px) {
+    .cp-drawer-mode { width: 100vw !important; padding: 1rem !important; }
+    #generic-edit-modal:not(.hidden) > :first-child,
+    #breach-protocol-modal:not(.hidden) > :first-child,
+    #apdp-modal:not(.hidden) > :first-child,
+    #inventory-detail-modal:not(.hidden) > :first-child,
+    #inventory-edit-modal:not(.hidden) > :first-child,
+    #map-modal:not(.hidden) > :first-child,
+    #assign-modal:not(.hidden) > :first-child,
+    #bulk-import-modal:not(.hidden) > :first-child { width: 100vw !important; }
+}
+
+/* Tarjetas y paneles uniformes en todas las secciones */
+.compliance-workspace .rounded-xl.border,
+.compliance-workspace .rounded-2xl.border {
+    border-color: var(--border-color, rgba(255,255,255,0.07)) !important;
+    background: color-mix(in srgb, var(--bg-panel, #0f1016) 88%, transparent);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.03), 0 10px 28px rgba(0,0,0,.22);
+}
+.compliance-workspace .rounded-xl.border:hover,
+.compliance-workspace .rounded-2xl.border:hover { border-color: rgba(255,255,255,.11); }
+.compliance-workspace h2, .compliance-workspace h3, .compliance-workspace h4 { letter-spacing: -.01em; }
+.compliance-workspace button[type="submit"],
+.compliance-workspace a[class*="bg-blue-6"], .compliance-workspace button[class*="bg-blue-6"],
+.compliance-workspace a[class*="from-blue"], .compliance-workspace button[class*="from-blue"] {
+    transition: filter .15s ease, transform .15s ease, box-shadow .15s ease;
+}
+.compliance-workspace button[type="submit"]:hover,
+.compliance-workspace a[class*="bg-blue-6"]:hover, .compliance-workspace button[class*="bg-blue-6"]:hover,
+.compliance-workspace a[class*="from-blue"]:hover, .compliance-workspace button[class*="from-blue"]:hover {
+    filter: brightness(1.12); transform: translateY(-1px);
+}
+/* Selects e inputs con apariencia coherente */
+.compliance-workspace select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236b7280' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px !important; }
+.compliance-workspace select option { background: var(--bg-panel, #10121a); color: var(--text-heading, #f3f4f6); }
+.compliance-workspace input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.6); cursor: pointer; }
+/* Badges de estado más refinados */
+.compliance-workspace span[class*="rounded-full"][class*="border"] { letter-spacing: .01em; }
+/* Filas y items de listas internas */
+.compliance-workspace [class*="hover:bg-white"] { transition: background-color .15s ease, border-color .15s ease; }
+
+@media (max-width: 767px) {
+    .compliance-workspace .workspace-content { padding-left: 0.75rem; padding-bottom: 6.5rem; }
+    .compliance-dock {
+        left: 10px; right: 10px; top: auto;
+        bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+        transform: none; max-height: none; max-width: none;
+        box-shadow: 0 12px 32px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.04);
+    }
+    .compliance-dock-inner {
+        flex-direction: row; justify-content: flex-start; align-items: stretch;
+        padding: 6px; border-radius: 18px; gap: 4px;
+        overflow-x: auto; overflow-y: hidden; max-height: none;
+        scrollbar-width: none;
+        scroll-snap-type: x proximity;
+    }
+    .compliance-dock-inner::-webkit-scrollbar { display: none; }
+    .dock-item {
+        flex-direction: column; align-items: center; justify-content: center;
+        gap: 4px; width: auto; min-width: 58px; padding: 7px 8px;
+        transform-origin: bottom center; border-radius: 12px;
+        scroll-snap-align: start;
+        background: rgba(255,255,255,.02);
+        border: 1px solid rgba(255,255,255,.04);
+        transition: background .15s ease, border-color .15s ease;
+    }
+    .dock-item.is-active { background: rgba(59,130,246,.12); border-color: rgba(59,130,246,.35); }
+    .dock-icon { width: 26px; height: 26px; border-radius: 8px; background: transparent; border: none; }
+    .dock-item.is-active .dock-icon { background: transparent; border: none; box-shadow: none; color: #93c5fd; }
+    .dock-label {
+        display: block; position: static; opacity: 1; transform: none;
+        font-size: 8px; font-weight: 600; line-height: 1.2;
+        max-width: 58px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        color: inherit; text-align: center;
+    }
+    .dock-dot { right: auto; left: 50%; top: auto; bottom: 1px; transform: translateX(-50%) scale(0); }
+    .dock-item.is-active .dock-dot { transform: translateX(-50%) scale(1); }
+    .dock-tip { display: none; }
+}
 </style>
 
 <div class="flex h-screen bg-bg-base text-[13px] text-text-body overflow-hidden">
@@ -506,29 +872,31 @@ require_once __DIR__ . '/../includes/header.php';
         <!-- Header (igual a React) -->
         <header class="workspace-header flex-shrink-0">
             <div class="compliance-header-inner px-4 md:px-8 py-4 md:py-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div class="min-w-0">
-                    <div class="compliance-context mb-2">
-                        <span>Gobierno de datos</span>
-                        <span>Ley 21.719</span>
-                        <span><?= h($activeLabel) ?></span>
+                <div class="min-w-0 flex items-center gap-3.5">
+                    <div class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-600/25 to-indigo-500/15 border border-blue-500/25 flex items-center justify-center text-blue-400 flex-shrink-0 shadow-theme-sm">
+                        <?= cIcon('scale', 'w-5 h-5') ?>
                     </div>
-                    <h1 class="workspace-title"><?= h($activeLabel) ?></h1>
-                    <p class="workspace-subtitle mt-1">Gestión documental, evidencia y controles para el programa de privacidad de la organización.</p>
+                    <div class="min-w-0">
+                        <div class="compliance-context mb-1.5">
+                            <span>Programa de Cumplimiento</span>
+                            <span>Ley 21.719</span>
+                            <span><?= h($activeLabel) ?></span>
+                        </div>
+                        <h1 class="workspace-title flex items-center gap-2"><?= h($activeLabel) ?>
+                            <span class="hidden sm:inline-flex text-[9px] px-2 py-0.5 rounded-full font-semibold bg-blue-500/10 text-blue-300 border border-blue-500/25 tracking-wide">Protección de Datos Personales</span>
+                        </h1>
+                        <p class="workspace-subtitle mt-1">Gestión documental, evidencia y controles conforme a la Ley 21.719 de protección de datos personales.</p>
+                    </div>
                 </div>
                 <div class="compliance-score-chip flex-shrink-0">
-                    <div><p class="compliance-score-label">Evidencia completada</p><p class="text-[9px] text-text-subtle mt-1"><?= $checklistDone ?> de <?= $checklistTotal ?> controles</p></div>
+                    <div class="flex-1 min-w-0">
+                        <p class="compliance-score-label">Evidencia completada</p>
+                        <div class="mt-1.5 h-1.5 w-28 rounded-full bg-white/[0.06] overflow-hidden">
+                            <div class="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all" style="width: <?= max(2, (int)$checklistPct) ?>%"></div>
+                        </div>
+                        <p class="text-[9px] text-text-subtle mt-1.5"><?= $checklistDone ?> de <?= $checklistTotal ?> controles</p>
+                    </div>
                     <span class="compliance-score-value <?= $pctColor ?>"><?= $checklistPct ?>%</span>
-                </div>
-            </div>
-            <div class="compliance-nav-wrap">
-                <div class="compliance-nav">
-                    <nav class="workspace-tabs" aria-label="Secciones de cumplimiento">
-                        <?php foreach ($tabs as $t): $isActive = $tab === $t['id']; ?>
-                        <a href="/compliance?tab=<?= $t['id'] ?>" class="workspace-tab <?= $isActive ? 'is-active' : '' ?>" <?= $isActive ? 'aria-current="page"' : '' ?>>
-                            <?= h($t['label']) ?>
-                        </a>
-                        <?php endforeach; ?>
-                    </nav>
                 </div>
             </div>
         </header>
@@ -586,6 +954,8 @@ require_once __DIR__ . '/../includes/header.php';
                                 <span class="text-[12px] font-medium <?= $item['done'] ? 'text-emerald-300' : 'text-text-muted' ?>">
                                     <?php if ($item['id'] === 'incident_response'): ?>
                                     <button type="button" onclick="openComplianceWizard('incident_response'); event.stopPropagation(); return false;" class="text-left font-medium hover:text-accent transition-colors underline-offset-2 hover:underline"><?= h($item['label']) ?></button>
+                                    <?php elseif ($item['id'] === 'dpd'): ?>
+                                    <a href="/compliance?tab=privacy" class="text-left font-medium hover:text-accent transition-colors underline-offset-2 hover:underline"><?= h($item['label']) ?></a>
                                     <?php else: ?>
                                     <?= h($item['label']) ?>
                                     <?php endif; ?>
@@ -600,10 +970,15 @@ require_once __DIR__ . '/../includes/header.php';
                                 <button type="button" onclick="openAPDPModal()" class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-blue-500/10 text-blue-400 border-blue-500/20 hover:bg-blue-500/20 transition-all"><?= cIcon('pen', 'w-3 h-3') ?> Editar Registro</button>
                                 <?php elseif ($item['id'] === 'incident_response'): ?>
                                 <button type="button" onclick="openComplianceWizard('incident_response'); event.stopPropagation(); return false;" class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20 transition-all"><?= cIcon('pen', 'w-3 h-3') ?> Editar Plan</button>
+                                <?php elseif ($item['id'] === 'dpd'): ?>
+                                <a href="/compliance?tab=privacy" class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-blue-500/10 text-blue-400 border-blue-500/20 hover:bg-blue-500/20 transition-all"><?= cIcon('pen', 'w-3 h-3') ?> Editar DPD</a>
                                 <?php else: ?>
                                 <button type="button" onclick="openComplianceWizard('<?= h($item['id']) ?>')" class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20 transition-all"><?= cIcon('pen', 'w-3 h-3') ?> Editar</button>
                                 <?php endif; ?>
                                 <button type="button" onclick="deleteComplianceSection('<?= h($item['id']) ?>', '<?= h(addslashes($item['label'])) ?>')" class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20 transition-all"><?= cIcon('xmark', 'w-3 h-3') ?> Eliminar</button>
+                                <?php if (in_array($item['id'], ['consents', 'inventory', 'breaches', 'trainings', 'pseudonymization', 'arco', 'dpia'])): ?>
+                                <button type="button" onclick="generateCompliancePDF('<?= h($item['id']) ?>')" class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-indigo-500/10 text-indigo-400 border-indigo-500/20 hover:bg-indigo-500/20 transition-all"><?= cIcon('fileText', 'w-3 h-3') ?> Descargar PDF</button>
+                                <?php endif; ?>
                                 <?php endif; ?>
                                 <?php else: ?>
                                 <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-red-500/10 text-red-400 border-red-500/20"><?= cIcon('xmark', 'w-3 h-3') ?> Pendiente</span>
@@ -614,6 +989,8 @@ require_once __DIR__ . '/../includes/header.php';
                                 <button type="button" onclick="openAPDPModal()" class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-blue-500/10 text-blue-400 border-blue-500/20 hover:bg-blue-500/20 transition-all"><?= cIcon('shield', 'w-3 h-3') ?> Registrar APDP</button>
                                 <?php elseif ($item['id'] === 'incident_response'): ?>
                                 <button type="button" onclick="openComplianceWizard('incident_response'); event.stopPropagation(); return false;" class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20 transition-all"><?= cIcon('pen', 'w-3 h-3') ?> Documentar Plan</button>
+                                <?php elseif ($item['id'] === 'dpd'): ?>
+                                <a href="/compliance?tab=privacy" class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20 transition-all"><?= cIcon('alert', 'w-3 h-3') ?> Configurar DPD</a>
                                 <?php else: ?>
                                 <button type="button" onclick="openComplianceWizard('<?= h($item['id']) ?>')" class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20 transition-all"><?= cIcon('pen', 'w-3 h-3') ?> Documentar</button>
                                 <?php endif; ?>
@@ -769,7 +1146,7 @@ require_once __DIR__ . '/../includes/header.php';
             </div>
 
             <!-- Formulario wizard de consentimiento (Art. 12 Ley 21.719) -->
-            <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5 mb-5">
+            <div id="consent-create-form" class="hidden rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5 mb-5">
                 <div class="flex items-center justify-between mb-4">
                     <p class="text-[12px] font-semibold text-white flex items-center gap-2">
                         <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
@@ -1282,8 +1659,8 @@ require_once __DIR__ . '/../includes/header.php';
                         Limpiar filtros
                     </button>
 
-                    <!-- Botón crear nuevo (versión compacta) -->
-                    <button onclick="document.getElementById('inventory-create-form').classList.toggle('hidden')"
+                    <!-- Botón crear nuevo → panel lateral -->
+                    <button onclick="cpOpenPanel('inventory-create-form')"
                             class="px-3 py-2 rounded-lg text-[11px] font-medium bg-gradient-to-r from-blue-600 to-indigo-600 text-white transition-all flex items-center gap-1.5">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                         Nuevo
@@ -2569,7 +2946,7 @@ require_once __DIR__ . '/../includes/header.php';
             </div>
 
             <!-- Formulario wizard de brecha (Art. 26 Ley 21.719) -->
-            <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5 md:p-6">
+            <div id="breach-create-form" class="hidden rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5 md:p-6">
                 <div class="flex items-center justify-between mb-6">
                     <h3 class="text-[15px] font-semibold text-text-heading">Nuevo Registro de Brecha</h3>
                     <?php renderImportBtn('breaches'); ?>
@@ -2920,10 +3297,10 @@ require_once __DIR__ . '/../includes/header.php';
                     
                     if (currentStep === totalSteps) {
                         nextBtn.style.display = 'none';
-                        submitBtn.style.display = 'inline-flex';
+                        submitBtn.classList.add('visible');
                     } else {
                         nextBtn.style.display = 'inline-flex';
-                        submitBtn.style.display = 'none';
+                        submitBtn.classList.remove('visible');
                     }
                     
                     // Hide error message
@@ -3053,7 +3430,7 @@ require_once __DIR__ . '/../includes/header.php';
                 <?php renderComplianceStat('Pendientes', $dPending, $dPending ? 'text-amber-400' : 'text-emerald-400', cIcon('pen')); ?>
                 <?php renderComplianceStat('Alto riesgo', $dHighRisk, $dHighRisk ? 'text-red-400' : 'text-text-subtle', cIcon('alert')); ?>
             </div>
-            <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5">
+            <div id="dpia-create-form" class="hidden rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5">
                 <div class="flex items-center justify-between mb-4">
                     <p class="text-[12px] font-semibold text-white">Nueva evaluación de impacto (DPIA)</p>
                     <?php renderImportBtn('dpia'); ?>
@@ -3187,7 +3564,7 @@ require_once __DIR__ . '/../includes/header.php';
             </div>
 
             <!-- Formulario de Encargado (Art. 15 bis Ley 21.719) - Wizard Step-by-Step -->
-            <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5 mb-5">
+            <div id="processor-create-form" class="hidden rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5 mb-5">
                 <div class="flex items-center justify-between mb-4">
                     <p class="text-[12px] font-semibold text-white flex items-center gap-2">
                         <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
@@ -3458,10 +3835,10 @@ require_once __DIR__ . '/../includes/header.php';
                     btnPrev.disabled = currentStep === 1;
                     if (currentStep === totalSteps) {
                         btnNext.style.display = 'none';
-                        btnSubmit.style.display = 'inline-flex';
+                        btnSubmit.classList.add('visible');
                     } else {
                         btnNext.style.display = 'inline-flex';
-                        btnSubmit.style.display = 'none';
+                        btnSubmit.classList.remove('visible');
                     }
                 }
 
@@ -3568,7 +3945,7 @@ require_once __DIR__ . '/../includes/header.php';
             </div>
 
             <!-- Formulario de Transferencia Internacional (Art. 21/27 Ley 21.719) -->
-            <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5 mb-5">
+            <div id="transfer-create-form" class="hidden rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5 mb-5">
                 <div class="flex items-center justify-between mb-4">
                     <p class="text-[12px] font-semibold text-white">
                         Nueva transferencia internacional
@@ -3772,10 +4149,10 @@ require_once __DIR__ . '/../includes/header.php';
 
                     if (currentStep === totalSteps) {
                         nextBtn.style.display = 'none';
-                        submitBtn.style.display = 'inline-flex';
+                        submitBtn.classList.add('visible');
                     } else {
                         nextBtn.style.display = 'inline-flex';
-                        submitBtn.style.display = 'none';
+                        submitBtn.classList.remove('visible');
                     }
                 }
 
@@ -3870,7 +4247,7 @@ require_once __DIR__ . '/../includes/header.php';
             </div>
 
             <!-- Formulario Wizard de Seudonimización (Art. 30 Ley 21.719) -->
-            <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5 mb-5">
+            <div id="pseudo-create-form" class="hidden rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5 mb-5">
                 <div class="flex items-center justify-between mb-4">
                     <p class="text-[12px] font-semibold text-white flex items-center gap-2">
                         <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
@@ -3968,7 +4345,7 @@ require_once __DIR__ . '/../includes/header.php';
                                         </select>
                                     </div>
                                 </div>
-                            </fieldset>
+                            </div>
                         </div>
 
                         <!-- Paso 2: Configuración Técnica -->
@@ -4167,10 +4544,10 @@ require_once __DIR__ . '/../includes/header.php';
                     
                     if (currentStep === totalSteps) {
                         nextBtn.style.display = 'none';
-                        submitBtn.style.display = 'inline-flex';
+                        submitBtn.classList.add('visible');
                     } else {
                         nextBtn.style.display = 'inline-flex';
-                        submitBtn.style.display = 'none';
+                        submitBtn.classList.remove('visible');
                     }
                 }
 
@@ -4241,6 +4618,55 @@ require_once __DIR__ . '/../includes/header.php';
             })();
             </script>
 
+            <!-- ═══ Lista de reglas de seudonimización ═══ -->
+            <?php if (empty($items)): ?>
+            <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-10 text-center">
+                <div class="w-12 h-12 mx-auto mb-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400"><?= cIcon('lock', 'w-5 h-5') ?></div>
+                <p class="text-[12px] font-medium text-text-heading">Sin reglas de seudonimización</p>
+                <p class="text-[10px] text-text-subtle mt-1">Crea tu primera regla con «Nuevo» o usa «Importar masivo».</p>
+            </div>
+            <?php else: ?>
+            <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm overflow-hidden">
+                <div class="px-4 py-3 border-b border-border-theme/60 flex items-center justify-between">
+                    <p class="text-[11px] font-semibold text-text-heading">Reglas registradas <span class="text-text-subtle font-normal">(<?= count($items) ?>)</span></p>
+                    <span class="text-[9px] text-text-subtle uppercase tracking-wider">Art. 30 Ley 21.719</span>
+                </div>
+                <div class="divide-y divide-white/[0.04]">
+                <?php foreach ($items as $it):
+                    $f = $it['fields'] ?? [];
+                    $pName = $it['name'] ?? $f['name'] ?? 'Regla de seudonimización';
+                    $pTech = $f['technique'] ?? $it['technique'] ?? '—';
+                    $pScope = $f['scope'] ?? $it['scope'] ?? '';
+                    $pExec = ($it['status'] ?? '') === 'executed';
+                    $techLabels = ['tokenizacion' => 'Tokenización', 'hashing' => 'Hashing (SHA-256/SHA-3)', 'cifrado_reversible' => 'Cifrado reversible', 'masking' => 'Enmascaramiento', 'format_preserving' => 'Cifrado FPE', 'differential_privacy' => 'Privacidad diferencial', 'otro' => 'Otra'];
+                    $pTechLabel = $techLabels[$pTech] ?? $pTech;
+                ?>
+                <div class="px-4 py-3.5 flex flex-col md:flex-row md:items-center gap-3 hover:bg-white/[0.02] transition-colors">
+                    <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 <?= $pExec ? 'bg-emerald-500/10 text-emerald-400' : 'bg-indigo-500/10 text-indigo-400' ?>">
+                        <?= cIcon('lock', 'w-4 h-4') ?>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <p class="text-[12px] font-medium text-text-heading truncate"><?= h($pName) ?></p>
+                            <span class="inline-flex items-center px-2 py-0.5 text-[9px] font-semibold rounded-md border bg-indigo-500/10 text-indigo-300 border-indigo-500/20"><?= h($pTechLabel) ?></span>
+                            <span class="inline-flex items-center px-2 py-0.5 text-[9px] font-semibold rounded-md border <?= $pExec ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20' ?>"><?= $pExec ? 'Ejecutada' : 'Pendiente' ?></span>
+                        </div>
+                        <p class="text-[10px] text-text-subtle mt-0.5"><?= $pScope ? h($pScope) . ' · ' : '' ?><?= h(substr($it['createdAt'] ?? '', 0, 10)) ?></p>
+                    </div>
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <?php renderEditBtn('pseudonymization', $it['_id'] ?? ''); ?>
+                        <form method="POST" class="inline">
+                            <input type="hidden" name="collection" value="pseudonymization">
+                            <input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>">
+                            <button type="submit" name="delete_item" value="1" onclick="return confirm('¿Eliminar esta regla?')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all">Eliminar</button>
+                        </form>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endif; ?>
+
             <?php elseif ($tab === 'trainings'): ?>
             <?php
             $tDone = count(array_filter($items, fn($it) => !empty($it['completed'])));
@@ -4255,7 +4681,7 @@ require_once __DIR__ . '/../includes/header.php';
             </div>
 
             <!-- Formulario wizard de capacitación (Art. 28.c Ley 21.719) -->
-            <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5 mb-5">
+            <div id="training-create-form" class="hidden rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5 mb-5">
                 <div class="flex items-center justify-between mb-4">
                     <p class="text-[12px] font-semibold text-white flex items-center gap-2">
                         <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
@@ -4578,10 +5004,10 @@ require_once __DIR__ . '/../includes/header.php';
                     prevBtn.disabled = currentStep === 1;
                     if (currentStep === totalSteps) {
                         nextBtn.style.display = 'none';
-                        submitBtn.style.display = 'inline-flex';
+                        submitBtn.classList.add('visible');
                     } else {
                         nextBtn.style.display = 'inline-flex';
-                        submitBtn.style.display = 'none';
+                        submitBtn.classList.remove('visible');
                     }
                 }
 
@@ -5232,7 +5658,119 @@ require_once __DIR__ . '/../includes/header.php';
             <?php endif; ?>
             </div>
         </div>
+
+        <!-- ═══ Dock de secciones (estilo macOS) ═══ -->
+        <nav id="compliance-dock" class="compliance-dock" aria-label="Secciones de cumplimiento">
+            <div class="compliance-dock-inner" id="compliance-dock-inner">
+                <?php foreach ($tabs as $t): $isActive = $tab === $t['id']; ?>
+                <a href="/compliance?tab=<?= $t['id'] ?>"
+                   class="dock-item <?= $isActive ? 'is-active' : '' ?>"
+                   <?= $isActive ? 'aria-current="page"' : '' ?>
+                   aria-label="<?= h($t['label']) ?>">
+                    <span class="dock-tip" role="tooltip">
+                        <span class="dock-tip-title"><?= h($t['label']) ?></span>
+                        <span class="dock-tip-sub"><?= h($t['desc']) ?></span>
+                    </span>
+                    <span class="dock-icon"><?= cIcon($t['icon'], 'w-5 h-5') ?></span>
+                    <span class="dock-label"><?= h($t['label']) ?></span>
+                    <span class="dock-dot" aria-hidden="true"></span>
+                </a>
+                <?php endforeach; ?>
+            </div>
+        </nav>
     </main>
+
+    <div id="cp-drawer-backdrop" onclick="cpCloseAllPanels()"></div>
+
+    <script>
+    // ═══ Panel lateral derecho para formularios de creación ═══
+    const CP_PANEL_IDS = ['inventory-create-form','consent-create-form','breach-create-form','dpia-create-form','processor-create-form','transfer-create-form','pseudo-create-form','training-create-form'];
+
+    function cpOpenPanel(id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.classList.remove('hidden');
+        el.classList.add('cp-drawer-mode');
+        if (!el.querySelector(':scope > .cp-drawer-close')) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'cp-drawer-close';
+            b.title = 'Cerrar';
+            b.innerHTML = '&times;';
+            b.addEventListener('click', () => cpClosePanel(id));
+            el.prepend(b);
+        }
+        document.getElementById('cp-drawer-backdrop').classList.add('show');
+    }
+    function cpClosePanel(id) {
+        const el = document.getElementById(id);
+        if (el) { el.classList.add('hidden'); el.classList.remove('cp-drawer-mode'); }
+        cpSyncBackdrop();
+    }
+    function cpCloseAllPanels() { CP_PANEL_IDS.forEach(cpClosePanel); }
+    function cpSyncBackdrop() {
+        const anyOpen = CP_PANEL_IDS.some(id => {
+            const el = document.getElementById(id);
+            return el && !el.classList.contains('hidden') && el.classList.contains('cp-drawer-mode');
+        });
+        document.getElementById('cp-drawer-backdrop').classList.toggle('show', anyOpen);
+    }
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') cpCloseAllPanels(); });
+
+    // Botón "Nuevo" automático en cada sección + backdrop sincronizado
+    document.addEventListener('DOMContentLoaded', () => {
+        CP_PANEL_IDS.forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            // El contenedor de inventario ya tiene su botón "Nuevo"
+            if (id !== 'inventory-create-form') {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'cp-new-btn mb-4';
+                btn.innerHTML = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg> Nuevo';
+                btn.addEventListener('click', () => cpOpenPanel(id));
+                el.parentNode.insertBefore(btn, el);
+            }
+            new MutationObserver(cpSyncBackdrop).observe(el, { attributes: true, attributeFilter: ['class'] });
+        });
+    });
+    </script>
+
+    <script>
+    // Magnificación estilo macOS Dock (vertical)
+    (function () {
+        const dock = document.getElementById('compliance-dock-inner');
+        if (!dock) return;
+        const fine = window.matchMedia('(pointer: fine)').matches;
+        const isVertical = () => window.matchMedia('(min-width: 768px)').matches;
+        if (!fine) return;
+
+        const MAX_SCALE = 1.4, RANGE = 120;
+        let raf = null;
+
+        function magnify(clientY) {
+            dock.querySelectorAll('.dock-item').forEach(item => {
+                const rect = item.getBoundingClientRect();
+                const center = rect.top + rect.height / 2;
+                const dist = Math.abs(clientY - center);
+                const t = Math.max(0, 1 - dist / RANGE);
+                const scale = 1 + t * (MAX_SCALE - 1);
+                item.style.transform = 'translateX(' + (10 * t) + 'px) scale(' + scale.toFixed(3) + ')';
+            });
+        }
+        function reset() {
+            dock.querySelectorAll('.dock-item').forEach(item => { item.style.transform = ''; });
+        }
+        dock.addEventListener('mousemove', e => {
+            if (!isVertical() || raf) return;
+            raf = requestAnimationFrame(() => { magnify(e.clientY); raf = null; });
+        });
+        dock.addEventListener('mouseleave', reset);
+        // Centrar el ítem activo al cargar
+        const active = dock.querySelector('.dock-item.is-active');
+        if (active) active.scrollIntoView({ block: 'center', inline: 'nearest' });
+    })();
+    </script>
 
     <!-- JavaScript para el Wizard de Consentimientos -->
     <script>
@@ -5996,10 +6534,13 @@ function renderComplianceStat($label, $value, $color = 'text-white', $icon = '')
 <!-- ═══ MODAL EDICIÓN GENÉRICA ═══ -->
 <div id="generic-edit-modal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
     <div class="bg-bg-panel border border-border-theme rounded-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto scrollbar-custom shadow-2xl">
-        <div class="flex items-center justify-between px-6 py-4 border-b border-border-theme">
-            <div>
-                <h3 class="text-[15px] font-semibold text-white">Editar registro</h3>
-                <p class="text-[11px] text-text-subtle">Edición rápida de los campos del registro</p>
+        <div class="flex items-center justify-between px-6 py-4 border-b border-border-theme sticky top-0 bg-bg-panel z-10">
+            <div class="flex items-center gap-3">
+                <span class="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/25 flex items-center justify-center text-blue-400"><?= cIcon('pen', 'w-4 h-4') ?></span>
+                <div>
+                    <h3 class="text-[15px] font-semibold text-white">Editar registro</h3>
+                    <p class="text-[11px] text-text-subtle">Actualización de evidencia de cumplimiento · Ley 21.719</p>
+                </div>
             </div>
             <button type="button" onclick="document.getElementById('generic-edit-modal').classList.add('hidden')" class="text-text-muted hover:text-white transition-colors p-1.5 rounded-lg hover:bg-bg-elevated">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -6008,7 +6549,7 @@ function renderComplianceStat($label, $value, $color = 'text-white', $icon = '')
         <form id="generic-edit-form" class="p-6 space-y-4">
             <input type="hidden" id="generic-edit-collection">
             <input type="hidden" id="generic-edit-id">
-            <div id="generic-edit-fields" class="space-y-3"></div>
+            <div id="generic-edit-fields" class="grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
             <div id="generic-edit-error" class="hidden rounded-lg bg-red-500/10 border border-red-500/30 p-3 text-[11px] text-red-400"></div>
             <div class="flex justify-end gap-3 pt-4 border-t border-border-subtle">
                 <button type="button" onclick="document.getElementById('generic-edit-modal').classList.add('hidden')" class="px-4 py-2 rounded-lg text-[11px] font-medium bg-bg-elevated text-text-body border border-border-theme transition-all">Cancelar</button>
@@ -7454,29 +7995,66 @@ function openGenericEdit(collection, id) {
         });
 }
 
+const GENERIC_FIELD_LABELS = {
+    name:'Nombre', title:'Título', description:'Descripción', purpose:'Finalidad', email:'Correo electrónico',
+    legalBasis:'Base legal', risk:'Nivel de riesgo', riskLevel:'Nivel de riesgo', severity:'Severidad',
+    status:'Estado', date:'Fecha', startDate:'Fecha de inicio', endDate:'Fecha de término', dueDate:'Fecha límite',
+    dataCategories:'Categorías de datos', dataSubjects:'Categorías de titulares', recipients:'Destinatarios',
+    sensitive:'Datos sensibles', source:'Origen', sourceType:'Tipo de origen', sourceId:'ID de origen',
+    controller:'Responsable', controllerName:'Nombre del responsable', processor:'Encargado',
+    country:'País', region:'Región', retention:'Retención', retentionDays:'Días de retención',
+    notes:'Notas', comments:'Comentarios', attendee:'Asistente', attendees:'Asistentes',
+    type:'Tipo', category:'Categoría', owner:'Responsable interno', department:'Departamento',
+    location:'Ubicación', url:'URL', link:'Enlace', phone:'Teléfono', address:'Dirección',
+    company:'Empresa', companyName:'Nombre de empresa', evidence:'Evidencia', document:'Documento',
+    consentType:'Tipo de consentimiento', consentDate:'Fecha de consentimiento', revoked:'Revocado',
+    method:'Método', channel:'Canal', subject:'Titular', subjectType:'Tipo de titular',
+    fields:'Campos', fieldsCount:'Nº de campos', completed:'Completado', active:'Activo',
+    signedAt:'Fecha de firma', expiresAt:'Fecha de expiración', notifiedAt:'Fecha de notificación',
+    authority:'Autoridad', regulation:'Normativa', article:'Artículo', reference:'Referencia',
+    measures:'Medidas', securityMeasures:'Medidas de seguridad', impact:'Impacto', probability:'Probabilidad'
+};
+
+function humanizeFieldName(key) {
+    if (GENERIC_FIELD_LABELS[key]) return GENERIC_FIELD_LABELS[key];
+    return key
+        .replace(/^fields\[(.+)\]$/, '$1')
+        .replace(/([a-záéíóú])([A-ZÁÉÍÓÚ])/g, '$1 $2')
+        .replace(/[_-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/^./, c => c.toUpperCase());
+}
+
 function renderGenericEditFields(item) {
     const container = document.getElementById('generic-edit-fields');
     const skip = ['_id','userId','createdAt','updatedAt','token','companyId'];
     container.innerHTML = '';
-    Object.keys(item).forEach(key => {
-        if (skip.includes(key)) return;
+    const entries = Object.keys(item).filter(k => !skip.includes(k));
+    if (!entries.length) {
+        container.innerHTML = '<p class="text-[11px] text-text-subtle sm:col-span-2">Sin campos editables.</p>';
+        return;
+    }
+    entries.forEach(key => {
         const val = item[key];
-        const label = '<label class="compliance-form-label">' + escHtml(key) + '</label>';
-        let input = '';
-        if (key.endsWith('At') || /date|Date|fecha/i.test(key)) {
-            input = '<input type="text" name="' + escHtml(key) + '" value="' + escHtml(val) + '" class="compliance-input">';
+        const label = '<label class="compliance-form-label">' + escHtml(humanizeFieldName(key)) + '</label>';
+        let input = '', wide = false;
+        if (typeof val === 'boolean') {
+            input = '<label class="flex items-center gap-2.5 min-h-[42px] px-3 rounded-[0.7rem] border border-border-theme bg-bg-input/60 cursor-pointer text-[11px] text-text-body"><input type="checkbox" name="' + escHtml(key) + '" ' + (val ? 'checked' : '') + ' class="w-4 h-4 rounded border-border-theme text-primary-600 focus:ring-primary-500" value="1"> Sí</label>';
         } else if (Array.isArray(val)) {
-            input = '<textarea name="' + escHtml(key) + '" rows="2" class="compliance-textarea font-mono" placeholder="Uno por línea">' + escHtml(val.join('\\n')) + '</textarea>';
-        } else if (typeof val === 'boolean') {
-            input = '<label class="flex items-center gap-2 text-[11px] text-text-body"><input type="checkbox" name="' + escHtml(key) + '" ' + (val ? 'checked' : '') + ' class="w-4 h-4 rounded border-border-theme text-primary-600 focus:ring-primary-500" value="1"> Sí</label>';
+            input = '<textarea name="' + escHtml(key) + '" rows="3" class="compliance-textarea font-mono" placeholder="Uno por línea">' + escHtml(val.join('\n')) + '</textarea>';
+            wide = true;
         } else if (typeof val === 'number') {
             input = '<input type="number" name="' + escHtml(key) + '" value="' + escHtml(val) + '" class="compliance-input">';
-        } else if (String(val).includes('\\n') || String(val).length > 80) {
-            input = '<textarea name="' + escHtml(key) + '" rows="3" class="compliance-textarea">' + escHtml(val) + '</textarea>';
+        } else if (key.endsWith('At') || /date|Date|fecha/i.test(key)) {
+            input = '<input type="text" name="' + escHtml(key) + '" value="' + escHtml(val) + '" class="compliance-input">';
+        } else if (String(val).includes('\n') || String(val).length > 80) {
+            input = '<textarea name="' + escHtml(key) + '" rows="4" class="compliance-textarea">' + escHtml(val) + '</textarea>';
+            wide = true;
         } else {
             input = '<input type="text" name="' + escHtml(key) + '" value="' + escHtml(val) + '" class="compliance-input">';
         }
-        container.insertAdjacentHTML('beforeend', '<div class="compliance-form-cell">' + label + input + '</div>');
+        container.insertAdjacentHTML('beforeend', '<div class="compliance-form-cell' + (wide ? ' sm:col-span-2' : '') + '">' + label + input + '</div>');
     });
 }
 

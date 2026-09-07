@@ -39,6 +39,7 @@
 
 <script>
 // ── Guided tour (multi-página) ──
+const TOUR_ENABLED = false; // Tour deshabilitado temporalmente
 const TOUR_KEY = 'sl_tour_step';
 const TOUR_STEPS = [
     { page: '/dashboard', sel: '.tour-sidebar-logo', title: 'Bienvenido a SecureLab', text: 'Tu plataforma integral de ciberseguridad y cumplimiento. Este recorrido rápido te muestra las secciones principales.' },
@@ -77,6 +78,7 @@ let detailIdx = 0;
 let detailSteps = [];
 
 function startTour() {
+    if (!TOUR_ENABLED) return;
     tourIdx = 0;
     detailMode = false;
     sessionStorage.setItem(TOUR_KEY, '0');
@@ -183,6 +185,7 @@ function showTourStep() {
 
 // Reanudar tour tras navegar de página
 document.addEventListener('DOMContentLoaded', () => {
+    if (!TOUR_ENABLED) return;
     const saved = sessionStorage.getItem(TOUR_KEY);
     if (saved !== null) {
         tourIdx = parseInt(saved, 10) || 0;

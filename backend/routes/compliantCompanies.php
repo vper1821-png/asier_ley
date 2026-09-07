@@ -2,7 +2,8 @@
 // Compliant Companies routes
 
 function search() {
-    $search = $_GET['search'] ?? ($_POST['search'] ?? '');
+    $search = $_GET['q'] ?? $_GET['search'] ?? ($_POST['q'] ?? ($_POST['search'] ?? ''));
+    $search = trim($search);
     $db = Database::getInstance();
 
     $companies = $db->find('users', ['isActive' => true]);

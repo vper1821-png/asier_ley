@@ -115,6 +115,20 @@ function download() {
     $id = $_GET['id'] ?? '';
     $db = Database::getInstance();
 
+    // Servir PDFs generados por PDFGenerator guardados en disco (por nombre de archivo)
+    if (preg_match('/\.pdf$/i', $id)) {
+        $safe = basename($id);
+        $path = __DIR__ . '/../reports/' . $safe;
+        if (is_file($path)) {
+            header('Content-Type: application/pdf');
+            header('Content-Disposition: attachment; filename="' . $safe . '"');
+            header('Content-Length: ' . filesize($path));
+            readfile($path);
+            exit;
+        }
+        json_error('archivo no encontrado', 404);
+    }
+
     if ($id === '' || $id === 'all') {
         $filename = 'reportes.pdf';
         $reportTitle = 'Reporte de Cumplimiento - ' . date('Y-m-d');
