@@ -11,24 +11,7 @@ $limit = 100;
 $page = (int)($_GET['page'] ?? 1);
 if ($page < 1) $page = 1;
 $offset = ($page - 1) * $limit;
-
-// Filtros server-side (aplican a todo el histórico, no solo a la página cargada)
-$fSearch = trim($_GET['q'] ?? '');
-$fOp = trim($_GET['operation'] ?? '');
-$fDb = trim($_GET['database'] ?? '');
-$fEngine = trim($_GET['engine'] ?? '');
-$fRisk = trim($_GET['risk'] ?? '');
-
-$logsRes = api_post_form('/api/databases/logs/list', [
-    'token' => $token,
-    'limit' => $limit,
-    'offset' => $offset,
-    'search' => $fSearch,
-    'operation' => $fOp,
-    'database' => $fDb,
-    'engine' => $fEngine,
-    'risk' => $fRisk,
-]);
+$logsRes = api_post_form('/api/databases/logs/list', ['token' => $token, 'limit' => $limit, 'offset' => $offset]);
 $logs = is_array($logsRes) && empty($logsRes['error']) ? ($logsRes['logs'] ?? $logsRes) : [];
 if (!is_array($logs)) $logs = [];
 $total = (int)($logsRes['total'] ?? count($logs));
@@ -54,21 +37,6 @@ foreach ($logs as $log) {
     if (in_array($operation, ['CREATE', 'ALTER', 'DROP', 'TRUNCATE'], true)) $ddl++;
 }
 arsort($operations);
-// Asegurar que los valores filtrados actualmente aparezcan en los selects
-if ($fOp !== '' && !isset($operations[$fOp])) $operations = [$fOp => 0] + $operations;
-if ($fDb !== '' && !isset($databases[$fDb])) $databases[$fDb] = true;
-if ($fEngine !== '' && !isset($engines[$fEngine])) $engines[$fEngine] = true;
-
-// Querystring para mantener los filtros en la paginación
-$filterQS = function ($extra = []) {
-    return http_build_query(array_filter(array_merge([
-        'q' => $GLOBALS['fSearch'] ?? '',
-        'operation' => $GLOBALS['fOp'] ?? '',
-        'database' => $GLOBALS['fDb'] ?? '',
-        'engine' => $GLOBALS['fEngine'] ?? '',
-        'risk' => $GLOBALS['fRisk'] ?? '',
-    ], $extra), fn($v) => $v !== '' && $v !== null));
-};
 
 function dbLogTypeConfig($operation) {
     return match (strtoupper($operation)) {
@@ -143,11 +111,6 @@ $riskTotal = (int)($stats['suspicious'] ?? $riskCount);
                 </div>
                 <div class="flex items-center gap-2 flex-wrap">
                     <span class="hidden lg:inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/[0.05] bg-white/[0.03] text-[10px] text-text-muted"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span><?= count($logs) ?> eventos cargados</span>
-                    <a href="/api-proxy.php?path=<?= urlencode('/api/databases/logs/download') ?>&amp;<?= h($filterQS()) ?>"
-                        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/25 transition-all" title="Descargar todos los logs (con los filtros actuales) en CSV">
-                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                        Descargar CSV
-                    </a>
                     <button onclick="location.reload()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-white/[0.03] hover:bg-white/[0.06] text-text-muted hover:text-text-body border border-white/[0.05] transition-all" title="Refrescar">
                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                         Refrescar
@@ -220,31 +183,30 @@ $riskTotal = (int)($stats['suspicious'] ?? $riskCount);
 
             <!-- Filters & Search -->
             <div class="rounded-xl border border-border-theme bg-bg-panel/40 p-3 md:p-4">
-                <form method="get" class="flex flex-col md:flex-row gap-3 mb-3">
+                <div class="flex flex-col md:flex-row gap-3 mb-3">
                     <div class="flex-1 relative min-w-0">
                         <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-subtle" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                        <input type="search" name="q" id="log-search" value="<?= h($fSearch) ?>" placeholder="Buscar consulta, usuario, base de datos, host… (Enter para filtrar)" class="w-full bg-bg-input border border-border-theme text-[12px] text-white rounded-lg pl-10 pr-3 py-2 focus:outline-none focus:border-accent transition-all">
+                        <input type="search" id="log-search" placeholder="Buscar consulta, usuario, base de datos, host…" class="w-full bg-bg-input border border-border-theme text-[12px] text-white rounded-lg pl-10 pr-3 py-2 focus:outline-none focus:border-accent transition-all" oninput="applyLogFilters()">
                     </div>
-                    <select name="operation" id="log-operation" onchange="this.form.submit()" class="bg-bg-input border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all w-auto min-w-[150px]">
+                    <select id="log-operation" onchange="applyLogFilters()" class="bg-bg-input border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all w-auto min-w-[150px]">
                         <option value="">Todas las operaciones</option>
-                        <?php foreach (array_keys($operations) as $operation): ?><option value="<?= h($operation) ?>" <?= $fOp === $operation ? 'selected' : '' ?>><?= h($operation) ?></option><?php endforeach; ?>
+                        <?php foreach (array_keys($operations) as $operation): ?><option value="<?= h($operation) ?>"><?= h($operation) ?></option><?php endforeach; ?>
                     </select>
-                    <select name="database" id="log-database" onchange="this.form.submit()" class="bg-bg-input border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all w-auto min-w-[150px]">
+                    <select id="log-database" onchange="applyLogFilters()" class="bg-bg-input border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all w-auto min-w-[150px]">
                         <option value="">Todas las bases</option>
-                        <?php foreach (array_keys($databases) as $database): ?><option value="<?= h($database) ?>" <?= $fDb === $database ? 'selected' : '' ?>><?= h($database) ?></option><?php endforeach; ?>
+                        <?php foreach (array_keys($databases) as $database): ?><option value="<?= h($database) ?>"><?= h($database) ?></option><?php endforeach; ?>
                     </select>
-                    <select name="engine" id="log-engine" onchange="this.form.submit()" class="bg-bg-input border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all w-auto min-w-[130px]">
+                    <select id="log-engine" onchange="applyLogFilters()" class="bg-bg-input border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all w-auto min-w-[130px]">
                         <option value="">Todos los motores</option>
-                        <?php foreach (array_keys($engines) as $engine): ?><option value="<?= h($engine) ?>" <?= $fEngine === $engine ? 'selected' : '' ?>><?= h(ucfirst($engine)) ?></option><?php endforeach; ?>
+                        <?php foreach (array_keys($engines) as $engine): ?><option value="<?= h($engine) ?>"><?= h(ucfirst($engine)) ?></option><?php endforeach; ?>
                     </select>
-                    <select name="risk" id="log-risk" onchange="this.form.submit()" class="bg-bg-input border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all w-auto min-w-[130px]">
+                    <select id="log-risk" onchange="applyLogFilters()" class="bg-bg-input border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all w-auto min-w-[130px]">
                         <option value="">Todo riesgo</option>
-                        <option value="risk" <?= $fRisk === 'risk' ? 'selected' : '' ?>>Con riesgo</option>
-                        <option value="safe" <?= $fRisk === 'safe' ? 'selected' : '' ?>>Sin riesgo</option>
+                        <option value="risk">⚠️ Con riesgo</option>
+                        <option value="safe">✅ Sin riesgo</option>
                     </select>
-                    <button type="submit" class="px-3 py-2 rounded-lg border border-accent/40 bg-accent/10 text-[11px] font-semibold text-accent hover:bg-accent/20 transition-all whitespace-nowrap">Filtrar</button>
-                    <a href="?" class="inline-flex items-center px-3 py-2 rounded-lg border border-border-theme text-[11px] text-text-muted hover:text-white hover:bg-white/[0.04] transition-all whitespace-nowrap">Limpiar</a>
-                </form>
+                    <button type="button" onclick="resetLogFilters()" class="px-3 py-2 rounded-lg border border-border-theme text-[11px] text-text-muted hover:text-white hover:bg-white/[0.04] transition-all whitespace-nowrap">Limpiar</button>
+                </div>
 
                 <!-- Resultados -->
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-3 border-t border-border-theme/30">
@@ -344,17 +306,23 @@ $riskTotal = (int)($stats['suspicious'] ?? $riskCount);
                     <?php endforeach; ?>
                 </div>
 
+                <div id="logs-empty-filter" class="hidden rounded-2xl border border-border-theme bg-bg-panel/40 p-10 text-center">
+                    <p class="text-sm font-semibold text-text-heading">No hay coincidencias</p>
+                    <p class="text-[11px] text-text-muted mt-1">Prueba con otros filtros o limpia la búsqueda.</p>
+                    <button onclick="resetLogFilters()" class="mt-4 px-4 py-2 rounded-lg text-[11px] font-medium bg-primary-500/20 hover:bg-primary-500/30 text-primary-300 border border-primary-500/30 transition-all">Limpiar filtros</button>
+                </div>
+
                 <?php if ($totalPages > 1): ?>
                 <div class="rounded-xl border border-border-theme bg-bg-panel/40 p-3 md:p-4">
                     <div class="flex items-center justify-between gap-3">
                         <?php if ($page > 1): ?>
-                            <a href="?<?= h($filterQS(['page' => $page - 1])) ?>" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-primary-500/10 text-primary-400 border border-primary-500/20 hover:bg-primary-500/15 transition-all">← Anterior</a>
+                            <a href="?page=<?= $page - 1 ?>" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-primary-500/10 text-primary-400 border border-primary-500/20 hover:bg-primary-500/15 transition-all">← Anterior</a>
                         <?php else: ?>
                             <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-bg-base text-text-subtle border border-border-theme opacity-50 cursor-not-allowed">← Anterior</span>
                         <?php endif; ?>
                         <span class="text-[11px] text-text-subtle">Página <?= h($page) ?> de <?= h($totalPages) ?> · <?= h($total) ?> eventos</span>
                         <?php if ($page < $totalPages): ?>
-                            <a href="?<?= h($filterQS(['page' => $page + 1])) ?>" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-primary-500/10 text-primary-400 border border-primary-500/20 hover:bg-primary-500/15 transition-all">Siguiente →</a>
+                            <a href="?page=<?= $page + 1 ?>" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-primary-500/10 text-primary-400 border border-primary-500/20 hover:bg-primary-500/15 transition-all">Siguiente →</a>
                         <?php else: ?>
                             <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-bg-base text-text-subtle border border-border-theme opacity-50 cursor-not-allowed">Siguiente →</span>
                         <?php endif; ?>
@@ -369,6 +337,30 @@ $riskTotal = (int)($stats['suspicious'] ?? $riskCount);
 
 <script>
 let compactLogs = false;
+function applyLogFilters() {
+    const search = (document.getElementById('log-search')?.value || '').toLowerCase().trim();
+    const operation = document.getElementById('log-operation')?.value || '';
+    const database = document.getElementById('log-database')?.value || '';
+    const engine = document.getElementById('log-engine')?.value || '';
+    const risk = document.getElementById('log-risk')?.value || '';
+    let visible = 0;
+    document.querySelectorAll('.db-log-card').forEach(card => {
+        const matches = (!search || card.dataset.search.includes(search))
+            && (!operation || card.dataset.operation === operation)
+            && (!database || card.dataset.database === database)
+            && (!engine || card.dataset.engine === engine)
+            && (!risk || card.dataset.risk === risk);
+        card.classList.toggle('hidden', !matches);
+        if (matches) visible++;
+    });
+    const counter = document.getElementById('log-result-count');
+    if (counter) counter.textContent = visible;
+    document.getElementById('logs-empty-filter')?.classList.toggle('hidden', visible !== 0);
+}
+function resetLogFilters() {
+    ['log-search', 'log-operation', 'log-database', 'log-engine', 'log-risk'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    applyLogFilters();
+}
 function toggleLogDetail(id, button) {
     document.getElementById(id)?.classList.toggle('hidden');
     button.querySelector('.log-chevron')?.classList.toggle('rotate-180');

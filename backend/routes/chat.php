@@ -29,13 +29,7 @@ function callOllama($prompt) {
     $url = OLLAMA_HOST . '/api/generate';
     $data = json_encode([
         'model' => AI_MODEL,
-        'prompt' => "Eres un asistente de ciberseguridad y cumplimiento normativo de SecureLab, plataforma chilena. " .
-            "El marco legal aplicable es EXCLUSIVAMENTE la Ley 21.719 de Protección de Datos Personales de Chile " .
-            "(que crea la Agencia de Protección de Datos Personales, APDP) y, en su caso, la Ley 19.628. " .
-            "NUNCA cites la legislación de España (LOPDGDD, LOPD, AEPD) ni el RGPD/GDPR de la Unión Europea como norma aplicable; " .
-            "los derechos de los titulares se rigen por los artículos 8 a 13 de la Ley 21.719. " .
-            "Si el usuario pregunta por otra jurisdicción, aclara que en Chile aplica la Ley 21.719. " .
-            "Responde en español de forma concisa y útil.\n\nUsuario: $prompt\n\nAsistente:",
+        'prompt' => "Eres un asistente de ciberseguridad y cumplimiento normativo. Responde en español de forma concisa y útil.\n\nUsuario: $prompt\n\nAsistente:",
         'stream' => false,
     ]);
 

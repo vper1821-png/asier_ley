@@ -98,32 +98,11 @@ function updateRequest() {
         json_error('acceso denegado', 403);
     }
 
-    $now = date('c');
-    $respondedBy = $user['name'] ?? ($user['companyName'] ?? ($user['email'] ?? 'Responsable'));
-
     $updates = [
-        'updatedAt' => $now,
-        // Siempre guardar el contenido de la respuesta (permite editar o vaciar)
-        'response' => $respuesta,
-        'respondedBy' => $respondedBy,
-        'respondedAt' => $now,
+        'updatedAt' => date('c'),
     ];
-    if ($estado !== '') {
-        $updates['status'] = $estado;
-        if (in_array($estado, ['completed', 'resolved'], true)) $updates['resolvedAt'] = $now;
-        if ($estado === 'rejected') $updates['rejectedAt'] = $now;
-    }
-
-    // Historial de gestión (queda detallado en el PDF)
-    $history = $req['statusHistory'] ?? [];
-    if (!is_array($history)) $history = [];
-    $history[] = [
-        'status' => $estado !== '' ? $estado : ($req['status'] ?? 'pending'),
-        'note' => $respuesta,
-        'by' => $respondedBy,
-        'at' => $now,
-    ];
-    $updates['statusHistory'] = $history;
+    if ($estado) $updates['status'] = $estado;
+    if ($respuesta) $updates['response'] = $respuesta;
 
     $db->updateOne('arco_requests', ['requestId' => $requestId], $updates);
     json_response(['success' => true]);
@@ -198,19 +177,7 @@ function downloadResponse() {
     $rut = $solicitante['rut'] ?? ($req['rut'] ?? '—');
     $email = $solicitante['email'] ?? ($req['email'] ?? '—');
     $requestDate = substr(($req['createdAt'] ?? date('c')), 0, 10);
-    $responseDate = $req['respondedAt'] ?? $req['resolvedAt'] ?? $req['updatedAt'] ?? date('c');
-    $responseDate = date('d/m/Y', strtotime($responseDate));
-
-    $statusLabels = [
-        'pending' => 'Pendiente',
-        'in_progress' => 'En proceso',
-        'completed' => 'Completada',
-        'resolved' => 'Completada',
-        'rejected' => 'Rechazada',
-    ];
-    $statusLabel = $statusLabels[$req['status'] ?? 'pending'] ?? ucfirst($req['status'] ?? 'pendiente');
-    $respondedBy = $req['respondedBy'] ?? $dpdName;
-    $statusHistory = is_array($req['statusHistory'] ?? null) ? $req['statusHistory'] : [];
+    $responseDate = date('d/m/Y');
 
     $h = fn($s) => htmlspecialchars((string)($s ?? ''), ENT_QUOTES, 'UTF-8');
 
@@ -297,8 +264,6 @@ function downloadResponse() {
     $html .= "<div><span class='label'>Tipo de derecho:</span> {$h($typeLabel)}</div>";
     $html .= "<div><span class='label'>Fecha de recepción:</span> {$h($requestDate)}</div>";
     $html .= "<div><span class='label'>Fecha de respuesta:</span> {$h($responseDate)}</div>";
-    $html .= "<div><span class='label'>Estado:</span> {$h($statusLabel)}</div>";
-    $html .= "<div><span class='label'>Gestionada por:</span> {$h($respondedBy)}</div>";
     $html .= "</div>";
 
     $html .= "<div class='subject'>Respuesta a solicitud de {$h($typeLabel)} - Ley 21.719</div>";
@@ -313,34 +278,8 @@ function downloadResponse() {
     foreach ($bodyText as $p) {
         $html .= "<p>{$h($p)}</p>";
     }
+    $html .= "<p><strong>Nota del DPO:</strong> " . $h($req['response'] ?? 'Sin notas adicionales.') . "</p>";
     $html .= "</div>";
-
-    // Respuesta entregada al titular (contenido guardado al cambiar el estado)
-    $responseText = trim((string)($req['response'] ?? ''));
-    $html .= "<div class='subject'>Respuesta del responsable</div>";
-    if ($responseText !== '') {
-        foreach (preg_split('/\r?\n/', $responseText) as $line) {
-            if (trim($line) !== '') $html .= "<p style='text-align:justify;font-size:10px;margin-bottom:8px'>{$h(trim($line))}</p>";
-        }
-        $html .= "<p style='font-size:8px;color:#555555;margin-top:4px'>Registrada por {$h($respondedBy)} el {$h($responseDate)}</p>";
-    } else {
-        $html .= "<p style='font-size:10px;color:#555555;font-style:italic'>Aún no se ha registrado una respuesta específica para esta solicitud.</p>";
-    }
-
-    // Historial de gestión
-    if (!empty($statusHistory)) {
-        $html .= "<div class='subject' style='font-size:10px;margin-top:18px'>Historial de gestión</div>";
-        $html .= "<table class='data-table'><tr><th>Fecha</th><th>Estado</th><th>Responsable</th><th>Detalle</th></tr>";
-        foreach ($statusHistory as $ev) {
-            $evDate = !empty($ev['at']) ? date('d/m/Y H:i', strtotime($ev['at'])) : '—';
-            $evStatus = $statusLabels[$ev['status'] ?? ''] ?? ucfirst($ev['status'] ?? '—');
-            $evBy = $ev['by'] ?? '—';
-            $evNote = trim((string)($ev['note'] ?? ''));
-            if (mb_strlen($evNote) > 120) $evNote = mb_substr($evNote, 0, 120) . '…';
-            $html .= "<tr><td>{$h($evDate)}</td><td>{$h($evStatus)}</td><td>{$h($evBy)}</td><td>{$h($evNote !== '' ? $evNote : '—')}</td></tr>";
-        }
-        $html .= "</table>";
-    }
 
     $html .= "<div class='signature'><p>Atentamente,</p>";
     $html .= "<p><strong>{$h($dpdName)}</strong><br>Delegado de Protección de Datos</p></div>";

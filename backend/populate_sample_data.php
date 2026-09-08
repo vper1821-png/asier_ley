@@ -208,7 +208,7 @@ $dpas = [
         'endDate' => date('c', strtotime('+1 year')),
         'dataCategories' => ['personales', 'comercial'],
         'transferLocation' => 'EEUU',
-        'safeguards' => 'Cláusulas contractuales tipo (Art. 27 Ley 21.719)',
+        'safeguards' => 'GDPR Art. 46 Clauses',
         'status' => 'active',
         'reviewDate' => date('c')
     ],

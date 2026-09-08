@@ -1135,10 +1135,9 @@ function searchCompaniesPublic($body, $db) {
 
 // PDF Generation Functions
 function generateCompliancePDF($resource) {
-    try {
     $user = Auth::requireAuth();
     $db = Database::getInstance();
-
+    
     require_once __DIR__ . '/../PDFGenerator.php';
     $pdfGenerator = new PDFGenerator($db, $user);
     
@@ -1229,16 +1228,12 @@ function generateCompliancePDF($resource) {
         default:
             json_error('Recurso no soportado para generación de PDF', 400);
     }
-
+    
     json_response([
         'success' => true,
-        'pdfUrl' => $result['pdfUrl'] ?? null,
-        'pdfBase64' => $result['pdfBase64'] ?? null,
-        'html' => $result['html'] ?? null,
-        'message' => $result['message'] ?? ''
+        'pdfUrl' => $result['pdfUrl'],
+        'pdfBase64' => $result['pdfBase64'],
+        'html' => $result['html'],
+        'message' => $result['message']
     ]);
-    } catch (\Throwable $e) {
-        error_log('generateCompliancePDF error (' . $resource . '): ' . $e->getMessage());
-        json_error('No se pudo generar el documento: ' . $e->getMessage(), 500);
-    }
 }
