@@ -136,9 +136,9 @@ function heartbeat() {
         'lastSeen' => date('c'),
     ];
 
-    $existingHost = $db->findOne('host_monitor', ['agentId' => $agentId]);
+    $existingHost = $db->findOne('host_monitor', ['agentId' => $agentId, 'userId' => $decoded['userId']]);
     if ($existingHost) {
-        $db->updateOne('host_monitor', ['agentId' => $agentId], $hostData);
+        $db->updateOne('host_monitor', ['agentId' => $agentId, 'userId' => $decoded['userId']], $hostData);
     } else {
         $db->insertOne('host_monitor', $hostData);
     }
