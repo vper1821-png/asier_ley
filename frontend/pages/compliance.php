@@ -6456,7 +6456,7 @@ function renderComplianceStat($label, $value, $color = 'text-white', $icon = '')
                         <option value="avanzado" <?= ($config['preventionModel'] ?? '') === 'avanzado' ? 'selected' : '' ?>>Modelo Avanzado</option>
                         <option value="certificado_externo" <?= ($config['preventionModel'] ?? '') === 'certificado_externo' ? 'selected' : '' ?>>Certificado por entidad externa</option>
                     </select>
-                    <span class="compliance-hint">Si la empresa tiene un modelo de prevención certificado según Art. 31.2</span>
+                    <span class="compliance-hint">Si la empresa tiene un modelo de prevención de infracciones certificado según Art. 49 y 51 de la Ley 21.719</span>
                 </div>
             </div>
             <div class="compliance-form-row">
@@ -6894,8 +6894,17 @@ async function generateCompliancePDF(resource) {
         const response = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/compliance/' + resource + '/pdf'), {
             method: 'GET'
         });
-        
-        const data = await response.json();
+
+        const rawText = await response.text();
+        let data = null;
+        try {
+            data = rawText ? JSON.parse(rawText) : null;
+        } catch (parseErr) {
+            data = null;
+        }
+        if (!data) {
+            throw new Error('El servidor no devolvió una respuesta válida (HTTP ' + response.status + '). Revisa los logs del backend.');
+        }
         
         if (data.success) {
             if (data.pdfBase64 && data.pdfBase64.trim() !== '') {

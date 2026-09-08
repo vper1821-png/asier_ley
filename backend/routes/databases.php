@@ -177,16 +177,51 @@ function executeDBCommandViaAgent($userId, $command, $record, $timeout = 25) {
         '$or' => [['agentId' => $agentId], ['_id' => $agentId]],
         'userId' => $userId
     ]);
+
+    $recent = date('c', strtotime('-30 minutes'));
+    $isOnline = fn($a) => $a
+        && ($a['status'] ?? '') === 'online'
+        && !empty($a['lastSeen'])
+        && $a['lastSeen'] >= $recent;
+
+    // Si el agente asignado no existe o está offline (p.ej. se re-registró con otro
+    // agentId tras reiniciar), intentar localizar el mismo equipo por hostname.
+    if (!$isOnline($agent) && !empty($agent['hostname'])) {
+        $sameHost = array_values(array_filter(
+            $db->find('agents', ['userId' => $userId, 'hostname' => $agent['hostname']]),
+            $isOnline
+        ));
+        if ($sameHost) {
+            usort($sameHost, fn($a, $b) => strcmp($b['lastSeen'], $a['lastSeen']));
+            $agent = $sameHost[0];
+        }
+    }
+
+    // Último recurso: si la cuenta tiene exactamente un agente online, usarlo.
+    if (!$isOnline($agent)) {
+        $online = array_values(array_filter(
+            $db->find('agents', ['userId' => $userId]),
+            $isOnline
+        ));
+        if (count($online) === 1) {
+            $agent = $online[0];
+        }
+    }
+
     if (!$agent) {
         json_error('el agente asignado a esta conexión ya no existe');
     }
-
-    $recent = date('c', strtotime('-30 minutes'));
-    $isOnline = ($agent['status'] ?? '') === 'online'
-        && !empty($agent['lastSeen'])
-        && $agent['lastSeen'] >= $recent;
-    if (!$isOnline) {
+    if (!$isOnline($agent)) {
         json_error('el agente "' . ($agent['hostname'] ?? $agentId) . '" no está online. Inicia el agente y vuelve a intentarlo.');
+    }
+
+    // Si el agente se re-registró con otro agentId, actualizar la referencia en la conexión
+    $resolvedAgentId = $agent['agentId'] ?? '';
+    if ($resolvedAgentId !== '' && $resolvedAgentId !== $agentId) {
+        $db->updateOne('databases', ['_id' => $record['_id']], [
+            'agentId' => $resolvedAgentId,
+            'agentName' => $agent['hostname'] ?? '',
+        ]);
     }
 
     $params = [
@@ -526,6 +561,40 @@ function syncAgent() {
     json_response(['success' => true, 'message' => 'sincronización con agente registrada']);
 }
 
+// Filtros compartidos entre logList y logExportCsv
+function filterDatabaseLogs($logs, $params) {
+    $op = strtoupper(trim($params['operation'] ?? ''));
+    $dbName = trim($params['database'] ?? '');
+    $engine = trim($params['engine'] ?? '');
+    $risk = trim($params['risk'] ?? '');
+    $search = strtolower(trim($params['search'] ?? ($params['q'] ?? '')));
+
+    if ($op !== '') {
+        $logs = array_filter($logs, fn($l) => strtoupper($l['operation'] ?? strtok(trim($l['query'] ?? ''), " \t\r\n") ?: '') === $op);
+    }
+    if ($dbName !== '') {
+        $logs = array_filter($logs, fn($l) => ($l['database'] ?? $l['databaseName'] ?? 'Sin base') === $dbName);
+    }
+    if ($engine !== '') {
+        $logs = array_filter($logs, fn($l) => ($l['engine'] ?? 'database') === $engine);
+    }
+    if ($risk === 'risk') {
+        $logs = array_filter($logs, fn($l) => (float)($l['riskScore'] ?? 0) > 0);
+    } elseif ($risk === 'safe') {
+        $logs = array_filter($logs, fn($l) => (float)($l['riskScore'] ?? 0) <= 0);
+    }
+    if ($search !== '') {
+        $logs = array_filter($logs, function($l) use ($search) {
+            $hay = strtolower(($l['query'] ?? '') . ' ' . ($l['database'] ?? $l['databaseName'] ?? '') . ' ' . ($l['dbUser'] ?? $l['user'] ?? '') . ' ' . ($l['engine'] ?? '') . ' ' . ($l['host'] ?? ''));
+            return str_contains($hay, $search);
+        });
+    }
+
+    $logs = array_values($logs);
+    usort($logs, fn($a, $b) => strcmp($b['createdAt'] ?? $b['timestamp'] ?? '', $a['createdAt'] ?? $a['timestamp'] ?? ''));
+    return $logs;
+}
+
 function logList() {
     $user = Auth::requireAuth();
     $body = get_body();
@@ -535,9 +604,45 @@ function logList() {
     if (!empty($body['severity'])) $filter['severity'] = $body['severity'];
     $limit = (int)($body['limit'] ?? 100);
     $offset = (int)($body['offset'] ?? 0);
-    $total = count($db->find('database_logs', $filter));
-    $logs = $db->find('database_logs', $filter, ['limit' => $limit, 'offset' => $offset]);
+
+    $logs = filterDatabaseLogs($db->find('database_logs', $filter), $body);
+    $total = count($logs);
+    $logs = array_slice($logs, max(0, $offset), max(1, $limit));
     json_response(['logs' => $logs, 'total' => $total]);
+}
+
+function logExportCsv() {
+    $user = Auth::requireAuth();
+    $params = get_body() + $_GET;
+    $db = Database::getInstance();
+    $filter = ['userId' => $user['_id']];
+    if (!empty($params['databaseId'])) $filter['databaseId'] = $params['databaseId'];
+    if (!empty($params['severity'])) $filter['severity'] = $params['severity'];
+
+    $logs = filterDatabaseLogs($db->find('database_logs', $filter), $params);
+
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="db-logs-' . date('Y-m-d-His') . '.csv"');
+    header('Cache-Control: no-cache, must-revalidate');
+    $out = fopen('php://output', 'w');
+    // BOM para que Excel abra el UTF-8 correctamente
+    fwrite($out, "\xEF\xBB\xBF");
+    fputcsv($out, ['Fecha', 'Operación', 'Base de datos', 'Motor', 'Usuario DB', 'Host', 'Riesgo', 'Consulta']);
+    foreach ($logs as $l) {
+        $operation = strtoupper($l['operation'] ?? strtok(trim($l['query'] ?? ''), " \t\r\n") ?: 'QUERY');
+        fputcsv($out, [
+            $l['createdAt'] ?? $l['timestamp'] ?? '',
+            $operation,
+            $l['database'] ?? $l['databaseName'] ?? '',
+            $l['engine'] ?? 'database',
+            $l['dbUser'] ?? $l['user'] ?? '',
+            $l['host'] ?? '',
+            (float)($l['riskScore'] ?? 0),
+            $l['query'] ?? '',
+        ]);
+    }
+    fclose($out);
+    exit;
 }
 
 function logStats() {
