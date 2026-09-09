@@ -5,9 +5,27 @@ function listAll() {
     $user = Auth::requireAuth();
     $body = get_body();
     $db = Database::getInstance();
-    $filter = ['userId' => $user['_id']];
+
+    $isSuperAdmin = !empty($user['isAdmin']) || ($user['role'] ?? '') === 'superadmin';
+    $filter = $isSuperAdmin ? [] : [];
+
+    if (!$isSuperAdmin) {
+        $userRecord = $db->findOne('users', ['_id' => $user['_id']]);
+        if (!$userRecord) {
+            json_error('Usuario no encontrado');
+        }
+        $companyId = $userRecord['companyId'] ?? $user['_id'];
+        $users = $db->find('users', ['companyId' => $companyId]);
+        $userIds = array_map('strval', array_column($users, '_id'));
+        if (empty($userIds)) {
+            $userIds = [(string)$user['_id']];
+        }
+        $filter = ['userId' => ['$in' => $userIds]];
+    }
+
     if (!empty($body['hostId'])) $filter['agentId'] = $body['hostId'];
     if (!empty($body['status'])) $filter['status'] = $body['status'];
+
     $hosts = $db->find('host_monitor', $filter);
     json_response($hosts);
 }
@@ -15,10 +33,28 @@ function listAll() {
 function stats() {
     $user = Auth::requireAuth();
     $db = Database::getInstance();
-    $hosts = $db->find('host_monitor', ['userId' => $user['_id']]);
+
+    $isSuperAdmin = !empty($user['isAdmin']) || ($user['role'] ?? '') === 'superadmin';
+    $filter = $isSuperAdmin ? [] : [];
+
+    if (!$isSuperAdmin) {
+        $userRecord = $db->findOne('users', ['_id' => $user['_id']]);
+        if (!$userRecord) {
+            json_error('Usuario no encontrado');
+        }
+        $companyId = $userRecord['companyId'] ?? $user['_id'];
+        $users = $db->find('users', ['companyId' => $companyId]);
+        $userIds = array_map('strval', array_column($users, '_id'));
+        if (empty($userIds)) {
+            $userIds = [(string)$user['_id']];
+        }
+        $filter = ['userId' => ['$in' => $userIds]];
+    }
+
+    $hosts = $db->find('host_monitor', $filter);
     $online = count(array_filter($hosts, fn($h) => ($h['status'] ?? '') === 'online'));
-    $offline = count(array_filter($hosts, fn($h) => ($h['status'] ?? '') !== 'online'));
-    $alerts = $db->find('alerts', ['userId' => $user['_id']]);
+    $offline = count($hosts) - $online;
+    $alerts = $db->find('alerts', $filter);
     $critical = count(array_filter($alerts, fn($a) => ($a['severity'] ?? '') === 'critical' && empty($a['resolved'])));
 
     $avgCpu = 0;
@@ -37,6 +73,7 @@ function stats() {
         'totalHosts' => count($hosts),
     ]);
 }
+
 
 function events() {
     $user = Auth::requireAuth();

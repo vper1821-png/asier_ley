@@ -4,7 +4,25 @@
 function listAll() {
     $user = Auth::requireAuth();
     $db = Database::getInstance();
-    $databases = $db->find('databases', ['userId' => $user['_id']]);
+
+    $isSuperAdmin = !empty($user['isAdmin']) || ($user['role'] ?? '') === 'superadmin';
+    $filter = $isSuperAdmin ? [] : [];
+
+    if (!$isSuperAdmin) {
+        $userRecord = $db->findOne('users', ['_id' => $user['_id']]);
+        if (!$userRecord) {
+            json_error('Usuario no encontrado');
+        }
+        $companyId = $userRecord['companyId'] ?? $user['_id'];
+        $users = $db->find('users', ['companyId' => $companyId]);
+        $userIds = array_map('strval', array_column($users, '_id'));
+        if (empty($userIds)) {
+            $userIds = [(string)$user['_id']];
+        }
+        $filter = ['userId' => ['$in' => $userIds]];
+    }
+
+    $databases = $db->find('databases', $filter);
     json_response($databases);
 }
 

@@ -23,13 +23,29 @@ function stats() {
     $db = Database::getInstance();
     $uid = $user['_id'];
 
-    $agents = $db->find('agents', ['userId' => $uid]);
-    $databases = $db->find('databases', ['userId' => $uid]);
-    $alerts = $db->find('alerts', ['userId' => $uid]);
-    $breaches = $db->find('compliance_breaches', ['userId' => $uid]);
-    $scans = $db->find('scans', ['userId' => $uid]);
-    $reports = $db->find('reports', ['userId' => $uid]);
-    $userMonitor = $db->find('user_monitor', ['userId' => $uid]);
+    // ── Obtener todos los userIds de la empresa ──
+    $userRecord = $db->findOne('users', ['_id' => $uid]);
+    if (!$userRecord) {
+        json_error('Usuario no encontrado');
+    }
+    $companyId = $userRecord['companyId'] ?? $uid;
+    $users = $db->find('users', ['companyId' => $companyId]);
+    $userIds = array_map('strval', array_column($users, '_id'));
+    if (empty($userIds)) {
+        $userIds = [(string)$uid];
+    }
+
+    // ── Filtrar por empresa (o superadmin) ──
+    $isSuperAdmin = !empty($user['isAdmin']) || ($user['role'] ?? '') === 'superadmin';
+    $filter = $isSuperAdmin ? [] : ['userId' => ['$in' => $userIds]];
+
+    $agents = $db->find('agents', $filter);
+    $databases = $db->find('databases', $filter);
+    $alerts = $db->find('alerts', $filter);
+    $breaches = $db->find('compliance_breaches', $filter);
+    $scans = $db->find('scans', $filter);
+    $reports = $db->find('reports', $filter);
+    $userMonitor = $db->find('user_monitor', $filter);
 
     $onlineAgents = count(array_filter($agents, fn($a) => ($a['status'] ?? '') === 'online'));
     $activeAlerts = count(array_filter($alerts, fn($a) => empty($a['resolved']) && empty($a['dismissed'])));
@@ -47,7 +63,6 @@ function stats() {
         $records = (int)($d['recordCount'] ?? $d['records'] ?? 0);
         $totalTables += $tables;
         $totalRecords += $records;
-        // Una base de datos solo cumple si está conectada y sin brechas abiertas
         $isConnected = ($d['status'] ?? '') === 'connected';
         $compliant = $isConnected && ($openBreaches === 0 || !empty($d['compliant']));
         if ($compliant) $compliantDBs++;
@@ -63,41 +78,30 @@ function stats() {
         ];
     }
     $nonCompliantDBs = count($databases) - $compliantDBs;
-    
-    // Calcular complianceScore basado en completitud real (no solo existencia)
-    $config = $db->findOne('compliance_config', ['userId' => $user['_id']]);
-    $inventory = $db->find('compliance_inventory', ['userId' => $user['_id']]);
-    $consents = $db->find('compliance_consents', ['userId' => $user['_id']]);
-    $breaches = $db->find('compliance_breaches', ['userId' => $user['_id']]);
-    $trainings = $db->find('compliance_trainings', ['userId' => $user['_id']]);
-    $pseudoRules = $db->find('compliance_pseudonymization', ['userId' => $user['_id']]);
-    
-    // Si config no existe, inicializar array vacío
+
+    // ── Checklist de cumplimiento (compartido por empresa) ──
+    $config = $db->findOne('compliance_config', $isSuperAdmin ? [] : ['userId' => ['$in' => $userIds]]);
+    $inventory = $db->find('compliance_inventory', $isSuperAdmin ? [] : ['userId' => ['$in' => $userIds]]);
+    $consents = $db->find('compliance_consents', $isSuperAdmin ? [] : ['userId' => ['$in' => $userIds]]);
+    $breaches = $db->find('compliance_breaches', $isSuperAdmin ? [] : ['userId' => ['$in' => $userIds]]);
+    $trainings = $db->find('compliance_trainings', $isSuperAdmin ? [] : ['userId' => ['$in' => $userIds]]);
+    $pseudoRules = $db->find('compliance_pseudonymization', $isSuperAdmin ? [] : ['userId' => ['$in' => $userIds]]);
+
     if (!$config) $config = [];
 
-    // DPD Designado: debe tener email, nombre y teléfono
     $dpdComplete = !empty($config['dpdEmail']) && !empty($config['dpdName']) && !empty($config['dpdPhone']);
-    // Registro APDP: debe estar registrado con número de registro
     $apdpComplete = ($config['apdpRegistered'] === '1' || $config['apdpRegistered'] === true) && !empty($config['apdpRegistrationNumber']);
-    // Inventario: debe tener items completos (nombre, legalBasis, dataCategories)
     $inventoryComplete = count($inventory) > 0 && count(array_filter($inventory, fn($i) => 
         !empty($i['name']) && !empty($i['legalBasis']) && !empty($i['dataCategories'])
     )) > 0;
-    // Política de Privacidad: debe tener URL pública
     $privacyPolicyComplete = !empty($config['privacyPolicyUrl']);
-    // Consentimientos: debe haber consentimientos activos (no revocados)
     $consentsComplete = count(array_filter($consents, fn($c) => empty($c['revokedAt']))) > 0;
-    // Protocolo de Brechas: debe haber protocolo documentado O breaches resueltos (no solo abiertos)
     $resolvedBreaches = count(array_filter($breaches, fn($b) => ($b['status'] ?? '') === 'resolved'));
     $breachProtocolComplete = !empty($config['breachProtocolUrl']) || $resolvedBreaches > 0;
-    // Portal ARCO: debe haber solicitudes ARCO reales
-    $arcoRequests = $db->find('compliance_arco-requests', ['userId' => $user['_id']]);
+    $arcoRequests = $db->find('compliance_arco-requests', $isSuperAdmin ? [] : ['userId' => ['$in' => $userIds]]);
     $arcoComplete = count($arcoRequests) > 0;
-    // Seudonimización: debe haber reglas ejecutadas
     $pseudonymizationComplete = count(array_filter($pseudoRules, fn($r) => ($r['status'] ?? '') === 'executed' || !empty($r['executed']))) > 0;
-    // Plan de Respuesta a Incidentes: debe haber breaches resueltos o protocolo
     $incidentResponseComplete = count(array_filter($breaches, fn($b) => ($b['status'] ?? '') === 'resolved')) > 0 || !empty($config['incidentResponsePlan']);
-    // Capacitación: debe haber capacitaciones completadas
     $trainingComplete = count(array_filter($trainings, fn($t) => !empty($t['completed']))) > 0;
 
     $checklist = [

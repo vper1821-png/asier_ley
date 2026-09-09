@@ -7,7 +7,6 @@ function isSuperAdminUser($u) {
 
 function findAgentFor($user, $agentId) {
     $db = Database::getInstance();
-    // Buscar por agentId o _id (para compatibilidad)
     $filter = ['$or' => [
         ['agentId' => $agentId],
         ['_id' => $agentId]
@@ -183,7 +182,10 @@ function heartbeat() {
 function listAll() {
     $user = Auth::requireAuth();
     $db = Database::getInstance();
-    if (isSuperAdminUser($user)) {
+
+    $isSuperAdmin = !empty($user['isAdmin']) || ($user['role'] ?? '') === 'superadmin';
+
+    if ($isSuperAdmin) {
         $agents = $db->find('agents', []);
         $ownerMap = [];
         foreach ($db->find('users', []) as $u) {
@@ -202,16 +204,48 @@ function listAll() {
         }
         unset($a);
         json_response($agents);
+        return;
     }
-    $agents = $db->find('agents', ['userId' => $user['_id']]);
+
+    // ── Usuario normal: compartir agentes por empresa ──
+    $userRecord = $db->findOne('users', ['_id' => $user['_id']]);
+    if (!$userRecord) {
+        json_error('Usuario no encontrado');
+    }
+    $companyId = $userRecord['companyId'] ?? $user['_id'];
+    $users = $db->find('users', ['companyId' => $companyId]);
+    $userIds = array_map('strval', array_column($users, '_id'));
+    if (empty($userIds)) {
+        $userIds = [(string)$user['_id']];
+    }
+
+    $agents = $db->find('agents', ['userId' => ['$in' => $userIds]]);
     json_response($agents);
 }
 
 function combined() {
     $user = Auth::requireAuth();
     $db = Database::getInstance();
-    $agents = $db->find('agents', ['userId' => $user['_id']]);
-    $hosts = $db->find('host_monitor', ['userId' => $user['_id']]);
+
+    $isSuperAdmin = !empty($user['isAdmin']) || ($user['role'] ?? '') === 'superadmin';
+    $filter = $isSuperAdmin ? [] : [];
+
+    if (!$isSuperAdmin) {
+        $userRecord = $db->findOne('users', ['_id' => $user['_id']]);
+        if (!$userRecord) {
+            json_error('Usuario no encontrado');
+        }
+        $companyId = $userRecord['companyId'] ?? $user['_id'];
+        $users = $db->find('users', ['companyId' => $companyId]);
+        $userIds = array_map('strval', array_column($users, '_id'));
+        if (empty($userIds)) {
+            $userIds = [(string)$user['_id']];
+        }
+        $filter = ['userId' => ['$in' => $userIds]];
+    }
+
+    $agents = $db->find('agents', $filter);
+    $hosts = $db->find('host_monitor', $filter);
     $hostsByAgent = [];
     foreach ($hosts as $h) {
         if (!empty($h['agentId'])) $hostsByAgent[$h['agentId']] = $h;

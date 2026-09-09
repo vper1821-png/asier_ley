@@ -1,36 +1,59 @@
 <?php
 // Compliance routes
+// Todas las consultas de LISTADO (GET sin id, GET con filtros) usan userId IN (userIds de la empresa)
+// Las operaciones de escritura (POST, PUT, DELETE específico) usan el userId del usuario autenticado
+// para que cada usuario pueda crear/modificar sus propios elementos, pero al listarlos se compartan.
+
 require_once __DIR__ . '/../Auth.php';
 
+// ─── Función auxiliar para obtener userIds de la empresa ───
+function getCompanyUserIds($user, $db) {
+    $isSuperAdmin = !empty($user['isAdmin']) || ($user['role'] ?? '') === 'superadmin';
+    if ($isSuperAdmin) {
+        return null; // null significa "sin filtro" (todas las empresas)
+    }
+    $userRecord = $db->findOne('users', ['_id' => $user['_id']]);
+    if (!$userRecord) {
+        json_error('Usuario no encontrado');
+    }
+    $companyId = $userRecord['companyId'] ?? $user['_id'];
+    $users = $db->find('users', ['companyId' => $companyId]);
+    $userIds = array_map('strval', array_column($users, '_id'));
+    if (empty($userIds)) {
+        $userIds = [(string)$user['_id']];
+    }
+    return $userIds;
+}
+
+// ─── Score ──────────────────────────────────────────────────────────
 function score() {
     $user = Auth::requireAuth();
     $db = Database::getInstance();
+    $userIds = getCompanyUserIds($user, $db);
+    $isSuperAdmin = ($userIds === null);
 
-    // Calculate compliance score based on completed items
-    $agents = $db->count('agents', ['userId' => $user['_id']]);
-    $databases = $db->count('databases', ['userId' => $user['_id']]);
-    $alerts = $db->count('alerts', ['userId' => $user['_id']]);
-    $onboarding = $db->findOne('onboarding', ['userId' => $user['_id']]);
+    $filter = $isSuperAdmin ? [] : ['userId' => ['$in' => $userIds]];
+
+    $agents = $db->count('agents', $filter);
+    $databases = $db->count('databases', $filter);
+    $alerts = $db->count('alerts', $filter);
+    $onboarding = $db->findOne('onboarding', $isSuperAdmin ? [] : ['userId' => ['$in' => $userIds]]);
 
     $score = 0;
     $details = [];
 
-    // Agent deployment (30%)
     $agentScore = $agents > 0 ? 100 : 0;
     $score += $agentScore * 0.3;
     $details['agents'] = ['label' => 'Agentes desplegados', 'score' => $agentScore];
 
-    // Database monitoring (25%)
     $dbScore = $databases > 0 ? 100 : 0;
     $score += $dbScore * 0.25;
     $details['databases'] = ['label' => 'Bases de datos monitorizadas', 'score' => $dbScore];
 
-    // Onboarding complete (25%)
     $onboardingScore = ($onboarding && !empty($onboarding['completed'])) ? 100 : 0;
     $score += $onboardingScore * 0.25;
     $details['onboarding'] = ['label' => 'Onboarding completado', 'score' => $onboardingScore];
 
-    // Alerts configured (20%)
     $alertScore = $alerts > 0 ? 100 : 0;
     $score += $alertScore * 0.2;
     $details['alerts'] = ['label' => 'Alertas configuradas', 'score' => $alertScore];
@@ -41,23 +64,27 @@ function score() {
     ]);
 }
 
+// ─── Checklist detallado ──────────────────────────────────────────
 function detailedChecklist() {
     $user = Auth::requireAuth();
     $db = Database::getInstance();
+    $userIds = getCompanyUserIds($user, $db);
+    $isSuperAdmin = ($userIds === null);
 
-    $config = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
-    $inventory = $db->find('compliance_inventory', ['userId' => $user['_id']]);
-    $consents = $db->find('compliance_consents', ['userId' => $user['_id']]);
-    $trainings = $db->find('compliance_trainings', ['userId' => $user['_id']]);
-    $dpia = $db->find('compliance_dpia', ['userId' => $user['_id']]);
-    $arcoRequests = $db->find('compliance_arco_requests', ['userId' => $user['_id']]);
-    $breaches = $db->find('compliance_breaches', ['userId' => $user['_id']]);
-    $pseudoRules = $db->find('compliance_pseudonymization', ['userId' => $user['_id']]);
-    $processors = $db->find('compliance_processors', ['userId' => $user['_id']]);
-    $transfers = $db->find('compliance_transfers', ['userId' => $user['_id']]);
+    $filter = $isSuperAdmin ? [] : ['userId' => ['$in' => $userIds]];
 
-    // Checklist completo basado en la Ley 21.719
-    $checkDocs = $db->find('compliance_checklist', ['userId' => $user['_id']]);
+    $config = $db->findOne('compliance_config', $filter) ?? [];
+    $inventory = $db->find('compliance_inventory', $filter);
+    $consents = $db->find('compliance_consents', $filter);
+    $trainings = $db->find('compliance_trainings', $filter);
+    $dpia = $db->find('compliance_dpia', $filter);
+    $arcoRequests = $db->find('compliance_arco_requests', $filter);
+    $breaches = $db->find('compliance_breaches', $filter);
+    $pseudoRules = $db->find('compliance_pseudonymization', $filter);
+    $processors = $db->find('compliance_processors', $filter);
+    $transfers = $db->find('compliance_transfers', $filter);
+
+    $checkDocs = $db->find('compliance_checklist', $filter);
     $documentedSections = [];
     foreach ($checkDocs as $doc) {
         $section = $doc['section'] ?? '';
@@ -86,6 +113,7 @@ function detailedChecklist() {
     json_response(['checklist' => $detailedChecklist]);
 }
 
+// ─── Auto-sign training ─────────────────────────────────────────────
 function autoSignTraining() {
     $user = Auth::requireAuth();
     $db = Database::getInstance();
@@ -97,7 +125,6 @@ function autoSignTraining() {
     $training = $db->findOne('compliance_trainings', ['_id' => $trainingId, 'userId' => $user['_id']]);
     if (!$training) json_error('Capacitación no encontrada', 404);
     
-    // Crear invitación de firma automáticamente (SIN firmar)
     $inviteToken = bin2hex(random_bytes(16));
     $invite = [
         'userId' => $user['_id'],
@@ -105,12 +132,11 @@ function autoSignTraining() {
         'title' => $training['title'] ?? 'Capacitación: ' . ($training['title'] ?? ''),
         'description' => 'Firma para capacitación: ' . ($training['title'] ?? ''),
         'companyName' => $user['companyName'] ?? ($user['email'] ?? ''),
-        'signed' => false, // NO firmar automáticamente
+        'signed' => false,
     ];
     
     $inviteId = $db->insertOne('compliance_invites', $invite);
     
-    // Asignar la invitación a la capacitación (SIN firmar)
     $db->updateOne('compliance_trainings', ['_id' => $trainingId], [
         'inviteId' => $inviteId,
         'inviteAssignedAt' => date('c'),
@@ -119,14 +145,20 @@ function autoSignTraining() {
     json_response(['success' => true, 'message' => 'Invitación de firma creada exitosamente', 'token' => $inviteToken]);
 }
 
+// ─── Configuración de compliance (compartida por empresa) ────────
 function updateConfig() {
     $user = Auth::requireAuth();
     $db = Database::getInstance();
     $body = get_body();
     
-    $config = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
+    $userIds = getCompanyUserIds($user, $db);
+    $isSuperAdmin = ($userIds === null);
+    $filter = $isSuperAdmin ? [] : ['userId' => ['$in' => $userIds]];
     
-    // Policies list (multi-policy support)
+    $existing = $db->findOne('compliance_config', $filter);
+    
+    $config = $existing ?: ['userId' => $user['_id']];
+    
     $policiesRaw = null;
     if (isset($body['policies'])) {
         $policiesRaw = is_string($body['policies']) ? json_decode($body['policies'], true) : $body['policies'];
@@ -138,10 +170,6 @@ function updateConfig() {
     $retention = $config['dataRetentionPolicy'] ?? '';
 
     if ($policiesRaw !== null) {
-        // Recalculate legacy scalar fields from the policies list
-        $privacyUrl = '';
-        $cookiesUrl = '';
-        $retention = '';
         foreach ($policiesRaw as $p) {
             if (!is_array($p)) continue;
             $t = $p['type'] ?? '';
@@ -151,27 +179,16 @@ function updateConfig() {
         }
     } else {
         $policiesRaw = $config['policies'] ?? [];
-        // Fallback: derive scalar fields from stored policies if missing
-        foreach ($policiesRaw as $p) {
-            if (!is_array($p)) continue;
-            $t = $p['type'] ?? '';
-            if ($t === 'privacy' && empty($privacyUrl) && !empty($p['url'])) $privacyUrl = $p['url'];
-            if ($t === 'cookies' && empty($cookiesUrl) && !empty($p['url'])) $cookiesUrl = $p['url'];
-            if ($t === 'retention' && empty($retention) && !empty($p['content'])) $retention = $p['content'];
-        }
-        // Allow explicit scalar overrides only when they have a value
         if (!empty($body['privacyPolicyUrl'])) $privacyUrl = $body['privacyPolicyUrl'];
         if (!empty($body['cookiesPolicyUrl'])) $cookiesUrl = $body['cookiesPolicyUrl'];
         if (!empty($body['dataRetentionPolicy'])) $retention = $body['dataRetentionPolicy'];
     }
 
     $updates = [
-        // Campos existentes
         'privacyPolicyUrl' => $privacyUrl,
         'cookiesPolicyUrl' => $cookiesUrl,
         'dataRetentionPolicy' => $retention,
         'policies' => $policiesRaw,
-        // Campos DPD
         'dpdName' => $body['dpdName'] ?? $config['dpdName'] ?? '',
         'dpdRut' => $body['dpdRut'] ?? $config['dpdRut'] ?? '',
         'dpdEmail' => $body['dpdEmail'] ?? $config['dpdEmail'] ?? '',
@@ -181,7 +198,6 @@ function updateConfig() {
         'companyRut' => $body['companyRut'] ?? $config['companyRut'] ?? '',
         'dpdAddress' => $body['dpdAddress'] ?? $config['dpdAddress'] ?? '',
         'dpdPublicUrl' => $body['dpdPublicUrl'] ?? $config['dpdPublicUrl'] ?? '',
-        // Campos APDP
         'apdpRegistered' => $body['apdpRegistered'] ?? $config['apdpRegistered'] ?? '',
         'apdpRegistrationNumber' => $body['apdpRegistrationNumber'] ?? $config['apdpRegistrationNumber'] ?? '',
         'apdpRegistrationDate' => $body['apdpRegistrationDate'] ?? $config['apdpRegistrationDate'] ?? '',
@@ -190,13 +206,13 @@ function updateConfig() {
         'measureOverrides' => $body['measureOverrides'] ?? $config['measureOverrides'] ?? '',
     ];
     
-    if (empty($config)) {
+    if ($existing) {
+        $updates['updatedAt'] = date('c');
+        $db->updateOne('compliance_config', ['_id' => $existing['_id']], $updates);
+    } else {
         $updates['userId'] = $user['_id'];
         $updates['createdAt'] = date('c');
         $db->insertOne('compliance_config', $updates);
-    } else {
-        $updates['updatedAt'] = date('c');
-        $db->updateOne('compliance_config', ['userId' => $user['_id']], $updates);
     }
     
     json_response(['success' => true, 'message' => 'Configuración actualizada']);
@@ -205,21 +221,22 @@ function updateConfig() {
 function getConfig() {
     $user = Auth::requireAuth();
     $db = Database::getInstance();
+    $userIds = getCompanyUserIds($user, $db);
+    $isSuperAdmin = ($userIds === null);
+    $filter = $isSuperAdmin ? [] : ['userId' => ['$in' => $userIds]];
     
-    $config = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
-    
+    $config = $db->findOne('compliance_config', $filter) ?? [];
     json_response($config);
 }
 
+// ─── Invitaciones públicas ──────────────────────────────────────────
 function verifyInvite() {
     $body = get_body();
     $inviteToken = $body['token'] ?? '';
-
     if (!$inviteToken) json_error('token requerido');
 
     $db = Database::getInstance();
     $invite = $db->findOne('compliance_invites', ['token' => $inviteToken]);
-
     if (!$invite) json_error('invitación no encontrada');
     if (!empty($invite['signed'])) json_error('documento ya firmado');
 
@@ -240,7 +257,6 @@ function sign() {
 
     $db = Database::getInstance();
     $invite = $db->findOne('compliance_invites', ['token' => $inviteToken]);
-
     if (!$invite) json_error('invitación no encontrada');
     if (!empty($invite['signed'])) json_error('documento ya firmado');
 
@@ -255,6 +271,7 @@ function sign() {
     json_response(['success' => true]);
 }
 
+// ─── Protocolo de brechas ──────────────────────────────────────────
 function saveBreachProtocol($user, $db, $body) {
     $protocolData = [
         'userId' => $user['_id'],
@@ -298,7 +315,6 @@ function saveBreachProtocol($user, $db, $body) {
         'updatedAt' => date('c'),
     ];
 
-    // Check if protocol already exists
     $existing = $db->findOne('compliance_breach_protocol', ['userId' => $user['_id']]);
     if ($existing) {
         $protocolData['updatedAt'] = date('c');
@@ -307,7 +323,6 @@ function saveBreachProtocol($user, $db, $body) {
         $db->insertOne('compliance_breach_protocol', $protocolData);
     }
 
-    // Also update compliance_config to mark breach protocol as complete
     $config = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
     $config['breachProtocolContent'] = 'documented';
     $config['breachProtocolUpdatedAt'] = date('c');
@@ -315,7 +330,7 @@ function saveBreachProtocol($user, $db, $body) {
         $config['userId'] = $user['_id'];
         $db->insertOne('compliance_config', $config);
     } else {
-        $db->updateOne('compliance_config', ['userId' => $user['_id']], $config);
+        $db->updateOne('compliance_config', ['_id' => $config['_id']], $config);
     }
 
     audit_log('breach_protocol_saved', [
@@ -335,6 +350,7 @@ function getBreachProtocol($user, $db) {
     json_response($protocol ?? []);
 }
 
+// ─── Plan de Respuesta a Incidentes ────────────────────────────────
 function saveIncidentResponse($user, $db, $body) {
     $planData = [
         'userId' => $user['_id'],
@@ -371,7 +387,6 @@ function saveIncidentResponse($user, $db, $body) {
         'updatedAt' => date('c'),
     ];
 
-    // Check if plan already exists
     $existing = $db->findOne('compliance_incident_response', ['userId' => $user['_id']]);
     if ($existing) {
         $planData['updatedAt'] = date('c');
@@ -380,7 +395,6 @@ function saveIncidentResponse($user, $db, $body) {
         $db->insertOne('compliance_incident_response', $planData);
     }
 
-    // Also update compliance_config to mark incident response plan as complete
     $config = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
     $config['incidentResponsePlan'] = 'documented';
     $config['incidentResponsePlanUpdatedAt'] = date('c');
@@ -388,7 +402,7 @@ function saveIncidentResponse($user, $db, $body) {
         $config['userId'] = $user['_id'];
         $db->insertOne('compliance_config', $config);
     } else {
-        $db->updateOne('compliance_config', ['userId' => $user['_id']], $config);
+        $db->updateOne('compliance_config', ['_id' => $config['_id']], $config);
     }
 
     audit_log('incident_response_saved', [
@@ -408,6 +422,7 @@ function getIncidentResponse($user, $db) {
     json_response($plan ?? []);
 }
 
+// ─── CRUD principal ─────────────────────────────────────────────────
 function crud() {
     $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
     $prefix = '/api/invisia/compliance/';
@@ -425,7 +440,6 @@ function crud() {
     $id = $segments[1] ?? '';
     $action = $segments[2] ?? '';
     
-    // Special handling for PDF generation
     if ($id === 'pdf' && empty($action)) {
         $action = 'pdf';
         $id = '';
@@ -433,7 +447,7 @@ function crud() {
     
     $db = Database::getInstance();
 
-    // Public endpoints (no auth)
+    // ── Public endpoints ──
     if ($resource === 'public' && $segments[1] === 'invites') {
         $token = $segments[2] ?? '';
         if ($segments[3] === 'submit' && $method === 'POST') {
@@ -441,7 +455,6 @@ function crud() {
         }
         publicInviteGet($token, $db);
     }
-
     if ($resource === 'portability' && $id === 'export') {
         portabilityExport($body, $db);
     }
@@ -454,46 +467,49 @@ function crud() {
 
     $user = Auth::requireAuth();
 
-    // Special non-collection endpoints
-    if ($resource === 'overview' || $resource === 'stats') {
-        overview($user, $db);
-    }
-    if ($resource === 'config') {
-        if ($method === 'GET') {
-            $cfg = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
-            json_response($cfg);
-        }
-        if ($method === 'POST') {
-            $existing = $db->findOne('compliance_config', ['userId' => $user['_id']]);
-            $data = ['userId' => $user['_id'], 'updatedAt' => date('c')] + $body;
-            if ($existing) {
-                $db->updateOne('compliance_config', ['_id' => $existing['_id']], $data);
-            } else {
-                $db->insertOne('compliance_config', $data);
-            }
-            json_response(['success' => true]);
-        }
-        json_error('método no soportado', 405);
-    }
-    if ($resource === 'ropa-export') {
-        ropaExport($db);
-    }
-    if ($resource === 'labor-clause') {
-        laborClause();
-    }
+    $userIds = getCompanyUserIds($user, $db);
+    $isSuperAdmin = ($userIds === null);
 
-    // PDF generation endpoints
-    if ($action === 'pdf' && in_array($resource, ['consents', 'inventory', 'breaches', 'trainings', 'pseudonymization', 'arco-requests', 'arco', 'incident_response', 'dpia', 'dpa', 'breach_protocol', 'apdp', 'privacy', 'dpd'])) {
-        generateCompliancePDF($resource);
+    // ── Endpoints especiales ──
+    if ($resource === 'overview' || $resource === 'stats') {
+        $filter = $isSuperAdmin ? [] : ['userId' => ['$in' => $userIds]];
+        $data = [
+            'consents' => $db->count('compliance_consents', $filter),
+            'inventory' => $db->count('compliance_inventory', $filter),
+            'breaches' => $db->count('compliance_breaches', $filter),
+            'templates' => $db->count('compliance_templates', $filter),
+            'trainings' => $db->count('compliance_trainings', $filter),
+            'dpia' => $db->count('compliance_dpia', $filter),
+            'dpa' => $db->count('compliance_dpa', $filter),
+            'pseudonymization' => $db->count('compliance_pseudonymization', $filter),
+            'processors' => $db->count('compliance_processors', $filter),
+            'transfers' => $db->count('compliance_transfers', $filter),
+        ];
+        json_response(['success' => true, 'overview' => $data]);
         return;
     }
 
-    // ARCO requests
-    if ($resource === 'arco-requests') {
-        arcoCrud($user, $db, $method, $id, $action, $body);
+    if ($resource === 'config') {
+        if ($method === 'GET') {
+            $filter = $isSuperAdmin ? [] : ['userId' => ['$in' => $userIds]];
+            $cfg = $db->findOne('compliance_config', $filter) ?? [];
+            json_response($cfg);
+        }
+        if ($method === 'POST') {
+            updateConfig();
+            return;
+        }
+        json_error('método no soportado', 405);
     }
 
-    // Breach Protocol handler
+    if ($resource === 'ropa-export') {
+        ropaExport($db);
+        return;
+    }
+    if ($resource === 'labor-clause') {
+        laborClause();
+        return;
+    }
     if ($resource === 'breach-protocol') {
         if ($method === 'POST') {
             saveBreachProtocol($user, $db, $body);
@@ -504,8 +520,6 @@ function crud() {
         }
         return;
     }
-
-    // Incident Response Plan handler
     if ($resource === 'incident-response') {
         if ($method === 'POST') {
             saveIncidentResponse($user, $db, $body);
@@ -516,11 +530,16 @@ function crud() {
         }
         return;
     }
+    if ($resource === 'arco-requests') {
+        arcoCrud($user, $db, $method, $id, $action, $body);
+        return;
+    }
 
-    // Generic checklist section handler
+    // ─── Checklist ──────────────────────────────────────────────────
     if ($resource === 'checklist') {
+        $filter = $isSuperAdmin ? [] : ['userId' => ['$in' => $userIds]];
         if (!$id) {
-            $docs = $db->find('compliance_checklist', ['userId' => $user['_id']]);
+            $docs = $db->find('compliance_checklist', $filter);
             $sections = [];
             foreach ($docs as $d) {
                 if (empty($d['section'])) continue;
@@ -529,13 +548,13 @@ function crud() {
                 if ($hasData) $sections[] = $d['section'];
             }
             json_response(['success' => true, 'sections' => $sections]);
+            return;
         }
 
-        if (!$id) json_error('sección requerida', 400);
-
         if ($method === 'GET') {
-            $doc = $db->findOne('compliance_checklist', ['userId' => $user['_id'], 'section' => $id]);
+            $doc = $db->findOne('compliance_checklist', ['userId' => ['$in' => $userIds], 'section' => $id]);
             json_response((array)($doc['data'] ?? []));
+            return;
         }
 
         if ($method === 'POST') {
@@ -555,51 +574,36 @@ function crud() {
                 $db->insertOne('compliance_checklist', $doc);
             }
             json_response(['success' => true, 'message' => 'Documentación guardada']);
+            return;
         }
 
         if ($method === 'DELETE') {
             $db->deleteOne('compliance_checklist', ['userId' => $user['_id'], 'section' => $id]);
-
-            // Clear related dedicated records/config so the item reverts to pending
             if ($id === 'breach_protocol') {
                 $db->deleteOne('compliance_breach_protocol', ['userId' => $user['_id']]);
-                $cfg = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
-                $cfg['breachProtocolContent'] = null; $cfg['breachProtocolUrl'] = null; $cfg['breachProtocolUpdatedAt'] = null;
-                $db->updateOne('compliance_config', ['userId' => $user['_id']], $cfg);
             }
             if ($id === 'incident_response') {
                 $db->deleteOne('compliance_incident_response', ['userId' => $user['_id']]);
-                $cfg = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
-                $cfg['incidentResponsePlan'] = null; $cfg['incidentResponsePlanUrl'] = null; $cfg['incidentResponsePlanUpdatedAt'] = null;
-                $db->updateOne('compliance_config', ['userId' => $user['_id']], $cfg);
             }
             if ($id === 'dpd') {
-                $cfg = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
-                $cfg['dpdName'] = null; $cfg['dpdEmail'] = null; $cfg['dpdPhone'] = null;
-                $db->updateOne('compliance_config', ['userId' => $user['_id']], $cfg);
+                $db->updateOne('compliance_config', ['userId' => $user['_id']], ['dpdName' => null, 'dpdEmail' => null, 'dpdPhone' => null]);
             }
             if ($id === 'apdp') {
-                $cfg = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
-                $cfg['apdpRegistered'] = null; $cfg['apdpRegistrationNumber'] = null; $cfg['apdpCertified'] = null; $cfg['apdpCertificationDate'] = null; $cfg['apdpCertEntity'] = null;
-                $db->updateOne('compliance_config', ['userId' => $user['_id']], $cfg);
+                $db->updateOne('compliance_config', ['userId' => $user['_id']], ['apdpRegistered' => null, 'apdpRegistrationNumber' => null]);
             }
             if ($id === 'privacy') {
-                $cfg = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
-                $cfg['privacyPolicyUrl'] = null; $cfg['cookiesPolicyUrl'] = null; $cfg['dataRetentionPolicy'] = null;
-                $db->updateOne('compliance_config', ['userId' => $user['_id']], $cfg);
+                $db->updateOne('compliance_config', ['userId' => $user['_id']], ['privacyPolicyUrl' => null, 'cookiesPolicyUrl' => null, 'dataRetentionPolicy' => null]);
             }
             if ($id === 'arco') {
-                $cfg = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
-                $cfg['arcoChannelUrl'] = null;
-                $db->updateOne('compliance_config', ['userId' => $user['_id']], $cfg);
+                $db->updateOne('compliance_config', ['userId' => $user['_id']], ['arcoChannelUrl' => null]);
             }
-
             json_response(['success' => true, 'message' => 'Control eliminado']);
+            return;
         }
-
         json_error('método no soportado', 405);
     }
 
+    // ─── Colecciones estándar ──────────────────────────────────────
     $allowedCollections = ['consents', 'inventory', 'breaches', 'templates', 'trainings', 'dpia', 'dpa', 'pseudonymization', 'invites', 'processors', 'transfers', 'public_policy'];
     if (!in_array($resource, $allowedCollections)) {
         json_error('recurso no soportado', 404);
@@ -607,7 +611,7 @@ function crud() {
 
     $collection = 'compliance_' . $resource;
 
-    // Bulk import (cualquier colección)
+    // Bulk import
     if ($id === 'bulk' && $method === 'POST') {
         $items = $body['items'] ?? $body['invites'] ?? $body ?? [];
         if (!is_array($items) || empty($items)) json_error('items requerido');
@@ -626,9 +630,10 @@ function crud() {
             $created[] = $db->insertOne($collection, $doc);
         }
         json_response(['success' => true, 'created' => count($created), 'items' => $created]);
+        return;
     }
 
-    // Asignar la firma de una invitación firmada a una capacitación existente
+    // Asignación de firma a capacitación
     if ($resource === 'invites' && $id && $action === 'assign-training' && $method === 'POST') {
         $invite = $db->findOne($collection, ['_id' => $id, 'userId' => $user['_id']]);
         if (!$invite) json_error('invitación no encontrada', 404);
@@ -654,9 +659,10 @@ function crud() {
             'assignedAt' => date('c'),
         ]);
         json_response(['success' => true]);
+        return;
     }
 
-    // Desasignar la firma de una invitación (quita la firma de la capacitación)
+    // Desasignar firma
     if ($resource === 'invites' && $id && $action === 'unassign' && $method === 'POST') {
         $invite = $db->findOne($collection, ['_id' => $id, 'userId' => $user['_id']]);
         if (!$invite) json_error('invitación no encontrada', 404);
@@ -681,11 +687,12 @@ function crud() {
             'assignedAt' => null,
         ]);
         json_response(['success' => true]);
+        return;
     }
 
-    // Search list
+    // GET list (filtrado por empresa)
     if ($method === 'GET' && !$id) {
-        $filter = ['userId' => $user['_id']];
+        $filter = $isSuperAdmin ? [] : ['userId' => ['$in' => $userIds]];
         if (!empty($_GET['active'])) $filter['active'] = filter_var($_GET['active'], FILTER_VALIDATE_BOOLEAN);
         $items = $db->find($collection, $filter);
         if (!empty($_GET['search'])) {
@@ -699,14 +706,20 @@ function crud() {
             $items = array_values($items);
         }
         json_response($items);
+        return;
     }
 
+    // GET one
     if ($method === 'GET' && $id) {
-        $item = $db->findOne($collection, ['_id' => $id, 'userId' => $user['_id']]);
+        $filter = ['_id' => $id];
+        if (!$isSuperAdmin) $filter['userId'] = ['$in' => $userIds];
+        $item = $db->findOne($collection, $filter);
         if (!$item) json_error('elemento no encontrado', 404);
         json_response($item);
+        return;
     }
 
+    // POST (create)
     if ($method === 'POST' && !$id) {
         $item = $body;
         unset($item['token']);
@@ -718,33 +731,45 @@ function crud() {
         }
         $created = $db->insertOne($collection, $item);
         json_response(['success' => true, $resource => $created]);
+        return;
     }
 
+    // PUT (update)
     if ($method === 'PUT' && $id) {
-        $existing = $db->findOne($collection, ['_id' => $id, 'userId' => $user['_id']]);
+        $filter = ['_id' => $id];
+        if (!$isSuperAdmin) $filter['userId'] = ['$in' => $userIds];
+        $existing = $db->findOne($collection, $filter);
         if (!$existing) json_error('elemento no encontrado', 404);
         $updates = $body;
         unset($updates['_id'], $updates['userId']);
         $updates['updatedAt'] = date('c');
         $db->updateOne($collection, ['_id' => $id], $updates);
         json_response(['success' => true]);
+        return;
     }
 
+    // DELETE one (solo del usuario autenticado)
     if ($method === 'DELETE' && $id) {
         $existing = $db->findOne($collection, ['_id' => $id, 'userId' => $user['_id']]);
-        if (!$existing) json_error('elemento no encontrado', 404);
+        if (!$existing) json_error('elemento no encontrado o no pertenece al usuario', 404);
         $db->deleteOne($collection, ['_id' => $id]);
         json_response(['success' => true]);
+        return;
     }
 
+    // DELETE all (solo del usuario autenticado)
     if ($method === 'DELETE' && !$id) {
         $all = $db->find($collection, ['userId' => $user['_id']]);
         foreach ($all as $it) $db->deleteOne($collection, ['_id' => $it['_id']]);
         json_response(['success' => true, 'deleted' => count($all)]);
+        return;
     }
 
+    // Acciones sobre un elemento (POST con action)
     if ($method === 'POST' && $id && $action) {
-        $existing = $db->findOne($collection, ['_id' => $id, 'userId' => $user['_id']]);
+        $filter = ['_id' => $id];
+        if (!$isSuperAdmin) $filter['userId'] = ['$in' => $userIds];
+        $existing = $db->findOne($collection, $filter);
         if (!$existing) json_error('elemento no encontrado', 404);
 
         $actionUpdates = ['updatedAt' => date('c')];
@@ -754,7 +779,19 @@ function crud() {
             case 'resolve': $actionUpdates = ['status' => 'resolved', 'resolvedAt' => date('c'), 'resolution' => $extra] + $actionUpdates; break;
             case 'approve': $actionUpdates = ['status' => 'approved', 'approvedAt' => date('c')] + $actionUpdates; break;
             case 'complete': $actionUpdates = ['completed' => true, 'completedAt' => date('c')] + $actionUpdates; break;
-            case 'unsign': $actionUpdates = ['signed' => false, 'unsignedAt' => date('c')] + $actionUpdates; break;
+            case 'unsign': 
+                $actionUpdates = ['signed' => false, 'unsignedAt' => date('c')] + $actionUpdates;
+                if ($resource === 'invites') {
+                    $db->updateOne('compliance_trainings', ['inviteId' => $id], [
+                        'signature' => null, 'signatureType' => null, 'signerName' => null,
+                        'signedAt' => null, 'inviteId' => null, 'signatureAssignedAt' => null,
+                        'completed' => false, 'completedAt' => null,
+                    ]);
+                    $db->updateOne($collection, ['_id' => $id], [
+                        'assignedTrainingId' => null, 'assignedTrainingName' => null, 'assignedAt' => null,
+                    ]);
+                }
+                break;
             case 'execute': $actionUpdates = ['executed' => true, 'executedAt' => date('c')] + $actionUpdates; break;
             case 'revert': $actionUpdates = ['executed' => false, 'revertedAt' => date('c')] + $actionUpdates; break;
             case 'notify_apdp':
@@ -776,38 +813,63 @@ function crud() {
             default: json_error('acción no soportada', 400);
         }
         $db->updateOne($collection, ['_id' => $id], $actionUpdates);
-        if ($resource === 'invites' && $action === 'unsign') {
-            $db->updateOne('compliance_trainings', ['inviteId' => $id], [
-                'signature' => null, 'signatureType' => null, 'signerName' => null,
-                'signedAt' => null, 'inviteId' => null, 'signatureAssignedAt' => null,
-                'completed' => false, 'completedAt' => null,
-            ]);
-            $db->updateOne($collection, ['_id' => $id], [
-                'assignedTrainingId' => null, 'assignedTrainingName' => null, 'assignedAt' => null,
-            ]);
-        }
         json_response(['success' => true]);
+        return;
     }
 
     json_error('método no soportado', 405);
 }
 
-function overview($user, $db) {
-    $data = [
-        'consents' => $db->count('compliance_consents', ['userId' => $user['_id'], 'active' => true]),
-        'inventory' => $db->count('compliance_inventory', ['userId' => $user['_id']]),
-        'breaches' => $db->count('compliance_breaches', ['userId' => $user['_id']]),
-        'templates' => $db->count('compliance_templates', ['userId' => $user['_id']]),
-        'trainings' => $db->count('compliance_trainings', ['userId' => $user['_id']]),
-        'dpia' => $db->count('compliance_dpia', ['userId' => $user['_id']]),
-        'dpa' => $db->count('compliance_dpa', ['userId' => $user['_id']]),
-        'pseudonymization' => $db->count('compliance_pseudonymization', ['userId' => $user['_id']]),
-        'processors' => $db->count('compliance_processors', ['userId' => $user['_id']]),
-        'transfers' => $db->count('compliance_transfers', ['userId' => $user['_id']]),
-    ];
-    json_response(['success' => true, 'overview' => $data]);
+// ─── ARCO CRUD ──────────────────────────────────────────────────────
+function arcoCrud($user, $db, $method, $id, $action, $body) {
+    $collection = 'arco_requests';
+    $userIds = getCompanyUserIds($user, $db);
+    $isSuperAdmin = ($userIds === null);
+
+    if ($method === 'GET' && !$id) {
+        $filter = $isSuperAdmin ? [] : ['companyId' => ['$in' => $userIds]];
+        $items = $db->find($collection, $filter);
+        json_response($items);
+        return;
+    }
+    if ($method === 'GET' && $id) {
+        $filter = ['_id' => $id];
+        if (!$isSuperAdmin) $filter['companyId'] = ['$in' => $userIds];
+        $item = $db->findOne($collection, $filter);
+        if (!$item) json_error('solicitud no encontrada', 404);
+        json_response($item);
+        return;
+    }
+    if ($method === 'POST' && $id && in_array($action, ['respond', 'reject'])) {
+        $filter = ['_id' => $id];
+        if (!$isSuperAdmin) $filter['companyId'] = ['$in' => $userIds];
+        $req = $db->findOne($collection, $filter);
+        if (!$req) json_error('solicitud no encontrada', 404);
+        $status = $action === 'respond' ? 'resolved' : 'rejected';
+        $response = $body['response'] ?? '';
+        $db->updateOne($collection, ['_id' => $id], [
+            'status' => $status,
+            'response' => $response,
+            'resolvedAt' => date('c'),
+            'resolvedBy' => $user['_id'],
+        ]);
+        json_response(['success' => true]);
+        return;
+    }
+    if ($method === 'POST' && $action === 'generate-response') {
+        $filter = ['_id' => $id];
+        if (!$isSuperAdmin) $filter['companyId'] = ['$in' => $userIds];
+        $req = $db->findOne($collection, $filter);
+        if (!$req) json_error('solicitud no encontrada', 404);
+        $response = 'Respuesta generada automáticamente conforme a la Ley 21.719.';
+        $db->updateOne($collection, ['_id' => $id], ['response' => $response, 'status' => 'in_review']);
+        json_response(['success' => true, 'response' => $response]);
+        return;
+    }
+    json_error('método no soportado para ARCO', 405);
 }
 
+// ─── Funciones públicas y exportaciones ────────────────────────────
 function publicInviteGet($token, $db) {
     if (!$token) json_error('token requerido');
     $invite = $db->findOne('compliance_invites', ['token' => $token]);
@@ -834,46 +896,6 @@ function publicInviteSubmit($token, $body, $db) {
         'signedAt' => date('c'),
     ]);
     json_response(['success' => true]);
-}
-
-function arcoCrud($user, $db, $method, $id, $action, $body) {
-    $collection = 'arco_requests';
-    if ($method === 'GET' && !$id) {
-        $items = $db->find($collection, ['companyId' => $user['_id']]);
-        json_response($items);
-    }
-    if ($method === 'GET' && $id) {
-        $item = $db->findOne($collection, ['_id' => $id, 'companyId' => $user['_id']]);
-        if (!$item) json_error('solicitud no encontrada', 404);
-        json_response($item);
-    }
-    if ($method === 'POST' && $id && in_array($action, ['respond', 'reject'])) {
-        $req = $db->findOne($collection, ['_id' => $id, 'companyId' => $user['_id']]);
-        if (!$req) json_error('solicitud no encontrada', 404);
-        $status = $action === 'respond' ? 'resolved' : 'rejected';
-        $response = $body['response'] ?? '';
-        if ($action === 'generate-response') {
-            $response = 'Respuesta generada automáticamente conforme a la Ley 21.719.';
-            $status = 'resolved';
-        }
-        $db->updateOne($collection, ['_id' => $id], [
-            'status' => $status,
-            'response' => $response,
-            'resolvedAt' => date('c'),
-            'resolvedBy' => $user['_id'],
-        ]);
-        audit_log('arco_' . $action, ['arcoId' => $id, 'solicitante' => $req['solicitante'] ?? '', 'tipo' => $req['tipo'] ?? '', 'status' => $status], $user['_id']);
-        json_response(['success' => true]);
-    }
-    if ($method === 'POST' && $action === 'generate-response') {
-        $req = $db->findOne($collection, ['_id' => $id, 'companyId' => $user['_id']]);
-        if (!$req) json_error('solicitud no encontrada', 404);
-        $response = 'Respuesta generada automáticamente conforme a la Ley 21.719.';
-        $db->updateOne($collection, ['_id' => $id], ['response' => $response, 'status' => 'in_review']);
-        audit_log('arco_generate_response', ['arcoId' => $id, 'solicitante' => $req['solicitante'] ?? '', 'tipo' => $req['tipo'] ?? ''], $user['_id']);
-        json_response(['success' => true, 'response' => $response]);
-    }
-    json_error('método no soportado', 405);
 }
 
 function ropaExport($db) {
@@ -934,6 +956,156 @@ function transferValidation($body) {
     ]);
 }
 
+function searchCompaniesPublic($body, $db) {
+    $query = strtolower(trim($body['q'] ?? ''));
+    if (strlen($query) < 2) {
+        json_response(['companies' => []]);
+    }
+    $configs = $db->find('compliance_config', []);
+    $results = [];
+    foreach ($configs as $cfg) {
+        $name = strtolower($cfg['companyName'] ?? '');
+        if (str_contains($name, $query)) {
+            $results[] = [
+                '_id' => $cfg['userId'] ?? '',
+                'name' => $cfg['companyName'] ?? '',
+                'email' => $cfg['dpdEmail'] ?? '',
+                'city' => $cfg['city'] ?? '',
+            ];
+        }
+    }
+    $users = $db->find('users', []);
+    foreach ($users as $u) {
+        $name = strtolower($u['companyName'] ?? '');
+        if (str_contains($name, $query)) {
+            $exists = false;
+            foreach ($results as $r) {
+                if ($r['_id'] === ($u['_id'] ?? '')) { $exists = true; break; }
+            }
+            if (!$exists) {
+                $results[] = [
+                    '_id' => $u['_id'] ?? '',
+                    'name' => $u['companyName'] ?? '',
+                    'email' => $u['email'] ?? '',
+                    'city' => $u['city'] ?? '',
+                ];
+            }
+        }
+    }
+    json_response(['companies' => array_slice($results, 0, 10)]);
+}
+
+// ─── Generación de PDF para cumplimiento ──────────────────────────
+function generateCompliancePDF($resource) {
+    try {
+        $user = Auth::requireAuth();
+        $db = Database::getInstance();
+
+        require_once __DIR__ . '/../PDFGenerator.php';
+        $pdfGenerator = new PDFGenerator($db, $user);
+        
+        $itemId = $_GET['id'] ?? null;
+        
+        switch ($resource) {
+            case 'consents':
+                $html = $pdfGenerator->generateConsentPDF($itemId);
+                $result = $pdfGenerator->generatePDFFile($html, 'consentimientos');
+                break;
+            case 'inventory':
+                $html = $pdfGenerator->generateInventoryPDF($itemId);
+                $result = $pdfGenerator->generatePDFFile($html, 'inventario');
+                break;
+            case 'breaches':
+                $html = $pdfGenerator->generateBreachesPDF($itemId);
+                $result = $pdfGenerator->generatePDFFile($html, 'brechas');
+                break;
+            case 'trainings':
+                $html = $pdfGenerator->generateTrainingsPDF($itemId);
+                $result = $pdfGenerator->generatePDFFile($html, 'capacitaciones');
+                break;
+            case 'pseudonymization':
+                $html = $pdfGenerator->generatePseudonymizationPDF($itemId);
+                $result = $pdfGenerator->generatePDFFile($html, 'seudonimizacion');
+                break;
+            case 'arco-requests':
+                $html = $pdfGenerator->generateARCORequestsPDF($itemId);
+                $result = $pdfGenerator->generatePDFFile($html, 'solicitudes-arco');
+                break;
+            case 'arco':
+                $arcoDoc = $db->findOne('compliance_checklist', ['userId' => $user['_id'], 'section' => 'arco']);
+                $arcoData = (array)($arcoDoc['data'] ?? []);
+                $html = $pdfGenerator->generateGenericChecklistPDF('Canal de Derechos ARCO', $arcoData);
+                $result = $pdfGenerator->generatePDFFile($html, 'arco');
+                break;
+            case 'incident_response':
+                $irDoc = $db->findOne('compliance_incident_response', ['userId' => $user['_id']]) ?? $db->findOne('compliance_checklist', ['userId' => $user['_id'], 'section' => 'incident_response']);
+                $irData = (array)(!empty($irDoc['data']) ? $irDoc['data'] : $irDoc);
+                $html = $pdfGenerator->generateGenericChecklistPDF('Plan de Respuesta a Incidentes', $irData);
+                $result = $pdfGenerator->generatePDFFile($html, 'respuesta-incidentes');
+                break;
+            case 'breach_protocol':
+                $bpDoc = $db->findOne('compliance_breach_protocol', ['userId' => $user['_id']]) ?? [];
+                $bpCfg = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
+                $bpData = array_merge((array)$bpDoc, array_filter([
+                    'URL del protocolo' => $bpCfg['breachProtocolUrl'] ?? null,
+                    'Contenido del protocolo' => $bpCfg['breachProtocolContent'] ?? null,
+                ]));
+                $html = $pdfGenerator->generateGenericChecklistPDF('Protocolo de Brechas', $bpData);
+                $result = $pdfGenerator->generatePDFFile($html, 'protocolo-brechas');
+                break;
+            case 'apdp':
+                $aCfg = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
+                $aData = array_filter([
+                    'Registrado ante la APDP' => isset($aCfg['apdpRegistered']) ? ($aCfg['apdpRegistered'] ? 'Sí' : 'No') : null,
+                    'Número de registro' => $aCfg['apdpRegistrationNumber'] ?? null,
+                    'Fecha de registro' => $aCfg['apdpRegistrationDate'] ?? null,
+                    'Entidad certificadora' => $aCfg['apdpEntity'] ?? null,
+                    'Observaciones' => $aCfg['apdpNotes'] ?? null,
+                ]);
+                $html = $pdfGenerator->generateGenericChecklistPDF('Modelo de Prevención Certificado (APDP)', $aData);
+                $result = $pdfGenerator->generatePDFFile($html, 'modelo-certificado');
+                break;
+            case 'privacy':
+                $pCfg = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
+                $pData = array_filter([
+                    'URL de la política' => $pCfg['privacyPolicyUrl'] ?? null,
+                    'Contenido de la política' => $pCfg['privacyPolicyContent'] ?? null,
+                    'URL política de cookies' => $pCfg['cookiesPolicyUrl'] ?? null,
+                    'Última actualización' => $pCfg['privacyPolicyUpdatedAt'] ?? ($pCfg['updatedAt'] ?? null),
+                ]);
+                $html = $pdfGenerator->generateGenericChecklistPDF('Política de Privacidad', $pData);
+                $result = $pdfGenerator->generatePDFFile($html, 'politica-privacidad');
+                break;
+            case 'dpd':
+                $dCfg = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
+                $dData = array_filter([
+                    'Nombre del DPD' => $dCfg['dpdName'] ?? null,
+                    'Email del DPD' => $dCfg['dpdEmail'] ?? null,
+                    'Teléfono' => $dCfg['dpdPhone'] ?? null,
+                    'Fecha de designación' => $dCfg['dpdAppointmentDate'] ?? null,
+                    'Registro ante APDP' => $dCfg['dpdApdpRecord'] ?? null,
+                ]);
+                $html = $pdfGenerator->generateGenericChecklistPDF('Delegado de Protección de Datos (DPD)', $dData);
+                $result = $pdfGenerator->generatePDFFile($html, 'dpd-designado');
+                break;
+            default:
+                json_error('Recurso no soportado para generación de PDF', 400);
+        }
+
+        json_response([
+            'success' => true,
+            'pdfUrl' => $result['pdfUrl'] ?? null,
+            'pdfBase64' => $result['pdfBase64'] ?? null,
+            'html' => $result['html'] ?? null,
+            'message' => $result['message'] ?? ''
+        ]);
+    } catch (\Throwable $e) {
+        error_log('generateCompliancePDF error (' . $resource . '): ' . $e->getMessage());
+        json_error('No se pudo generar el documento: ' . $e->getMessage(), 500);
+    }
+}
+
+// ─── Generar política pública ──────────────────────────────────────
 function generatePublicPolicy() {
     $token = $_GET['token'] ?? '';
     if (!$token) {
@@ -1083,162 +1255,4 @@ function generatePublicPolicy() {
     echo $html;
     exit;
 }
-
-function searchCompaniesPublic($body, $db) {
-    $query = strtolower(trim($body['q'] ?? ''));
-    if (strlen($query) < 2) {
-        json_response(['companies' => []]);
-    }
-
-    // Buscar en compliance_config (empresas registradas)
-    $configs = $db->find('compliance_config', []);
-    $results = [];
-
-    foreach ($configs as $cfg) {
-        $name = strtolower($cfg['companyName'] ?? '');
-        if (str_contains($name, $query)) {
-            $results[] = [
-                '_id' => $cfg['userId'] ?? '',
-                'name' => $cfg['companyName'] ?? '',
-                'email' => $cfg['dpdEmail'] ?? '',
-                'city' => $cfg['city'] ?? '',
-            ];
-        }
-    }
-
-    // También buscar en users (empresas registradas)
-    $users = $db->find('users', []);
-    foreach ($users as $u) {
-        $name = strtolower($u['companyName'] ?? '');
-        if (str_contains($name, $query)) {
-            // Evitar duplicados
-            $exists = false;
-            foreach ($results as $r) {
-                if ($r['_id'] === ($u['_id'] ?? '')) {
-                    $exists = true;
-                    break;
-                }
-            }
-            if (!$exists) {
-                $results[] = [
-                    '_id' => $u['_id'] ?? '',
-                    'name' => $u['companyName'] ?? '',
-                    'email' => $u['email'] ?? '',
-                    'city' => $u['city'] ?? '',
-                ];
-            }
-        }
-    }
-
-    json_response(['companies' => array_slice($results, 0, 10)]);
-}
-
-// PDF Generation Functions
-function generateCompliancePDF($resource) {
-    try {
-    $user = Auth::requireAuth();
-    $db = Database::getInstance();
-
-    require_once __DIR__ . '/../PDFGenerator.php';
-    $pdfGenerator = new PDFGenerator($db, $user);
-    
-    $itemId = $_GET['id'] ?? null;
-    
-    switch ($resource) {
-        case 'consents':
-            $html = $pdfGenerator->generateConsentPDF($itemId);
-            $result = $pdfGenerator->generatePDFFile($html, 'consentimientos');
-            break;
-        case 'inventory':
-            $html = $pdfGenerator->generateInventoryPDF($itemId);
-            $result = $pdfGenerator->generatePDFFile($html, 'inventario');
-            break;
-        case 'breaches':
-            $html = $pdfGenerator->generateBreachesPDF($itemId);
-            $result = $pdfGenerator->generatePDFFile($html, 'brechas');
-            break;
-        case 'trainings':
-            $html = $pdfGenerator->generateTrainingsPDF($itemId);
-            $result = $pdfGenerator->generatePDFFile($html, 'capacitaciones');
-            break;
-        case 'pseudonymization':
-            $html = $pdfGenerator->generatePseudonymizationPDF($itemId);
-            $result = $pdfGenerator->generatePDFFile($html, 'seudonimizacion');
-            break;
-        case 'arco-requests':
-            $html = $pdfGenerator->generateARCORequestsPDF($itemId);
-            $result = $pdfGenerator->generatePDFFile($html, 'solicitudes-arco');
-            break;
-        case 'arco':
-            $arcoDoc = $db->findOne('compliance_checklist', ['userId' => $user['_id'], 'section' => 'arco']);
-            $arcoData = (array)($arcoDoc['data'] ?? []);
-            $html = $pdfGenerator->generateGenericChecklistPDF('Canal de Derechos ARCO', $arcoData);
-            $result = $pdfGenerator->generatePDFFile($html, 'arco');
-            break;
-        case 'incident_response':
-            $irDoc = $db->findOne('compliance_incident_response', ['userId' => $user['_id']]) ?? $db->findOne('compliance_checklist', ['userId' => $user['_id'], 'section' => 'incident_response']);
-            $irData = (array)(!empty($irDoc['data']) ? $irDoc['data'] : $irDoc);
-            $html = $pdfGenerator->generateGenericChecklistPDF('Plan de Respuesta a Incidentes', $irData);
-            $result = $pdfGenerator->generatePDFFile($html, 'respuesta-incidentes');
-            break;
-        case 'breach_protocol':
-            $bpDoc = $db->findOne('compliance_breach_protocol', ['userId' => $user['_id']]) ?? [];
-            $bpCfg = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
-            $bpData = array_merge((array)$bpDoc, array_filter([
-                'URL del protocolo' => $bpCfg['breachProtocolUrl'] ?? null,
-                'Contenido del protocolo' => $bpCfg['breachProtocolContent'] ?? null,
-            ]));
-            $html = $pdfGenerator->generateGenericChecklistPDF('Protocolo de Brechas', $bpData);
-            $result = $pdfGenerator->generatePDFFile($html, 'protocolo-brechas');
-            break;
-        case 'apdp':
-            $aCfg = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
-            $aData = array_filter([
-                'Registrado ante la APDP' => isset($aCfg['apdpRegistered']) ? ($aCfg['apdpRegistered'] ? 'Sí' : 'No') : null,
-                'Número de registro' => $aCfg['apdpRegistrationNumber'] ?? null,
-                'Fecha de registro' => $aCfg['apdpRegistrationDate'] ?? null,
-                'Entidad certificadora' => $aCfg['apdpEntity'] ?? null,
-                'Observaciones' => $aCfg['apdpNotes'] ?? null,
-            ]);
-            $html = $pdfGenerator->generateGenericChecklistPDF('Modelo de Prevención Certificado (APDP)', $aData);
-            $result = $pdfGenerator->generatePDFFile($html, 'modelo-certificado');
-            break;
-        case 'privacy':
-            $pCfg = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
-            $pData = array_filter([
-                'URL de la política' => $pCfg['privacyPolicyUrl'] ?? null,
-                'Contenido de la política' => $pCfg['privacyPolicyContent'] ?? null,
-                'URL política de cookies' => $pCfg['cookiesPolicyUrl'] ?? null,
-                'Última actualización' => $pCfg['privacyPolicyUpdatedAt'] ?? ($pCfg['updatedAt'] ?? null),
-            ]);
-            $html = $pdfGenerator->generateGenericChecklistPDF('Política de Privacidad', $pData);
-            $result = $pdfGenerator->generatePDFFile($html, 'politica-privacidad');
-            break;
-        case 'dpd':
-            $dCfg = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
-            $dData = array_filter([
-                'Nombre del DPD' => $dCfg['dpdName'] ?? null,
-                'Email del DPD' => $dCfg['dpdEmail'] ?? null,
-                'Teléfono' => $dCfg['dpdPhone'] ?? null,
-                'Fecha de designación' => $dCfg['dpdAppointmentDate'] ?? null,
-                'Registro ante APDP' => $dCfg['dpdApdpRecord'] ?? null,
-            ]);
-            $html = $pdfGenerator->generateGenericChecklistPDF('Delegado de Protección de Datos (DPD)', $dData);
-            $result = $pdfGenerator->generatePDFFile($html, 'dpd-designado');
-            break;
-        default:
-            json_error('Recurso no soportado para generación de PDF', 400);
-    }
-
-    json_response([
-        'success' => true,
-        'pdfUrl' => $result['pdfUrl'] ?? null,
-        'pdfBase64' => $result['pdfBase64'] ?? null,
-        'html' => $result['html'] ?? null,
-        'message' => $result['message'] ?? ''
-    ]);
-    } catch (\Throwable $e) {
-        error_log('generateCompliancePDF error (' . $resource . '): ' . $e->getMessage());
-        json_error('No se pudo generar el documento: ' . $e->getMessage(), 500);
-    }
-}
+?>
