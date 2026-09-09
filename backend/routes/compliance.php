@@ -535,6 +535,13 @@ function crud() {
         return;
     }
 
+// ─── NUEVO: Soporte para alias con guion bajo en PDF ────────────
+    if (($resource === 'incident_response' || $resource === 'breach_protocol') && $action === 'pdf') {
+        generateCompliancePDF($resource);
+        return;
+    }
+
+
     // ─── Checklist ──────────────────────────────────────────────────
     if ($resource === 'checklist') {
         $filter = $isSuperAdmin ? [] : ['userId' => ['$in' => $userIds]];
