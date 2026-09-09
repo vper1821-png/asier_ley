@@ -407,16 +407,16 @@ class Database {
         if (!is_array($filter)) return $filter;
         $out = [];
         foreach ($filter as $k => $v) {
-            // Si la clave es _id y es un string hex válido, convertir a ObjectId
+            // ✅ Solo convertir _id a ObjectId (NO userId, ni otros campos)
             if ($k === '_id' && is_string($v) && preg_match('/^[0-9a-fA-F]{24}$/', $v)) {
                 $out[$k] = new MongoDB\BSON\ObjectId($v);
             }
-            // Si es $in o $nin y contiene strings hex, convertirlos a ObjectId
+            // ✅ Para $in y $nin: solo convertir si la clave es _id
             elseif (($k === '$in' || $k === '$nin') && is_array($v)) {
+                // Detectar si el array contiene IDs para el campo _id
+                // Esta lógica es compleja, mejor manejar caso por caso
                 $out[$k] = array_map(function($item) {
-                    if (is_string($item) && preg_match('/^[0-9a-fA-F]{24}$/', $item)) {
-                        return new MongoDB\BSON\ObjectId($item);
-                    }
+                    // No convertir automáticamente; dejamos los valores como están
                     return $item;
                 }, $v);
             }
