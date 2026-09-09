@@ -472,7 +472,7 @@ function crud() {
     // ─── NUEVO: Manejo de PDFs para cualquier recurso soportado ────
     $pdfResources = ['consents', 'inventory', 'breaches', 'trainings', 'pseudonymization', 
                       'arco-requests', 'arco', 'incident_response', 'breach_protocol', 
-                      'apdp', 'privacy', 'dpd', 'incident-response'];
+                      'apdp', 'privacy', 'dpd', 'incident-response', 'breach-protocol'];
 
     // Normalizar: reemplazar guion bajo por guion (para que coincida con los casos)
     $normalizedResource = str_replace('_', '-', $resource);
