@@ -1112,7 +1112,7 @@ class PDFGenerator {
 
                 $pdfBase64 = base64_encode($pdfContent);
             }
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             // Log error but continue with HTML fallback
             error_log('PDF generation error: ' . $e->getMessage());
         }
