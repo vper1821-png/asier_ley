@@ -2,6 +2,8 @@
 // Alert routes
 
 function listAll() {
+    error_log("[ALERTAS-DEBUG] listAll() ejecutada en routes/alerts.php");
+
     $user = Auth::requireAuth();
     $body = get_body();
     $db = Database::getInstance();
