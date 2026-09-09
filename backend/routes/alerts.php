@@ -116,54 +116,65 @@ function listAll() {
     $highActiveFilter = array_merge($activeFilter, ['severity' => 'high']);
     $stats['high'] = $db->count('alerts', $highActiveFilter);
 
-    // Tendencia últimos 7 días (agregación)
-    $trendPipeline = [
-        ['$match' => $filter],
-        ['$group' => [
-            '_id' => ['$dateToString' => ['format' => '%Y-%m-%d', 'date' => '$createdAt']],
-            'count' => ['$sum' => 1],
-            'critical' => ['$sum' => ['$cond' => [['$eq' => ['$severity', 'critical']], 1, 0]]],
-        ]],
-        ['$sort' => ['_id' => 1]],
-        ['$limit' => 7],
-    ];
-    $trendResult = $db->aggregate('alerts', $trendPipeline);
-    $trendData = [];
-    foreach ($trendResult as $row) {
-        $trendData[] = [
-            'date' => date('d/m', strtotime($row['_id'])),
-            'count' => $row['count'],
-            'critical' => $row['critical'],
+    // ─── Tendencia últimos 7 días (CORREGIDO) ──────────────────────
+    // Usamos $substr porque createdAt es string, no Date
+    try {
+        $trendPipeline = [
+            ['$match' => $filter],
+            ['$group' => [
+                // Extraer los primeros 10 caracteres de createdAt (YYYY-MM-DD)
+                '_id' => ['$substr' => ['$createdAt', 0, 10]],
+                'count' => ['$sum' => 1],
+                'critical' => ['$sum' => ['$cond' => [['$eq' => ['$severity', 'critical']], 1, 0]]],
+            ]],
+            ['$sort' => ['_id' => 1]],
+            ['$limit' => 7],
         ];
-    }
-    // Rellenar días faltantes (si el usuario no tiene alertas en algún día)
-    $dates = array_column($trendData, 'date');
-    for ($i = 6; $i >= 0; $i--) {
-        $d = date('d/m', strtotime("-$i days"));
-        if (!in_array($d, $dates)) {
-            $trendData[] = ['date' => $d, 'count' => 0, 'critical' => 0];
+        $trendResult = $db->aggregate('alerts', $trendPipeline);
+        $trendData = [];
+        foreach ($trendResult as $row) {
+            $trendData[] = [
+                'date' => date('d/m', strtotime($row['_id'])),
+                'count' => $row['count'],
+                'critical' => $row['critical'],
+            ];
         }
+        // Rellenar días faltantes
+        $dates = array_column($trendData, 'date');
+        for ($i = 6; $i >= 0; $i--) {
+            $d = date('d/m', strtotime("-$i days"));
+            if (!in_array($d, $dates)) {
+                $trendData[] = ['date' => $d, 'count' => 0, 'critical' => 0];
+            }
+        }
+        usort($trendData, fn($a, $b) => strtotime($a['date']) <=> strtotime($b['date']));
+        $stats['trend'] = array_slice($trendData, -7);
+    } catch (\Throwable $e) {
+        error_log("[ALERTAS] Error en tendencia: " . $e->getMessage());
+        $stats['trend'] = [];
     }
-    // Ordenar por fecha ascendente
-    usort($trendData, fn($a, $b) => strtotime($a['date']) <=> strtotime($b['date']));
-    $stats['trend'] = array_slice($trendData, -7); // asegurar solo 7
 
-    // Distribución por severidad
-    $sevPipeline = [
-        ['$match' => $filter],
-        ['$group' => [
-            '_id' => '$severity',
-            'count' => ['$sum' => 1],
-        ]],
-    ];
-    $sevResult = $db->aggregate('alerts', $sevPipeline);
-    $sevMap = ['critical' => 0, 'high' => 0, 'medium' => 0, 'low' => 0];
-    foreach ($sevResult as $row) {
-        if (isset($sevMap[$row['_id']])) {
-            $sevMap[$row['_id']] = $row['count'];
+    // ─── Distribución por severidad ────────────────────────────────
+    try {
+        $sevPipeline = [
+            ['$match' => $filter],
+            ['$group' => [
+                '_id' => '$severity',
+                'count' => ['$sum' => 1],
+            ]],
+        ];
+        $sevResult = $db->aggregate('alerts', $sevPipeline);
+        $sevMap = ['critical' => 0, 'high' => 0, 'medium' => 0, 'low' => 0];
+        foreach ($sevResult as $row) {
+            if (isset($sevMap[$row['_id']])) {
+                $sevMap[$row['_id']] = $row['count'];
+            }
         }
+        $stats['severity'] = $sevMap;
+    } catch (\Throwable $e) {
+        error_log("[ALERTAS] Error en distribución por severidad: " . $e->getMessage());
+        $stats['severity'] = ['critical' => 0, 'high' => 0, 'medium' => 0, 'low' => 0];
     }
-    $stats['severity'] = $sevMap;
 
     // Devolver respuesta
     json_response([
