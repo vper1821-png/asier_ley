@@ -128,6 +128,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $error = $res['error'] ?? 'Error al desactivar 2FA. Verifica tu contraseña y código.';
         }
+    } elseif (isset($_POST['create_team_user']) || $action === 'create_team_user') {
+        $activeTab = 'team';
+        $res = api_post_form('/api/company/create-user', [
+            'token' => $token,
+            'email' => trim($_POST['team_email'] ?? ''),
+            'password' => $_POST['team_password'] ?? '',
+            'name' => trim($_POST['team_name'] ?? ''),
+            'role' => $_POST['team_role'] ?? 'user',
+        ]);
+        if (!empty($res['success'])) {
+            $success = 'Usuario del equipo creado correctamente.';
+        } else {
+            $error = $res['error'] ?? 'No se pudo crear el usuario del equipo.';
+        }
+    } elseif (isset($_POST['update_team_user']) || $action === 'update_team_user') {
+        $activeTab = 'team';
+        $res = api_post_form('/api/company/update-user', [
+            'token' => $token,
+            'userId' => $_POST['team_user_id'] ?? '',
+            'role' => $_POST['team_role'] ?? '',
+            'isActive' => $_POST['team_active'] ?? '',
+            'name' => trim($_POST['team_name'] ?? ''),
+        ]);
+        if (!empty($res['success'])) {
+            $success = 'Usuario del equipo actualizado.';
+        } else {
+            $error = $res['error'] ?? 'No se pudo actualizar el usuario.';
+        }
+    } elseif (isset($_POST['delete_team_user']) || $action === 'delete_team_user') {
+        $activeTab = 'team';
+        $res = api_post_form('/api/company/delete-user', [
+            'token' => $token,
+            'userId' => $_POST['team_user_id'] ?? '',
+        ]);
+        if (!empty($res['success'])) {
+            $success = 'Usuario del equipo eliminado.';
+        } else {
+            $error = $res['error'] ?? 'No se pudo eliminar el usuario.';
+        }
+    } elseif (isset($_POST['reset_team_password']) || $action === 'reset_team_password') {
+        $activeTab = 'team';
+        $res = api_post_form('/api/company/reset-password', [
+            'token' => $token,
+            'userId' => $_POST['team_user_id'] ?? '',
+            'newPassword' => $_POST['team_new_password'] ?? '',
+        ]);
+        if (!empty($res['success'])) {
+            $success = 'Contraseña restablecida correctamente.';
+        } else {
+            $error = $res['error'] ?? 'No se pudo restablecer la contraseña.';
+        }
     }
 }
 
@@ -138,6 +189,21 @@ $userRole = strtoupper($user['role'] ?? (!empty($user['isAdmin']) ? 'SUPERADMIN'
 $planType = strtoupper($user['planType'] ?? 'ENTERPRISE');
 $twoFaActive = !empty($user['twoFactorEnabled']);
 $initials = mb_strtoupper(mb_substr($displayName ?: ($userEmail ?: 'U'), 0, 2));
+
+$canManageTeam = in_array($user['role'] ?? '', ['company_admin', 'admin', 'superadmin']);
+$teamUsers = [];
+$availableRoles = [];
+if ($canManageTeam) {
+    $teamRes = api_post_form('/api/company/users', ['token' => $token]);
+    $teamUsers = is_array($teamRes) && empty($teamRes['error']) ? $teamRes : [];
+    $rolesRes = api_post_form('/api/company/roles', ['token' => $token]);
+    $availableRoles = is_array($rolesRes) && !empty($rolesRes['roles']) ? $rolesRes['roles'] : [
+        ['id' => 'user', 'label' => 'Usuario'],
+        ['id' => 'developer', 'label' => 'Desarrollador'],
+        ['id' => 'dpo', 'label' => 'DPO / DPD'],
+        ['id' => 'company_admin', 'label' => 'Admin de empresa'],
+    ];
+}
 ?>
 
 <div class="flex h-screen bg-bg-base text-[13px] text-text-body overflow-hidden">
@@ -274,6 +340,19 @@ $initials = mb_strtoupper(mb_substr($displayName ?: ($userEmail ?: 'U'), 0, 2));
                                     </div>
                                     <svg class="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
                                 </button>
+
+                                <?php if ($canManageTeam): ?>
+                                <button type="button" onclick="switchSettingsTab('team')" data-tab="team"
+                                        class="tab-btn w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-left transition-all duration-200 <?= $activeTab === 'team' ? 'bg-primary-500/15 text-primary-300 border border-primary-500/30 font-medium' : 'text-text-muted hover:text-white hover:bg-white/[0.03] border border-transparent' ?>">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-7 h-7 rounded-lg flex items-center justify-center bg-violet-500/10 text-violet-400 border border-violet-500/20">
+                                            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2a3 3 0 00-5.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2a3 3 0 015.356-1.857m0 0a3 3 0 10-4.788-3.538 3.001 3.001 0 004.788 3.538z"/></svg>
+                                        </div>
+                                        <span class="text-xs">Mi Equipo</span>
+                                    </div>
+                                    <svg class="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                                </button>
+                                <?php endif; ?>
                             </nav>
                         </div>
 
@@ -710,6 +789,133 @@ $initials = mb_strtoupper(mb_substr($displayName ?: ($userEmail ?: 'U'), 0, 2));
                                 </div>
                             </div>
                         </div>
+
+                        <!-- TAB 5: MI EQUIPO -->
+                        <?php if ($canManageTeam): ?>
+                        <div id="tab-panel-team" class="tab-panel space-y-6 <?= $activeTab === 'team' ? '' : 'hidden' ?>">
+                            <div class="bg-bg-panel/80 border border-border-theme rounded-2xl overflow-hidden backdrop-blur-md shadow-theme-sm">
+                                <div class="px-6 py-4.5 border-b border-border-theme flex items-center justify-between bg-white/[0.01]">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-9 h-9 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-violet-400">
+                                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2a3 3 0 00-5.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2a3 3 0 015.356-1.857m0 0a3 3 0 10-4.788-3.538 3.001 3.001 0 004.788 3.538z"/></svg>
+                                        </div>
+                                        <div>
+                                            <h2 class="text-sm font-bold text-white">Mi Equipo</h2>
+                                            <p class="text-[11px] text-text-muted">Gestiona usuarios, roles y accesos de tu empresa</p>
+                                        </div>
+                                    </div>
+                                    <span class="text-[10px] font-mono px-2.5 py-1 rounded-lg bg-violet-500/10 text-violet-400 border border-violet-500/20">
+                                        <?= count($teamUsers) ?> miembros
+                                    </span>
+                                </div>
+
+                                <div class="p-6 space-y-6">
+                                    <!-- Create user form -->
+                                    <form method="POST" class="grid grid-cols-1 md:grid-cols-5 gap-3">
+                                        <input type="hidden" name="action" value="create_team_user">
+                                        <input type="email" name="team_email" required placeholder="Email" class="input-premium">
+                                        <input type="text" name="team_name" placeholder="Nombre" class="input-premium">
+                                        <input type="password" name="team_password" required placeholder="Contraseña (mín. 8)" class="input-premium">
+                                        <select name="team_role" class="input-premium">
+                                            <?php foreach ($availableRoles as $r): ?>
+                                                <?php if (in_array($r['id'], ['user','developer','dpo','company_admin'])): ?>
+                                                <option value="<?= h($r['id']) ?>"><?= h($r['label']) ?></option>
+                                                <?php endif; ?>
+                                            <?php endforeach; ?>
+                                        </select>
+                                        <button type="submit" name="create_team_user" value="1" class="px-3 py-2 rounded-lg text-[11px] font-medium bg-violet-500 hover:bg-violet-600 text-white transition-all flex items-center justify-center gap-1.5">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                                            Invitar
+                                        </button>
+                                    </form>
+
+                                    <?php if (empty($teamUsers)): ?>
+                                        <p class="text-text-muted text-sm text-center py-8">No hay usuarios en el equipo.</p>
+                                    <?php else: ?>
+                                    <div class="overflow-x-auto rounded-lg border border-border-theme/25">
+                                        <table class="w-full text-[12px]">
+                                            <thead><tr class="bg-bg-base/80 border-b border-border-theme text-[10px] text-text-subtle uppercase tracking-wider">
+                                                <th class="text-left py-3 px-3 font-semibold">Nombre</th>
+                                                <th class="text-left py-3 px-3 font-semibold">Email</th>
+                                                <th class="text-left py-3 px-3 font-semibold">Rol</th>
+                                                <th class="text-left py-3 px-3 font-semibold">Estado</th>
+                                                <th class="text-left py-3 px-3 font-semibold">Acciones</th>
+                                            </tr></thead>
+                                            <tbody class="divide-y divide-border-theme/20">
+                                                <?php foreach ($teamUsers as $tu): ?>
+                                                <?php
+                                                    $tuRole = $tu['role'] ?? 'user';
+                                                    $tuActive = !empty($tu['isActive']);
+                                                    $tuId = $tu['_id'] ?? '';
+                                                    $isOwner = (string)$tuId === (string)($user['companyId'] ?? '');
+                                                    $roleClass = match($tuRole) {
+                                                        'superadmin', 'admin' => 'bg-rose-500/10 text-rose-400 border-rose-500/20',
+                                                        'company_admin' => 'bg-violet-500/10 text-violet-400 border-violet-500/20',
+                                                        'dpo' => 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
+                                                        'developer' => 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+                                                        default => 'bg-white/[0.05] text-text-subtle border-white/[0.08]',
+                                                    };
+                                                    $roleLabel = '';
+                                                    foreach ($availableRoles as $r) { if ($r['id'] === $tuRole) { $roleLabel = $r['label']; break; } }
+                                                    if (!$roleLabel) $roleLabel = $tuRole;
+                                                ?>
+                                                <tr class="hover:bg-bg-base/40 transition-colors">
+                                                    <td class="py-2.5 px-3 text-text-heading font-medium"><?= h($tu['name'] ?? '-') ?></td>
+                                                    <td class="py-2.5 px-3 text-text-muted"><?= h($tu['email'] ?? '') ?></td>
+                                                    <td class="py-2.5 px-3">
+                                                        <span class="text-[10px] px-2 py-0.5 rounded-full border <?= $roleClass ?>"><?= h($roleLabel) ?></span>
+                                                    </td>
+                                                    <td class="py-2.5 px-3">
+                                                        <span class="text-[10px] px-2 py-0.5 rounded-full <?= $tuActive ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20' ?>"><?= $tuActive ? 'Activo' : 'Suspendido' ?></span>
+                                                    </td>
+                                                    <td class="py-2.5 px-3">
+                                                        <div class="flex items-center gap-1.5 flex-wrap">
+                                                            <?php if ((string)$tuId !== (string)($user['_id'] ?? '')): ?>
+                                                            <form method="POST" class="inline-flex gap-1.5 items-center">
+                                                                <input type="hidden" name="action" value="update_team_user">
+                                                                <input type="hidden" name="team_user_id" value="<?= h($tuId) ?>">
+                                                                <input type="text" name="team_name" value="<?= h($tu['name'] ?? '') ?>" class="input-premium !py-1 !text-[11px] w-24" placeholder="Nombre">
+                                                                <select name="team_role" class="input-premium !py-1 !text-[11px]">
+                                                                    <?php foreach ($availableRoles as $r): ?>
+                                                                        <?php if (in_array($r['id'], ['user','developer','dpo','company_admin'])): ?>
+                                                                        <option value="<?= h($r['id']) ?>" <?= $r['id'] === $tuRole ? 'selected' : '' ?>><?= h($r['label']) ?></option>
+                                                                        <?php endif; ?>
+                                                                    <?php endforeach; ?>
+                                                                </select>
+                                                                <select name="team_active" class="input-premium !py-1 !text-[11px]">
+                                                                    <option value="1" <?= $tuActive ? 'selected' : '' ?>>Activo</option>
+                                                                    <option value="0" <?= !$tuActive ? 'selected' : '' ?>>Suspendido</option>
+                                                                </select>
+                                                                <button type="submit" name="update_team_user" value="1" class="px-2 py-1 rounded-lg text-[10px] font-medium bg-white/[0.05] border border-white/[0.1] text-text-muted hover:text-text-body hover:bg-white/[0.08] transition-all">Guardar</button>
+                                                            </form>
+                                                            <form method="POST" class="inline-flex gap-1.5 items-center" onsubmit="return confirm('¿Restablecer contraseña?')">
+                                                                <input type="hidden" name="action" value="reset_team_password">
+                                                                <input type="hidden" name="team_user_id" value="<?= h($tuId) ?>">
+                                                                <input type="password" name="team_new_password" required placeholder="Nueva contraseña" class="input-premium !py-1 !text-[11px] w-28">
+                                                                <button type="submit" name="reset_team_password" value="1" class="px-2 py-1 rounded-lg text-[10px] font-medium bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500/20 transition-all">Reset</button>
+                                                            </form>
+                                                            <?php if (!$isOwner): ?>
+                                                            <form method="POST" class="inline" onsubmit="return confirm('¿Eliminar este usuario del equipo?')">
+                                                                <input type="hidden" name="action" value="delete_team_user">
+                                                                <input type="hidden" name="team_user_id" value="<?= h($tuId) ?>">
+                                                                <button type="submit" name="delete_team_user" value="1" class="px-2 py-1 rounded-lg text-[10px] font-medium bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all">Eliminar</button>
+                                                            </form>
+                                                            <?php endif; ?>
+                                                            <?php else: ?>
+                                                            <span class="text-[10px] text-text-subtle italic">Tú</span>
+                                                            <?php endif; ?>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                                <?php endforeach; ?>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+                        <?php endif; ?>
 
                     </div>
                 </div>

@@ -30,7 +30,7 @@ class Database {
             $this->db->command(['ping' => 1]);
             $this->useMongo = true;
             error_log('[DB] MongoDB connection successful');
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $this->useMongo = false;
             error_log('[DB] MongoDB connection failed: ' . $e->getMessage() . ', using file storage');
         }
@@ -51,6 +51,65 @@ class Database {
         file_put_contents($this->collectionFile($collection), json_encode($data, JSON_PRETTY_PRINT), LOCK_EX);
     }
 
+    // ── Filter engine for file-based storage ──
+
+    private function matchesFilter($doc, $filter) {
+        foreach ($filter as $k => $v) {
+            if ($k === '$or') {
+                if (!is_array($v)) return false;
+                $orMatch = false;
+                foreach ($v as $sub) {
+                    if ($this->matchesFilter($doc, $sub)) { $orMatch = true; break; }
+                }
+                if (!$orMatch) return false;
+            } elseif ($k === '$and') {
+                if (!is_array($v)) return false;
+                foreach ($v as $sub) {
+                    if (!$this->matchesFilter($doc, $sub)) return false;
+                }
+            } else {
+                $field = array_key_exists($k, $doc) ? $doc[$k] : null;
+                if (is_array($v)) {
+                    foreach ($v as $op => $opVal) {
+                        switch ($op) {
+                            case '$in':
+                                if (!in_array($field, (array)$opVal, false)) return false;
+                                break;
+                            case '$nin':
+                                if (in_array($field, (array)$opVal, false)) return false;
+                                break;
+                            case '$gte':
+                                if ($field === null || $field < $opVal) return false;
+                                break;
+                            case '$lte':
+                                if ($field === null || $field > $opVal) return false;
+                                break;
+                            case '$gt':
+                                if ($field === null || $field <= $opVal) return false;
+                                break;
+                            case '$lt':
+                                if ($field === null || $field >= $opVal) return false;
+                                break;
+                            case '$ne':
+                                if ($field == $opVal) return false;
+                                break;
+                            case '$exists':
+                                if ($opVal && !array_key_exists($k, $doc)) return false;
+                                if (!$opVal && array_key_exists($k, $doc)) return false;
+                                break;
+                            default:
+                                // Unknown operator: fallback to strict comparison of the array as value
+                                if ($field != $v) return false;
+                        }
+                    }
+                } else {
+                    if ($field != $v) return false;
+                }
+            }
+        }
+        return true;
+    }
+
     // ── MongoDB operations ──
 
     public function findOne($collection, $filter = []) {
@@ -69,11 +128,7 @@ class Database {
         }
         $data = $this->readCollection($collection);
         foreach ($data as $doc) {
-            $match = true;
-            foreach ($filter as $k => $v) {
-                if (!isset($doc[$k]) || $doc[$k] != $v) { $match = false; break; }
-            }
-            if ($match) return $doc;
+            if ($this->matchesFilter($doc, $filter)) return $doc;
         }
         return null;
     }
@@ -100,15 +155,7 @@ class Database {
         $data = $this->readCollection($collection);
         $results = [];
         foreach ($data as $doc) {
-            $match = true;
-            foreach ($filter as $k => $v) {
-                if (is_array($v) && isset($v['$in'])) {
-                    if (!in_array($doc[$k] ?? null, $v['$in'])) { $match = false; break; }
-                } elseif (!isset($doc[$k]) || $doc[$k] != $v) {
-                    $match = false; break;
-                }
-            }
-            if ($match) $results[] = $doc;
+            if ($this->matchesFilter($doc, $filter)) $results[] = $doc;
         }
         // Sort by _id descending (newest first)
         usort($results, fn($a, $b) => strcmp($b['_id'] ?? '', $a['_id'] ?? ''));
@@ -160,11 +207,7 @@ class Database {
         }
         $data = $this->readCollection($collection);
         foreach ($data as &$doc) {
-            $match = true;
-            foreach ($filter as $k => $v) {
-                if (!isset($doc[$k]) || $doc[$k] != $v) { $match = false; break; }
-            }
-            if ($match) {
+            if ($this->matchesFilter($doc, $filter)) {
                 foreach ($update as $k => $v) $doc[$k] = $v;
                 $doc['updatedAt'] = date('c');
                 $this->writeCollection($collection, $data);
@@ -185,11 +228,7 @@ class Database {
         $data = $this->readCollection($collection);
         $newData = [];
         foreach ($data as $doc) {
-            $match = true;
-            foreach ($filter as $k => $v) {
-                if (!isset($doc[$k]) || $doc[$k] != $v) { $match = false; break; }
-            }
-            if (!$match) $newData[] = $doc;
+            if (!$this->matchesFilter($doc, $filter)) $newData[] = $doc;
         }
         $this->writeCollection($collection, $newData);
         return true;
@@ -206,11 +245,7 @@ class Database {
         $data = $this->readCollection($collection);
         $newData = [];
         foreach ($data as $doc) {
-            $match = true;
-            foreach ($filter as $k => $v) {
-                if (!isset($doc[$k]) || $doc[$k] != $v) { $match = false; break; }
-            }
-            if (!$match) $newData[] = $doc;
+            if (!$this->matchesFilter($doc, $filter)) $newData[] = $doc;
         }
         $this->writeCollection($collection, $newData);
         return ['deletedCount' => count($data) - count($newData)];
@@ -228,22 +263,35 @@ class Database {
         if (empty($filter)) return count($data);
         $count = 0;
         foreach ($data as $doc) {
-            $match = true;
-            foreach ($filter as $k => $v) {
-                if (!isset($doc[$k]) || $doc[$k] != $v) { $match = false; break; }
-            }
-            if ($match) $count++;
+            if ($this->matchesFilter($doc, $filter)) $count++;
         }
         return $count;
     }
 
     private function normalizeFilter($filter) {
-        // Convert string _id to ObjectId for MongoDB queries
-        // The database stores _id as ObjectId but returns as string
-        if (isset($filter['_id']) && is_string($filter['_id']) && preg_match('/^[0-9a-fA-F]{24}$/', $filter['_id'])) {
-            $filter['_id'] = new MongoDB\BSON\ObjectId($filter['_id']);
+        return $this->normalizeFilterRecursive($filter);
+    }
+
+    private function normalizeFilterRecursive($filter) {
+        if (!is_array($filter)) return $filter;
+        $out = [];
+        foreach ($filter as $k => $v) {
+            if ($k === '_id' && is_string($v) && preg_match('/^[0-9a-fA-F]{24}$/', $v)) {
+                $out[$k] = new MongoDB\BSON\ObjectId($v);
+            } elseif (($k === '$in' || $k === '$nin') && is_array($v)) {
+                $out[$k] = array_map(function($item) {
+                    if (is_string($item) && preg_match('/^[0-9a-fA-F]{24}$/', $item)) {
+                        return new MongoDB\BSON\ObjectId($item);
+                    }
+                    return $item;
+                }, $v);
+            } elseif (is_array($v)) {
+                $out[$k] = $this->normalizeFilterRecursive($v);
+            } else {
+                $out[$k] = $v;
+            }
         }
-        return $filter;
+        return $out;
     }
 
     private function generateId() {

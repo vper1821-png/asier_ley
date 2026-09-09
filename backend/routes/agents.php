@@ -8,10 +8,14 @@ function isSuperAdminUser($u) {
 function findAgentFor($user, $agentId) {
     $db = Database::getInstance();
     // Buscar por agentId o _id (para compatibilidad)
-    $agent = $db->findOne('agents', ['$or' => [
+    $filter = ['$or' => [
         ['agentId' => $agentId],
         ['_id' => $agentId]
-    ]]);
+    ]];
+    if (!isSuperAdminUser($user)) {
+        $filter['userId'] = $user['_id'];
+    }
+    $agent = $db->findOne('agents', $filter);
     if (!$agent || (($agent['userId'] ?? '') !== $user['_id'] && !isSuperAdminUser($user))) {
         return null;
     }
@@ -601,6 +605,7 @@ function dbConnectionCreate() {
     if (!$agent) json_error('agente no encontrado', 404);
     
     $conn = [
+        'userId'   => $user['_id'],
         'agentId'  => $agentId,
         'engine'   => $body['engine'] ?? '',
         'host'     => $body['host'] ?? '',
@@ -641,7 +646,9 @@ function dbConnectionDelete() {
     $connId = $body['connectionId'] ?? '';
     if (!$agentId || !$connId) json_error('agentId y connectionId requeridos');
     
-    $db = Database::getInstance();
+    $agent = findAgentFor($user, $agentId);
+    if (!$agent) json_error('agente no encontrado', 404);
+    
     $db->deleteOne('agent_db_connections', ['_id' => $connId, 'agentId' => $agentId]);
     
     json_response(['success' => true]);
@@ -654,8 +661,11 @@ function dbConnectionTest() {
     $agentId = $body['agentId'] ?? $_GET['id'] ?? '';
     if (!$connId || !$agentId) json_error('connectionId y agentId requeridos');
     
+    $agent = findAgentFor($user, $agentId);
+    if (!$agent) json_error('agente no encontrado', 404);
+    
     $db = Database::getInstance();
-    $conn = $db->findOne('agent_db_connections', ['_id' => $connId]);
+    $conn = $db->findOne('agent_db_connections', ['_id' => $connId, 'agentId' => $agentId]);
     if (!$conn) json_error('conexión no encontrada', 404);
     
     // Test connection by trying to connect

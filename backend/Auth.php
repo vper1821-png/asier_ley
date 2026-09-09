@@ -92,6 +92,38 @@ class Auth {
         return $user;
     }
 
+    public static function isSuperAdmin($user) {
+        return ($user['role'] ?? '') === 'superadmin';
+    }
+
+    public static function isAdmin($user) {
+        $role = $user['role'] ?? 'user';
+        return $role === 'superadmin' || $role === 'admin';
+    }
+
+    public static function isCompanyAdmin($user) {
+        $role = $user['role'] ?? 'user';
+        return self::isAdmin($user) || $role === 'company_admin';
+    }
+
+    public static function companyId($user) {
+        return $user['companyId'] ?? ($user['_id'] ?? '');
+    }
+
+    public static function canManageUser($manager, $target) {
+        if (self::isAdmin($manager)) return true;
+        if (!self::isCompanyAdmin($manager)) return false;
+        return self::companyId($manager) === self::companyId($target);
+    }
+
+    public static function requireCompanyAdmin() {
+        $user = self::requireAuth();
+        if (!self::isCompanyAdmin($user)) {
+            json_error('acceso denegado', 403);
+        }
+        return $user;
+    }
+
     public static function hashPassword($password) {
         return password_hash($password, PASSWORD_BCRYPT);
     }

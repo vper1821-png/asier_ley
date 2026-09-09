@@ -123,10 +123,20 @@ function createUser() {
     if (strlen($password) < 8) json_error('la contraseña debe tener al menos 8 caracteres');
     if ($db->findOne('users', ['email' => $email])) json_error('email ya registrado');
 
+    $companyName = $companyName ?: explode('@', $email)[0];
+    // Si se crea una subcuenta bajo una empresa existente, hereda el nombre de compañía
+    if (!empty($body['companyId'])) {
+        $parentCompany = $db->findOne('users', ['_id' => $body['companyId']]);
+        if (!empty($parentCompany['companyName'])) {
+            $companyName = $parentCompany['companyName'];
+        }
+    }
+
     $user = $db->insertOne('users', [
         'email' => $email,
         'password' => Auth::hashPassword($password),
-        'companyName' => $companyName ?: explode('@', $email)[0],
+        'companyName' => $companyName,
+        'companyId' => '',
         'domain' => $domain,
         'isActive' => $isActive,
         'isAdmin' => ($role === 'admin' || $role === 'superadmin'),
@@ -134,9 +144,22 @@ function createUser() {
         'planType' => $planType,
         'paymentStatus' => 'active',
         'onboardingComplete' => false,
+        'createdAt' => date('c'),
     ]);
+
+    // La cuenta raíz es su propia compañía a menos que se especifique otra
+    $companyId = !empty($body['companyId']) ? $body['companyId'] : $user['_id'];
+    if (empty($companyId)) $companyId = $user['_id'];
+    $updates = ['companyId' => $companyId];
+    if ($companyId !== $user['_id']) {
+        $updates['parentUserId'] = $companyId;
+        $updates['isAdmin'] = false;
+    }
+    $db->updateOne('users', ['_id' => $user['_id']], $updates);
+    $user['companyId'] = $companyId;
+
     unset($user['password']);
-    audit_log('admin_user_created', ['targetEmail' => $email, 'role' => $role], null);
+    audit_log('admin_user_created', ['targetEmail' => $email, 'role' => $role, 'companyId' => $companyId], null);
     json_response(['success' => true, 'user' => $user]);
 }
 
@@ -167,11 +190,13 @@ function updateUser() {
     $target = $db->findOne('users', ['_id' => $userId]);
     if (!$target) json_error('usuario no encontrado', 404);
 
-    $allowed = ['companyName', 'domain', 'planType', 'paymentStatus', 'isActive', 'role', 'suspensionReason', 'aiRetention'];
+    $allowed = ['companyName', 'domain', 'planType', 'paymentStatus', 'isActive', 'role', 'suspensionReason', 'aiRetention', 'companyId'];
     $updates = [];
     foreach ($allowed as $field) {
+        if ($field === 'companyId' && isset($body[$field]) && trim($body[$field]) === '') continue;
         if (isset($body[$field])) $updates[$field] = $body[$field];
     }
+    if (isset($updates['isActive'])) $updates['isActive'] = filter_var($updates['isActive'], FILTER_VALIDATE_BOOLEAN);
     if (isset($updates['role'])) $updates['isAdmin'] = ($updates['role'] === 'admin' || $updates['role'] === 'superadmin');
     if (!empty($updates)) {
         $db->updateOne('users', ['_id' => $userId], $updates);

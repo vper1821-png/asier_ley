@@ -99,6 +99,11 @@ if (str_contains($path, 'download') || isset($_GET['installer'])) {
             $len = strlen($header);
             $trimmed = trim($header);
             if (!empty($trimmed)) {
+                // Capturar código de estado HTTP antes de escribir nada
+                if (preg_match('/^HTTP\/\d(?:\.\d)? (\d{3})/', $trimmed, $m)) {
+                    http_response_code((int)$m[1]);
+                    return $len;
+                }
                 $lower = strtolower($trimmed);
                 if (str_starts_with($lower, 'content-type:') ||
                     str_starts_with($lower, 'content-disposition:') ||
@@ -118,9 +123,15 @@ if (str_contains($path, 'download') || isset($_GET['installer'])) {
         }
     ]);
     curl_setopt($ch, CURLOPT_HTTPHEADER, $headersToSend);
-    curl_exec($ch);
+    $result = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlErr = curl_error($ch);
     curl_close($ch);
+    if ($result === false || $httpCode === 0) {
+        http_response_code(502);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['error' => 'backend no disponible: ' . $curlErr]);
+    }
     exit;
 }
 

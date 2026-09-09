@@ -22,6 +22,15 @@ function login() {
         json_error('credenciales inválidas');
     }
 
+    // Normalizar companyId en cuentas antiguas (el titular es su propia compañía)
+    if (empty($user['companyId'])) {
+        $user['companyId'] = $user['_id'];
+        $db->updateOne('users', ['_id' => $user['_id']], ['companyId' => $user['_id']]);
+    }
+    if (empty($user['companyName'])) {
+        $user['companyName'] = $user['name'] ?? explode('@', $email)[0];
+    }
+
     unset($user['password']);
 
     if (!empty($user['twoFactorEnabled'])) {
@@ -65,16 +74,26 @@ function register() {
     $existing = $db->findOne('users', ['email' => $email]);
     if ($existing) json_error('el email ya está registrado');
 
+    $companyName = $name ?: explode('@', $email)[0];
     $user = $db->insertOne('users', [
         'email' => $email,
         'password' => Auth::hashPassword($password),
-        'companyName' => $name ?: explode('@', $email)[0],
+        'name' => $name,
+        'companyName' => $companyName,
+        'companyId' => '', // se completa después con el _id generado
         'isActive' => false,
         'isAdmin' => false,
         'role' => 'user',
         'onboardingComplete' => false,
         'tokenVersion' => 1,
+        'createdAt' => date('c'),
     ]);
+
+    // El titular de la cuenta es su propia compañía
+    if (empty($user['companyId'])) {
+        $db->updateOne('users', ['_id' => $user['_id']], ['companyId' => $user['_id']]);
+        $user['companyId'] = $user['_id'];
+    }
 
     $token = Auth::createToken($user['_id'], ['tokenVersion' => 1]);
     unset($user['password']);

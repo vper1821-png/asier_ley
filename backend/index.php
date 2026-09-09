@@ -136,6 +136,14 @@ $routes = [
     'POST /api/databases/logs/delete-by-query' => 'routes/databases.php@deleteByQuery',
     'GET /api/databases/logs/skipped-queries' => 'routes/databases.php@skippedQueries',
 
+    // Company / sub-account management
+    'POST /api/company/users' => 'routes/company.php@companyUsers',
+    'POST /api/company/create-user' => 'routes/company.php@companyCreateUser',
+    'POST /api/company/update-user' => 'routes/company.php@companyUpdateUser',
+    'POST /api/company/delete-user' => 'routes/company.php@companyDeleteUser',
+    'POST /api/company/reset-password' => 'routes/company.php@companyResetPassword',
+    'POST /api/company/roles' => 'routes/company.php@companyRoles',
+
     // Notifications
     'POST /api/notifications' => 'routes/notifications.php@listAll',
     'POST /api/notifications/list' => 'routes/notifications.php@listAll',
