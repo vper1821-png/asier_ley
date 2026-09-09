@@ -466,9 +466,21 @@ function crud() {
     }
 
     $user = Auth::requireAuth();
-
     $userIds = getCompanyUserIds($user, $db);
     $isSuperAdmin = ($userIds === null);
+
+    // ─── NUEVO: Manejo de PDFs para cualquier recurso soportado ────
+    $pdfResources = ['consents', 'inventory', 'breaches', 'trainings', 'pseudonymization', 
+                      'arco-requests', 'arco', 'incident_response', 'breach_protocol', 
+                      'apdp', 'privacy', 'dpd', 'incident-response'];
+
+    // Normalizar: reemplazar guion bajo por guion (para que coincida con los casos)
+    $normalizedResource = str_replace('_', '-', $resource);
+
+    if ($action === 'pdf' && in_array($normalizedResource, $pdfResources)) {
+        generateCompliancePDF($normalizedResource);
+        return;
+    }
 
     // ── Endpoints especiales ──
     if ($resource === 'overview' || $resource === 'stats') {
@@ -534,13 +546,6 @@ function crud() {
         arcoCrud($user, $db, $method, $id, $action, $body);
         return;
     }
-
-// ─── NUEVO: Soporte para alias con guion bajo en PDF ────────────
-    if (($resource === 'incident_response' || $resource === 'breach_protocol') && $action === 'pdf') {
-        generateCompliancePDF($resource);
-        return;
-    }
-
 
     // ─── Checklist ──────────────────────────────────────────────────
     if ($resource === 'checklist') {
@@ -1041,15 +1046,29 @@ function generateCompliancePDF($resource) {
             case 'arco':
                 $arcoDoc = $db->findOne('compliance_checklist', ['userId' => $user['_id'], 'section' => 'arco']);
                 $arcoData = (array)($arcoDoc['data'] ?? []);
+                // Convertir cualquier array/objeto a string JSON para evitar errores de BSONArray
+                array_walk_recursive($arcoData, function(&$item) {
+                    if (is_array($item) || is_object($item)) {
+                        $item = json_encode($item, JSON_UNESCAPED_UNICODE);
+                    }
+                });
                 $html = $pdfGenerator->generateGenericChecklistPDF('Canal de Derechos ARCO', $arcoData);
                 $result = $pdfGenerator->generatePDFFile($html, 'arco');
                 break;
+            case 'incident-response':
             case 'incident_response':
                 $irDoc = $db->findOne('compliance_incident_response', ['userId' => $user['_id']]) ?? $db->findOne('compliance_checklist', ['userId' => $user['_id'], 'section' => 'incident_response']);
                 $irData = (array)(!empty($irDoc['data']) ? $irDoc['data'] : $irDoc);
+                // Convertir arrays a string para evitar errores
+                array_walk_recursive($irData, function(&$item) {
+                    if (is_array($item) || is_object($item)) {
+                        $item = json_encode($item, JSON_UNESCAPED_UNICODE);
+                    }
+                });
                 $html = $pdfGenerator->generateGenericChecklistPDF('Plan de Respuesta a Incidentes', $irData);
                 $result = $pdfGenerator->generatePDFFile($html, 'respuesta-incidentes');
                 break;
+            case 'breach-protocol':
             case 'breach_protocol':
                 $bpDoc = $db->findOne('compliance_breach_protocol', ['userId' => $user['_id']]) ?? [];
                 $bpCfg = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
@@ -1057,6 +1076,12 @@ function generateCompliancePDF($resource) {
                     'URL del protocolo' => $bpCfg['breachProtocolUrl'] ?? null,
                     'Contenido del protocolo' => $bpCfg['breachProtocolContent'] ?? null,
                 ]));
+                // Convertir arrays a string
+                array_walk_recursive($bpData, function(&$item) {
+                    if (is_array($item) || is_object($item)) {
+                        $item = json_encode($item, JSON_UNESCAPED_UNICODE);
+                    }
+                });
                 $html = $pdfGenerator->generateGenericChecklistPDF('Protocolo de Brechas', $bpData);
                 $result = $pdfGenerator->generatePDFFile($html, 'protocolo-brechas');
                 break;
@@ -1069,6 +1094,12 @@ function generateCompliancePDF($resource) {
                     'Entidad certificadora' => $aCfg['apdpEntity'] ?? null,
                     'Observaciones' => $aCfg['apdpNotes'] ?? null,
                 ]);
+                // Convertir arrays a string
+                array_walk_recursive($aData, function(&$item) {
+                    if (is_array($item) || is_object($item)) {
+                        $item = json_encode($item, JSON_UNESCAPED_UNICODE);
+                    }
+                });
                 $html = $pdfGenerator->generateGenericChecklistPDF('Modelo de Prevención Certificado (APDP)', $aData);
                 $result = $pdfGenerator->generatePDFFile($html, 'modelo-certificado');
                 break;
@@ -1080,6 +1111,12 @@ function generateCompliancePDF($resource) {
                     'URL política de cookies' => $pCfg['cookiesPolicyUrl'] ?? null,
                     'Última actualización' => $pCfg['privacyPolicyUpdatedAt'] ?? ($pCfg['updatedAt'] ?? null),
                 ]);
+                // Convertir arrays a string
+                array_walk_recursive($pData, function(&$item) {
+                    if (is_array($item) || is_object($item)) {
+                        $item = json_encode($item, JSON_UNESCAPED_UNICODE);
+                    }
+                });
                 $html = $pdfGenerator->generateGenericChecklistPDF('Política de Privacidad', $pData);
                 $result = $pdfGenerator->generatePDFFile($html, 'politica-privacidad');
                 break;
@@ -1092,6 +1129,12 @@ function generateCompliancePDF($resource) {
                     'Fecha de designación' => $dCfg['dpdAppointmentDate'] ?? null,
                     'Registro ante APDP' => $dCfg['dpdApdpRecord'] ?? null,
                 ]);
+                // Convertir arrays a string
+                array_walk_recursive($dData, function(&$item) {
+                    if (is_array($item) || is_object($item)) {
+                        $item = json_encode($item, JSON_UNESCAPED_UNICODE);
+                    }
+                });
                 $html = $pdfGenerator->generateGenericChecklistPDF('Delegado de Protección de Datos (DPD)', $dData);
                 $result = $pdfGenerator->generatePDFFile($html, 'dpd-designado');
                 break;
