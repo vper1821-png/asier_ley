@@ -142,7 +142,13 @@ class Database {
         return null;
     }
 
+    // ── MEJORA: Límite por defecto en find() ──
     public function find($collection, $filter = [], $options = []) {
+        // Límite por defecto para prevenir memory overflow
+        if (!isset($options['limit']) && !isset($options['skip'])) {
+            $options['limit'] = 1000;
+        }
+
         if ($this->useMongo) {
             $filter = $this->normalizeFilter($filter);
             $mongoOptions = $options;
@@ -413,8 +419,6 @@ class Database {
             }
             // ✅ Para $in y $nin: solo convertir si la clave es _id
             elseif (($k === '$in' || $k === '$nin') && is_array($v)) {
-                // Detectar si el array contiene IDs para el campo _id
-                // Esta lógica es compleja, mejor manejar caso por caso
                 $out[$k] = array_map(function($item) {
                     // No convertir automáticamente; dejamos los valores como están
                     return $item;

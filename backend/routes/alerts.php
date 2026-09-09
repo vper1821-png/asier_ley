@@ -5,211 +5,214 @@ function listAll() {
     $user = Auth::requireAuth();
     $body = get_body();
     $db = Database::getInstance();
-    $alerts = $db->find('alerts', ['userId' => $user['_id']]);
 
-    // ── Ley 21.719: Fuentes de alertas de cumplimiento ──
+    // 1. Obtener companyId del usuario autenticado
+    $userRecord = $db->findOne('users', ['_id' => $user['_id']]);
+    if (!$userRecord) {
+        json_error('Usuario no encontrado');
+    }
+    $companyId = $userRecord['companyId'] ?? $user['_id'];
 
-    // 1. Brechas de seguridad (Art. 26)
-    $breaches = $db->find('compliance_breaches', ['userId' => $user['_id']]);
-    foreach ($breaches as $b) {
-        $sev = $b['severity'] ?? 'medium';
-        $alerts[] = [
-            '_id' => (string)($b['_id'] ?? ''),
-            'userId' => $user['_id'],
-            'title' => 'Brecha de seguridad: ' . ($b['title'] ?? 'Sin título'),
-            'message' => ($b['description'] ?? '') . ' · Tipo: ' . ($b['breachType'] ?? '') . ' · Titulares afectados: ' . ($b['affectedCount'] ?? 'N/A'),
-            'source' => 'compliance_breach',
-            'category' => 'breach_notification',
-            'severity' => $sev,
-            'eventType' => 'breach_' . ($b['breachType'] ?? 'unknown'),
-            'resolved' => ($b['status'] ?? '') === 'resolved',
-            'dismissed' => ($b['status'] ?? '') === 'closed_no_action',
-            'read' => !empty($b['readAt']),
-            'createdAt' => $b['createdAt'] ?? $b['detectedAt'] ?? date('c'),
-            'lawArticle' => 'Art. 26 Ley 21.719',
-            'requiresAPDPNotification' => !empty($b['notifiedAPDP']),
-            'requiresSubjectNotification' => !empty($b['notifiedSubjects']),
-            'details' => $b,
+    // 2. Obtener todos los userIds de la empresa (convertidos a string)
+    $users = $db->find('users', ['companyId' => $companyId]);
+    $userIds = array_map('strval', array_column($users, '_id'));
+    if (empty($userIds)) {
+        $userIds = [(string)$user['_id']];
+    }
+
+    // 3. Construir filtro base
+    $filter = ['userId' => ['$in' => $userIds]];
+
+    // 4. Aplicar filtros adicionales (severity, category, source, lawArticle, status, date, search)
+    if (!empty($body['severity'])) {
+        $filter['severity'] = $body['severity'];
+    }
+    if (!empty($body['category'])) {
+        $filter['category'] = $body['category'];
+    }
+    if (!empty($body['source'])) {
+        $filter['source'] = $body['source'];
+    }
+    if (!empty($body['lawArticle'])) {
+        $filter['lawArticle'] = $body['lawArticle'];
+    }
+    if (!empty($body['status'])) {
+        if ($body['status'] === 'active') {
+            $filter['resolved'] = ['$ne' => true];
+            $filter['dismissed'] = ['$ne' => true];
+        } elseif ($body['status'] === 'resolved') {
+            $filter['resolved'] = true;
+        } elseif ($body['status'] === 'dismissed') {
+            $filter['dismissed'] = true;
+        }
+    }
+    if (!empty($body['date_from'])) {
+        $filter['createdAt'] = ['$gte' => $body['date_from']];
+    }
+    if (!empty($body['date_to'])) {
+        $filter['createdAt']['$lte'] = $body['date_to'] . 'T23:59:59';
+    }
+    if (!empty($body['search']) && strlen(trim($body['search'])) >= 2) {
+        $search = trim($body['search']);
+        $regex = ['$regex' => $search, '$options' => 'i'];
+        $filter['$or'] = [
+            ['title' => $regex],
+            ['message' => $regex],
+            ['agentId' => $regex],
+            ['lawArticle' => $regex],
+            ['eventType' => $regex],
         ];
     }
 
-    // 2. Solicitudes ARCO (Art. 8-13)
-    $arcoRequests = $db->find('arco_requests', ['userId' => $user['_id']]);
-    foreach ($arcoRequests as $ar) {
-        $alerts[] = [
-            '_id' => (string)($ar['_id'] ?? ''),
-            'userId' => $user['_id'],
-            'title' => 'Solicitud ARCO: ' . ($ar['type'] ?? 'acceso'),
-            'message' => 'Titular: ' . ($ar['subjectName'] ?? $ar['subjectEmail'] ?? 'N/A') . ' · Estado: ' . ($ar['status'] ?? 'pending') . ' · Plazo: 10 días hábiles',
-            'source' => 'arco_request',
-            'category' => 'data_subject_rights',
-            'severity' => ($ar['status'] ?? '') === 'overdue' ? 'critical' : (($ar['status'] ?? '') === 'pending' ? 'high' : 'low'),
-            'eventType' => 'arco_' . ($ar['type'] ?? 'unknown'),
-            'resolved' => in_array($ar['status'] ?? '', ['completed', 'delivered']),
-            'dismissed' => ($ar['status'] ?? '') === 'rejected',
-            'read' => !empty($ar['readAt']),
-            'createdAt' => $ar['createdAt'] ?? $ar['requestedAt'] ?? date('c'),
-            'lawArticle' => 'Art. ' . (['acceso'=>8,'rectificacion'=>9,'cancelacion'=>10,'oposicion'=>11,'portabilidad'=>12][$ar['type'] ?? ''] ?? '8-13') . ' Ley 21.719',
-            'deadline' => $ar['deadline'] ?? null,
-            'details' => $ar,
-        ];
-    }
+    // 5. Orden y paginación
+    $sortBy = $body['sort'] ?? 'createdAt';
+    $sortDir = $body['dir'] ?? 'desc';
+    $sort = [$sortBy => ($sortDir === 'asc' ? 1 : -1)];
 
-    // 3. Consentimientos revocados/expirados (Art. 12)
-    $consents = $db->find('compliance_consents', ['userId' => $user['_id']]);
-    foreach ($consents as $c) {
-        if (!empty($c['revokedAt']) || (!empty($c['endDate']) && strtotime($c['endDate']) < time())) {
-            $alerts[] = [
-                '_id' => (string)($c['_id'] ?? ''),
-                'userId' => $user['_id'],
-                'title' => 'Consentimiento ' . (!empty($c['revokedAt']) ? 'revocado' : 'expirado') . ': ' . ($c['name'] ?? 'Titular'),
-                'message' => 'RUT: ' . ($c['rut'] ?? '') . ' · Finalidad: ' . ($c['purpose'] ?? '') . ' · ' . (!empty($c['revokedAt']) ? 'Revocado el ' . substr($c['revokedAt'], 0, 10) : 'Expirado el ' . substr($c['endDate'], 0, 10)),
-                'source' => 'consent_change',
-                'category' => 'consent_management',
-                'severity' => 'medium',
-                'eventType' => !empty($c['revokedAt']) ? 'consent_revoked' : 'consent_expired',
-                'resolved' => false,
-                'dismissed' => false,
-                'read' => !empty($c['readAt']),
-                'createdAt' => $c['revokedAt'] ?? $c['endDate'] ?? $c['createdAt'] ?? date('c'),
-                'lawArticle' => 'Art. 12 Ley 21.719',
-                'details' => $c,
-            ];
-        }
-    }
-
-    // Los eventos tecnicos (host, archivo, db) ya se materializan en la
-    // coleccion `alerts` desde ws-server.php; no se re-leen sus colecciones
-    // de origen para evitar duplicados y sobrecargar la respuesta.
-
-    // Normalizar categoria y articulo para alertas provenientes del agente
-    $categoryMap = [
-        'host_event' => 'security_monitoring',
-        'db_query'   => 'database_access',
-        'agent'      => 'security_monitoring',
-        'generic'    => 'security_monitoring',
-    ];
-    foreach ($alerts as &$alert) {
-        if (!empty($alert['details'])) {
-            $d = $alert['details'];
-            $alert['resolved'] = !empty($d['resolved']) || in_array($d['status'] ?? '', ['resolved','completed','closed_resolved']);
-            $alert['dismissed'] = !empty($d['dismissed']) || in_array($d['status'] ?? '', ['closed_no_action','rejected']);
-            $alert['read'] = !empty($d['readAt']) || !empty($d['read']);
-        }
-        if (empty($alert['category']) || ($alert['category'] ?? '') === 'database') {
-            $alert['category'] = $categoryMap[$alert['source'] ?? ''] ?? 'general';
-        }
-        if (empty($alert['lawArticle'])) {
-            $alert['lawArticle'] = 'Art. 25 Ley 21.719';
-        }
-    }
-    unset($alert);
-
-    // Filtros comunes (pueden venir por GET o POST)
-    $status = $body['status'] ?? $_GET['status'] ?? '';
-    $severity = $body['severity'] ?? $_GET['severity'] ?? '';
-    $category = $body['category'] ?? $_GET['category'] ?? '';
-    $source = $body['source'] ?? $_GET['source'] ?? '';
-    $article = $body['article'] ?? $_GET['article'] ?? '';
-    $search = $body['search'] ?? $_GET['search'] ?? '';
-    $dateFrom = $body['date_from'] ?? $_GET['date_from'] ?? '';
-    $dateTo = $body['date_to'] ?? $_GET['date_to'] ?? '';
-    $sortBy = $body['sort'] ?? $_GET['sort'] ?? 'createdAt';
-    $sortDir = $body['dir'] ?? $_GET['dir'] ?? 'desc';
-
-    if ($status === 'active') {
-        $alerts = array_filter($alerts, fn($a) => empty($a['resolved']) && empty($a['dismissed']));
-    } elseif ($status === 'resolved') {
-        $alerts = array_filter($alerts, fn($a) => !empty($a['resolved']));
-    } elseif ($status === 'dismissed') {
-        $alerts = array_filter($alerts, fn($a) => !empty($a['dismissed']));
-    }
-    if ($severity) $alerts = array_filter($alerts, fn($a) => ($a['severity'] ?? '') === $severity);
-    if ($category) $alerts = array_filter($alerts, fn($a) => ($a['category'] ?? '') === $category);
-    if ($source) $alerts = array_filter($alerts, fn($a) => ($a['source'] ?? '') === $source);
-    if ($article) $alerts = array_filter($alerts, fn($a) => ($a['lawArticle'] ?? '') === $article);
-    if ($dateFrom) $alerts = array_filter($alerts, fn($a) => ($a['createdAt'] ?? '') >= $dateFrom);
-    if ($dateTo) $alerts = array_filter($alerts, fn($a) => ($a['createdAt'] ?? '') <= $dateTo . 'T23:59:59');
-    if ($search) {
-        $sl = strtolower($search);
-        $alerts = array_filter($alerts, function($a) use ($sl) {
-            return str_contains(strtolower($a['title'] ?? ''), $sl) ||
-                   str_contains(strtolower($a['message'] ?? ''), $sl) ||
-                   str_contains(strtolower($a['agentId'] ?? ''), $sl) ||
-                   str_contains(strtolower($a['lawArticle'] ?? ''), $sl) ||
-                   str_contains(strtolower($a['eventType'] ?? ''), $sl);
-        });
-    }
-
-    // Ordenar
-    usort($alerts, function($a, $b) use ($sortBy, $sortDir) {
-        $va = $a[$sortBy] ?? '';
-        $vb = $b[$sortBy] ?? '';
-        $cmp = strcmp($va, $vb);
-        return $sortDir === 'desc' ? -$cmp : $cmp;
-    });
-    $alerts = array_values($alerts);
-    $total = count($alerts);
-
-    // Estadisticas sobre el conjunto filtrado (antes de paginar)
-    $active = array_filter($alerts, fn($a) => empty($a['resolved']) && empty($a['dismissed']));
-    $resolved = array_filter($alerts, fn($a) => !empty($a['resolved']));
-    $dismissed = array_filter($alerts, fn($a) => !empty($a['dismissed']));
-    $unread = array_filter($alerts, fn($a) => empty($a['read']));
-
-    $trendData = [];
-    for ($i = 6; $i >= 0; $i--) {
-        $date = date('Y-m-d', strtotime("-$i days"));
-        $dayAlerts = array_filter($alerts, fn($a) => ($a['createdAt'] ?? '') >= $date . 'T00:00:00' && ($a['createdAt'] ?? '') <= $date . 'T23:59:59');
-        $trendData[] = [
-            'date' => date('d/m', strtotime("-$i days")),
-            'count' => count($dayAlerts),
-            'critical' => count(array_filter($dayAlerts, fn($a) => ($a['severity'] ?? '') === 'critical')),
-        ];
-    }
-    $sevDistribution = [
-        'critical' => count(array_filter($alerts, fn($a) => ($a['severity'] ?? '') === 'critical')),
-        'high' => count(array_filter($alerts, fn($a) => ($a['severity'] ?? '') === 'high')),
-        'medium' => count(array_filter($alerts, fn($a) => ($a['severity'] ?? '') === 'medium')),
-        'low' => count(array_filter($alerts, fn($a) => ($a['severity'] ?? '') === 'low')),
-    ];
-
-    $stats = [
-        'total' => $total,
-        'active' => count($active),
-        'resolved' => count($resolved),
-        'dismissed' => count($dismissed),
-        'unread' => count($unread),
-        'critical' => count(array_filter($alerts, fn($a) => ($a['severity'] ?? '') === 'critical' && empty($a['resolved']) && empty($a['dismissed']))),
-        'high' => count(array_filter($alerts, fn($a) => ($a['severity'] ?? '') === 'high' && empty($a['resolved']) && empty($a['dismissed']))),
-        'trend' => $trendData,
-        'severity' => $sevDistribution,
-    ];
-
-    // Paginacion
-    $limit = (int)($body['limit'] ?? $_GET['limit'] ?? 50);
-    $offset = (int)($body['offset'] ?? $_GET['offset'] ?? 0);
+    $limit = (int)($body['limit'] ?? 50);
+    $offset = (int)($body['offset'] ?? 0);
     if ($limit <= 0) $limit = 50;
     if ($offset < 0) $offset = 0;
-    $paged = array_slice($alerts, $offset, $limit);
 
-    json_response(['alerts' => $paged, 'total' => $total, 'stats' => $stats, 'limit' => $limit, 'offset' => $offset]);
+    // 6. Total (sin paginar)
+    $total = $db->count('alerts', $filter);
+
+    // 7. Datos paginados
+    $alerts = $db->find('alerts', $filter, [
+        'limit' => $limit,
+        'skip'  => $offset,
+        'sort'  => $sort,
+    ]);
+
+    // 8. Estadísticas sobre el conjunto filtrado (sin paginar)
+    $stats = [];
+
+    // Activas
+    $activeFilter = array_merge($filter, [
+        'resolved' => ['$ne' => true],
+        'dismissed' => ['$ne' => true],
+    ]);
+    $stats['active'] = $db->count('alerts', $activeFilter);
+
+    // Resueltas
+    $resolvedFilter = array_merge($filter, ['resolved' => true]);
+    $stats['resolved'] = $db->count('alerts', $resolvedFilter);
+
+    // Descartadas
+    $dismissedFilter = array_merge($filter, ['dismissed' => true]);
+    $stats['dismissed'] = $db->count('alerts', $dismissedFilter);
+
+    // No leídas
+    $unreadFilter = array_merge($filter, ['read' => ['$ne' => true]]);
+    $stats['unread'] = $db->count('alerts', $unreadFilter);
+
+    // Críticas activas
+    $criticalActiveFilter = array_merge($activeFilter, ['severity' => 'critical']);
+    $stats['critical'] = $db->count('alerts', $criticalActiveFilter);
+
+    // Altas activas
+    $highActiveFilter = array_merge($activeFilter, ['severity' => 'high']);
+    $stats['high'] = $db->count('alerts', $highActiveFilter);
+
+    // Tendencia últimos 7 días (agregación)
+    $trendPipeline = [
+        ['$match' => $filter],
+        ['$group' => [
+            '_id' => ['$dateToString' => ['format' => '%Y-%m-%d', 'date' => '$createdAt']],
+            'count' => ['$sum' => 1],
+            'critical' => ['$sum' => ['$cond' => [['$eq' => ['$severity', 'critical']], 1, 0]]],
+        ]],
+        ['$sort' => ['_id' => 1]],
+        ['$limit' => 7],
+    ];
+    $trendResult = $db->aggregate('alerts', $trendPipeline);
+    $trendData = [];
+    foreach ($trendResult as $row) {
+        $trendData[] = [
+            'date' => date('d/m', strtotime($row['_id'])),
+            'count' => $row['count'],
+            'critical' => $row['critical'],
+        ];
+    }
+    // Rellenar días faltantes (si el usuario no tiene alertas en algún día)
+    $dates = array_column($trendData, 'date');
+    for ($i = 6; $i >= 0; $i--) {
+        $d = date('d/m', strtotime("-$i days"));
+        if (!in_array($d, $dates)) {
+            $trendData[] = ['date' => $d, 'count' => 0, 'critical' => 0];
+        }
+    }
+    // Ordenar por fecha ascendente
+    usort($trendData, fn($a, $b) => strtotime($a['date']) <=> strtotime($b['date']));
+    $stats['trend'] = array_slice($trendData, -7); // asegurar solo 7
+
+    // Distribución por severidad
+    $sevPipeline = [
+        ['$match' => $filter],
+        ['$group' => [
+            '_id' => '$severity',
+            'count' => ['$sum' => 1],
+        ]],
+    ];
+    $sevResult = $db->aggregate('alerts', $sevPipeline);
+    $sevMap = ['critical' => 0, 'high' => 0, 'medium' => 0, 'low' => 0];
+    foreach ($sevResult as $row) {
+        if (isset($sevMap[$row['_id']])) {
+            $sevMap[$row['_id']] = $row['count'];
+        }
+    }
+    $stats['severity'] = $sevMap;
+
+    // Devolver respuesta
+    json_response([
+        'alerts' => $alerts,
+        'total' => $total,
+        'stats' => $stats,
+        'limit' => $limit,
+        'offset' => $offset,
+    ]);
 }
 
+// ──────────────────────────────────────────────
+// stats() – versión optimizada
+// ──────────────────────────────────────────────
 function stats() {
     $user = Auth::requireAuth();
     $db = Database::getInstance();
-    $all = $db->find('alerts', ['userId' => $user['_id']]);
-    $critical = count(array_filter($all, fn($a) => ($a['severity'] ?? '') === 'critical'));
-    $high = count(array_filter($all, fn($a) => ($a['severity'] ?? '') === 'high'));
-    $unresolved = count(array_filter($all, fn($a) => empty($a['resolved'])));
+
+    // Obtener companyId y userIds de la empresa
+    $userRecord = $db->findOne('users', ['_id' => $user['_id']]);
+    if (!$userRecord) {
+        json_error('Usuario no encontrado');
+    }
+    $companyId = $userRecord['companyId'] ?? $user['_id'];
+    $users = $db->find('users', ['companyId' => $companyId]);
+    $userIds = array_map('strval', array_column($users, '_id'));
+    if (empty($userIds)) {
+        $userIds = [(string)$user['_id']];
+    }
+
+    $filter = ['userId' => ['$in' => $userIds]];
+
+    $total = $db->count('alerts', $filter);
+    $critical = $db->count('alerts', array_merge($filter, ['severity' => 'critical']));
+    $high = $db->count('alerts', array_merge($filter, ['severity' => 'high']));
+    $unresolved = $db->count('alerts', array_merge($filter, [
+        'resolved' => ['$ne' => true],
+        'dismissed' => ['$ne' => true],
+    ]));
+
     json_response([
-        'total' => count($all),
+        'total' => $total,
         'critical' => $critical,
         'high' => $high,
         'unresolved' => $unresolved,
     ]);
 }
+
+// ──────────────────────────────────────────────
+// Funciones auxiliares y de acción (sin cambios)
+// ──────────────────────────────────────────────
 
 function findAlertSource($db, $alertId, $userId) {
     $collections = ['alerts','compliance_breaches','arco_requests','host_events','file_events','database_logs','file_audit_logs','audit_logs','compliance_consents'];
