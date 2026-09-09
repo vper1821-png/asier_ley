@@ -26,11 +26,9 @@ function connect() {
     $agent = $db->findOne('agents', ['$or' => [['agentId' => $agentId], ['_id' => $agentId]], 'userId' => $user['_id']]);
     if (!$agent) json_error('agente no encontrado', 404);
 
-    // ✅ AGREGADO: mongodb a la lista de tipos permitidos
     $allowedTypes = ['mysql', 'mariadb', 'postgres', 'postgresql', 'mssql', 'sqlite', 'mongodb'];
     if (!in_array($body['type'], $allowedTypes)) json_error('tipo de base de datos no soportado');
 
-    // ✅ AGREGADO: validación extra para MongoDB
     if ($body['type'] === 'mongodb') {
         if (!class_exists('MongoDB\Client')) {
             json_error('MongoDB driver no instalado. Ejecuta: composer require mongodb/mongodb');
@@ -69,7 +67,6 @@ function localConnect() {
     }
 
     $type = $body['type'];
-    // ✅ AGREGADO: mongodb a la lista de tipos permitidos
     $allowedTypes = ['mysql', 'mariadb', 'postgres', 'postgresql', 'mssql', 'sqlite', 'mongodb'];
     if (!in_array($type, $allowedTypes)) json_error('tipo no soportado');
 
@@ -128,7 +125,6 @@ function delete() {
 
 function getOnlineAgentForUser($userId) {
     $db = Database::getInstance();
-    // Considerar agentes online con actividad en los últimos 30 minutos
     $recent = date('c', strtotime('-30 minutes'));
     $agents = $db->find('agents', [
         'userId' => $userId,
@@ -160,7 +156,7 @@ function waitForAgentCommand($commandId, $timeoutSeconds = 30) {
         if (!empty($cmd['executed'])) {
             return $cmd;
         }
-        usleep(500000); // 0.5s
+        usleep(500000);
     }
     return null;
 }
@@ -172,7 +168,6 @@ function executeDBCommandViaAgent($userId, $command, $record, $timeout = 25) {
         json_error('esta conexión no tiene un agente asignado');
     }
 
-    // Resolver el agente asignado a esta conexión (no cualquier agente online)
     $agent = $db->findOne('agents', [
         '$or' => [['agentId' => $agentId], ['_id' => $agentId]],
         'userId' => $userId
@@ -184,8 +179,6 @@ function executeDBCommandViaAgent($userId, $command, $record, $timeout = 25) {
         && !empty($a['lastSeen'])
         && $a['lastSeen'] >= $recent;
 
-    // Si el agente asignado no existe o está offline (p.ej. se re-registró con otro
-    // agentId tras reiniciar), intentar localizar el mismo equipo por hostname.
     if (!$isOnline($agent) && !empty($agent['hostname'])) {
         $sameHost = array_values(array_filter(
             $db->find('agents', ['userId' => $userId, 'hostname' => $agent['hostname']]),
@@ -197,7 +190,6 @@ function executeDBCommandViaAgent($userId, $command, $record, $timeout = 25) {
         }
     }
 
-    // Último recurso: si la cuenta tiene exactamente un agente online, usarlo.
     if (!$isOnline($agent)) {
         $online = array_values(array_filter(
             $db->find('agents', ['userId' => $userId]),
@@ -215,7 +207,6 @@ function executeDBCommandViaAgent($userId, $command, $record, $timeout = 25) {
         json_error('el agente "' . ($agent['hostname'] ?? $agentId) . '" no está online. Inicia el agente y vuelve a intentarlo.');
     }
 
-    // Si el agente se re-registró con otro agentId, actualizar la referencia en la conexión
     $resolvedAgentId = $agent['agentId'] ?? '';
     if ($resolvedAgentId !== '' && $resolvedAgentId !== $agentId) {
         $db->updateOne('databases', ['_id' => $record['_id']], [
@@ -252,7 +243,6 @@ function executeDBCommandViaAgent($userId, $command, $record, $timeout = 25) {
     return null;
 }
 
-// Listado directo de tablas/colecciones cuando no hay agente disponible
 function listTablesDirect($conn, $record) {
     $tables = [];
     $type = $record['type'] ?? '';
@@ -281,7 +271,6 @@ function listTablesDirect($conn, $record) {
     return $tables;
 }
 
-// Convertir documentos BSON (MongoDB\Model\BSONDocument/Array) a arrays PHP recursivamente
 function toArrayRec($data) {
     if (is_object($data) && ($data instanceof MongoDB\Model\BSONDocument || $data instanceof MongoDB\Model\BSONArray)) {
         $data = $data->getArrayCopy();
@@ -296,7 +285,6 @@ function toArrayRec($data) {
     return $data;
 }
 
-// ✅ MODIFICADO: Soporte para MongoDB en getDsn()
 function getDsn($record) {
     $type = $record['type'] ?? '';
     $host = $record['host'] ?? '';
@@ -328,13 +316,11 @@ function getDsn($record) {
             if (!file_exists($database)) json_error('archivo sqlite no encontrado');
             return new PDO("sqlite:$database", '', '', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
         }
-        // ✅ NUEVO: Soporte para MongoDB
         if ($type === 'mongodb') {
             if (!class_exists('MongoDB\Client')) {
                 json_error('MongoDB driver no instalado. Ejecuta: composer require mongodb/mongodb');
             }
             
-            // Construir URI de conexión
             $uri = "mongodb://";
             if ($user && $password) {
                 $uri .= urlencode($user) . ':' . urlencode($password) . '@';
@@ -347,7 +333,6 @@ function getDsn($record) {
                 'socketTimeoutMS' => 5000,
             ]);
             
-            // Probar conexión
             $client->selectDatabase($database)->command(['ping' => 1]);
             return $client;
         }
@@ -384,7 +369,6 @@ function testConnection() {
     json_response(['success' => true, 'latency' => $latency, 'status' => $status]);
 }
 
-// ✅ MODIFICADO: Escaneo ahora se realiza a través del agente
 function scan() {
     $user = Auth::requireAuth();
     $id = getDbId();
@@ -413,7 +397,6 @@ function scan() {
         'lastScan' => date('c')
     ]);
 
-    // Auto-popular compliance inventory
     $inventoryData = [
         'userId' => $user['_id'],
         'databaseId' => $id,
@@ -435,7 +418,6 @@ function scan() {
     json_response(['success' => true, 'tables' => $tables, 'totalRows' => $totalRows]);
 }
 
-// ✅ MODIFICADO: query() ahora soporta MongoDB (usando MongoDB\Operation\Find)
 function query() {
     $user = Auth::requireAuth();
     $body = get_body();
@@ -450,9 +432,7 @@ function query() {
 
     $type = $record['type'] ?? '';
 
-    // Si es MongoDB, usar sintaxis diferente
     if ($type === 'mongodb') {
-        // Solo permitir find() en MongoDB
         if (strpos(strtolower($query), 'find') === false) {
             json_error('MongoDB solo soporta consultas find()');
         }
@@ -461,7 +441,6 @@ function query() {
             $conn = getDsn($record);
             $database = $conn->selectDatabase($record['database']);
             
-            // Parsear query: find('collection', {filter})
             $parts = explode(',', $query);
             $collectionName = trim(str_replace(['find(', "'", '"'], '', $parts[0]));
             $filter = isset($parts[1]) ? json_decode(trim($parts[1]), true) : [];
@@ -470,7 +449,6 @@ function query() {
             $cursor = $collection->find($filter, ['limit' => 100]);
             $rows = iterator_to_array($cursor);
             
-            // Convertir ObjectId a string para JSON
             foreach ($rows as &$row) {
                 if (isset($row['_id']) && $row['_id'] instanceof MongoDB\BSON\ObjectId) {
                     $row['_id'] = (string)$row['_id'];
@@ -483,7 +461,6 @@ function query() {
         }
     }
 
-    // SQL: solo SELECT, SHOW, DESCRIBE, EXPLAIN
     $firstWord = strtoupper(strtok($query, " \t\n\r"));
     if (!in_array($firstWord, ['SELECT', 'SHOW', 'DESCRIBE', 'EXPLAIN'])) {
         json_error('solo se permiten consultas de lectura (SELECT, SHOW, DESCRIBE, EXPLAIN)');
@@ -499,7 +476,6 @@ function query() {
     }
 }
 
-// ✅ MODIFICADO: generateReport() con soporte para MongoDB
 function generateReport() {
     $user = Auth::requireAuth();
     $id = getDbId();
@@ -530,7 +506,6 @@ function generateReport() {
                 $tables[] = ['name' => $row['name'], 'rows' => 0];
             }
         } elseif ($type === 'mongodb') {
-            // ✅ NUEVO: Reporte para MongoDB
             $database = $conn->selectDatabase($record['database']);
             $collections = $database->listCollections();
             foreach ($collections as $collection) {
@@ -561,79 +536,193 @@ function syncAgent() {
     json_response(['success' => true, 'message' => 'sincronización con agente registrada']);
 }
 
-// Filtros compartidos entre logList y logExportCsv
-function filterDatabaseLogs($logs, $params) {
-    $op = strtoupper(trim($params['operation'] ?? ''));
-    $dbName = trim($params['database'] ?? '');
-    $engine = trim($params['engine'] ?? '');
-    $risk = trim($params['risk'] ?? '');
-    $search = strtolower(trim($params['search'] ?? ($params['q'] ?? '')));
+// ============================================================
+// MEJORAS EN LOGS: uso de agregación con filtros por empresa
+// ============================================================
 
-    if ($op !== '') {
-        $logs = array_filter($logs, fn($l) => strtoupper($l['operation'] ?? strtok(trim($l['query'] ?? ''), " \t\r\n") ?: '') === $op);
+/**
+ * Construye el pipeline de agregación para consultar logs,
+ * aplicando filtros y compartiendo logs por empresa (companyId).
+ *
+ * @param string $userId   ID del usuario autenticado (string)
+ * @param array  $params   Filtros: operation, database, engine, risk, search, limit, offset
+ * @param bool   $countOnly Si true, solo devuelve pipeline de conteo
+ * @return array           Pipeline de agregación de MongoDB
+ */
+function buildLogsPipeline($userId, $params, $countOnly = false) {
+    $db = Database::getInstance();
+
+    // 1. Obtener companyId del usuario
+    $user = $db->findOne('users', ['_id' => $userId]);
+    if (!$user) {
+        json_error('Usuario no encontrado');
     }
-    if ($dbName !== '') {
-        $logs = array_filter($logs, fn($l) => ($l['database'] ?? $l['databaseName'] ?? 'Sin base') === $dbName);
-    }
-    if ($engine !== '') {
-        $logs = array_filter($logs, fn($l) => ($l['engine'] ?? 'database') === $engine);
-    }
-    if ($risk === 'risk') {
-        $logs = array_filter($logs, fn($l) => (float)($l['riskScore'] ?? 0) > 0);
-    } elseif ($risk === 'safe') {
-        $logs = array_filter($logs, fn($l) => (float)($l['riskScore'] ?? 0) <= 0);
-    }
-    if ($search !== '') {
-        $logs = array_filter($logs, function($l) use ($search) {
-            $hay = strtolower(($l['query'] ?? '') . ' ' . ($l['database'] ?? $l['databaseName'] ?? '') . ' ' . ($l['dbUser'] ?? $l['user'] ?? '') . ' ' . ($l['engine'] ?? '') . ' ' . ($l['host'] ?? ''));
-            return str_contains($hay, $search);
-        });
+    $companyId = $user['companyId'] ?? $userId;
+
+    // 2. Obtener todos los userIds de la empresa (convertidos a string)
+    $users = $db->find('users', ['companyId' => $companyId]);
+    $userIds = array_map('strval', array_column($users, '_id'));
+    if (empty($userIds)) {
+        $userIds = [(string)$userId];
     }
 
-    $logs = array_values($logs);
-    usort($logs, fn($a, $b) => strcmp($b['createdAt'] ?? $b['timestamp'] ?? '', $a['createdAt'] ?? $a['timestamp'] ?? ''));
-    return $logs;
+    // 3. Filtro base: userId en la lista de la empresa
+    $match = ['userId' => ['$in' => $userIds]];
+
+    // 4. Filtros adicionales
+    if (!empty($params['operation'])) {
+        $match['operation'] = strtoupper(trim($params['operation']));
+    }
+    if (!empty($params['database'])) {
+        $match['database'] = $params['database'];
+    }
+    if (!empty($params['engine'])) {
+        $match['engine'] = $params['engine'];
+    }
+    if (!empty($params['risk'])) {
+        if ($params['risk'] === 'risk') {
+            $match['riskScore'] = ['$gt' => 0];
+        } elseif ($params['risk'] === 'safe') {
+            $match['riskScore'] = ['$lte' => 0];
+        }
+    }
+
+    // 5. Búsqueda libre (case-insensitive) sobre varios campos
+    if (!empty($params['search']) && strlen(trim($params['search'])) >= 2) {
+        $search = trim($params['search']);
+        $regex = ['$regex' => $search, '$options' => 'i'];
+        $match['$or'] = [
+            ['query' => $regex],
+            ['database' => $regex],
+            ['dbUser' => $regex],
+            ['host' => $regex],
+            ['engine' => $regex],
+        ];
+    }
+
+    $pipeline = [['$match' => $match]];
+
+    // 6. Ordenar por fecha descendente
+    $pipeline[] = ['$sort' => ['createdAt' => -1]];
+
+    if ($countOnly) {
+        $pipeline[] = ['$count' => 'total'];
+        return $pipeline;
+    }
+
+    // 7. Paginación
+    $limit = isset($params['limit']) ? (int)$params['limit'] : 100;
+    $offset = isset($params['offset']) ? (int)$params['offset'] : 0;
+    $pipeline[] = ['$skip' => $offset];
+    $pipeline[] = ['$limit' => $limit];
+
+    return $pipeline;
 }
 
+/**
+ * Lista logs con filtros y paginación usando agregación.
+ */
 function logList() {
     $user = Auth::requireAuth();
-    $body = get_body();
+    $params = get_body();
     $db = Database::getInstance();
-    $filter = ['userId' => $user['_id']];
-    if (!empty($body['databaseId'])) $filter['databaseId'] = $body['databaseId'];
-    if (!empty($body['severity'])) $filter['severity'] = $body['severity'];
-    $limit = (int)($body['limit'] ?? 100);
-    $offset = (int)($body['offset'] ?? 0);
 
-    $logs = filterDatabaseLogs($db->find('database_logs', $filter), $body);
-    $total = count($logs);
-    $logs = array_slice($logs, max(0, $offset), max(1, $limit));
-    json_response(['logs' => $logs, 'total' => $total]);
+    $limit = isset($params['limit']) ? (int)$params['limit'] : 100;
+    $offset = isset($params['offset']) ? (int)$params['offset'] : 0;
+
+    // Pipeline para obtener los logs paginados
+    $pipeline = buildLogsPipeline((string)$user['_id'], $params);
+    $logs = $db->aggregate('database_logs', $pipeline);
+
+    // Pipeline para contar el total (sin paginación)
+    $countPipeline = buildLogsPipeline((string)$user['_id'], $params, true);
+    $countResult = $db->aggregate('database_logs', $countPipeline);
+    $total = isset($countResult[0]['total']) ? (int)$countResult[0]['total'] : 0;
+
+    json_response([
+        'logs' => $logs,
+        'total' => $total,
+        'limit' => $limit,
+        'offset' => $offset,
+    ]);
 }
 
+/**
+ * Estadísticas de logs usando agregación con los mismos filtros.
+ */
+function logStats() {
+    $user = Auth::requireAuth();
+    $params = get_body();
+    $db = Database::getInstance();
+
+    // Construir pipeline base sin paginación
+    $pipeline = buildLogsPipeline((string)$user['_id'], $params);
+    // Añadir grupo para estadísticas
+    $pipeline[] = [
+        '$group' => [
+            '_id' => null,
+            'total' => ['$sum' => 1],
+            'selects' => ['$sum' => ['$cond' => [['$in' => ['$operation', ['SELECT','SHOW','DESCRIBE']]], 1, 0]]],
+            'writes' => ['$sum' => ['$cond' => [['$in' => ['$operation', ['INSERT','UPDATE','DELETE','REPLACE']]], 1, 0]]],
+            'ddl' => ['$sum' => ['$cond' => [['$in' => ['$operation', ['CREATE','ALTER','DROP','TRUNCATE']]], 1, 0]]],
+            'suspicious' => ['$sum' => ['$cond' => [['$gt' => ['$riskScore', 0]], 1, 0]]],
+            'severityList' => ['$push' => '$severity'],
+        ]
+    ];
+
+    $result = $db->aggregate('database_logs', $pipeline);
+    $stats = isset($result[0]) ? $result[0] : [];
+
+    // Normalizar valores numéricos
+    $stats['total'] = (int)($stats['total'] ?? 0);
+    $stats['selects'] = (int)($stats['selects'] ?? 0);
+    $stats['writes'] = (int)($stats['writes'] ?? 0);
+    $stats['ddl'] = (int)($stats['ddl'] ?? 0);
+    $stats['suspicious'] = (int)($stats['suspicious'] ?? 0);
+
+    // Calcular distribución por severidad
+    $severityCount = [];
+    if (!empty($stats['severityList'])) {
+        foreach ($stats['severityList'] as $sev) {
+            if ($sev) {
+                $severityCount[$sev] = ($severityCount[$sev] ?? 0) + 1;
+            }
+        }
+    }
+    $stats['bySeverity'] = [];
+    foreach ($severityCount as $k => $v) {
+        $stats['bySeverity'][] = ['_id' => $k, 'count' => $v];
+    }
+    unset($stats['severityList']); // eliminar campo temporal
+
+    json_response($stats);
+}
+
+/**
+ * Exporta logs a CSV aplicando los mismos filtros.
+ */
 function logExportCsv() {
     $user = Auth::requireAuth();
     $params = get_body() + $_GET;
     $db = Database::getInstance();
-    $filter = ['userId' => $user['_id']];
-    if (!empty($params['databaseId'])) $filter['databaseId'] = $params['databaseId'];
-    if (!empty($params['severity'])) $filter['severity'] = $params['severity'];
 
-    $logs = filterDatabaseLogs($db->find('database_logs', $filter), $params);
+    // Obtener todos los logs filtrados (sin paginación)
+    $pipeline = buildLogsPipeline((string)$user['_id'], $params);
+    $logs = $db->aggregate('database_logs', $pipeline);
 
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="db-logs-' . date('Y-m-d-His') . '.csv"');
     header('Cache-Control: no-cache, must-revalidate');
     $out = fopen('php://output', 'w');
-    // BOM para que Excel abra el UTF-8 correctamente
     fwrite($out, "\xEF\xBB\xBF");
     fputcsv($out, ['Fecha', 'Operación', 'Base de datos', 'Motor', 'Usuario DB', 'Host', 'Riesgo', 'Consulta']);
+
     foreach ($logs as $l) {
         $operation = strtoupper($l['operation'] ?? strtok(trim($l['query'] ?? ''), " \t\r\n") ?: 'QUERY');
         fputcsv($out, [
             $l['createdAt'] ?? $l['timestamp'] ?? '',
             $operation,
-            $l['database'] ?? $l['databaseName'] ?? '',
+            $l['database'] ?? '',
             $l['engine'] ?? 'database',
             $l['dbUser'] ?? $l['user'] ?? '',
             $l['host'] ?? '',
@@ -645,47 +734,31 @@ function logExportCsv() {
     exit;
 }
 
-function logStats() {
+/**
+ * Elimina logs que coinciden con los filtros (userId, databaseId, query).
+ * Se convierte userId a string para consistencia.
+ */
+function deleteByQuery() {
     $user = Auth::requireAuth();
     $body = get_body();
     $db = Database::getInstance();
-    $filter = ['userId' => $user['_id']];
-    if (!empty($body['databaseId'])) $filter['databaseId'] = $body['databaseId'];
-    $logs = $db->find('database_logs', $filter);
-    $bySeverity = [];
-    $recentErrors = [];
-    $selects = 0;
-    $writes = 0;
-    $suspicious = 0;
-    foreach ($logs as $log) {
-        $sev = $log['severity'] ?? 'info';
-        $bySeverity[$sev] = ($bySeverity[$sev] ?? 0) + 1;
-        if (in_array($sev, ['critical', 'high']) && count($recentErrors) < 10) {
-            $recentErrors[] = $log;
-        }
-        $op = strtoupper($log['operation'] ?? '');
-        if ($op === 'SELECT') {
-            $selects++;
-        } elseif (in_array($op, ['INSERT', 'UPDATE', 'DELETE'])) {
-            $writes++;
-        }
-        if (!empty($log['riskScore']) && $log['riskScore'] > 0) {
-            $suspicious++;
-        }
+    $filter = ['userId' => (string)$user['_id']];
+    if (!empty($body['databaseId'])) {
+        $filter['databaseId'] = $body['databaseId'];
     }
-    $bySeverityArray = [];
-    foreach ($bySeverity as $k => $v) {
-        $bySeverityArray[] = ['_id' => $k, 'count' => $v];
+    if (!empty($body['query'])) {
+        $filter['query'] = $body['query'];
     }
-    json_response([
-        'total' => count($logs),
-        'selects' => $selects,
-        'writes' => $writes,
-        'suspicious' => $suspicious,
-        'bySeverity' => $bySeverityArray,
-        'recentErrors' => $recentErrors,
-    ]);
+    $all = $db->find('database_logs', $filter);
+    $deleted = 0;
+    foreach ($all as $log) {
+        $db->deleteOne('database_logs', ['_id' => $log['_id']]);
+        $deleted++;
+    }
+    json_response(['success' => true, 'deleted' => $deleted]);
 }
+
+// ---------- Funciones sin cambios (skip, revoke, etc.) ----------
 
 function skipQuery() {
     $user = Auth::requireAuth();
@@ -730,18 +803,6 @@ function revokeSkip() {
     }
 
     json_response(['success' => true]);
-}
-
-function deleteByQuery() {
-    $user = Auth::requireAuth();
-    $body = get_body();
-    $db = Database::getInstance();
-    $filter = ['userId' => $user['_id']];
-    if (!empty($body['databaseId'])) $filter['databaseId'] = $body['databaseId'];
-    if (!empty($body['query'])) $filter['query'] = $body['query'];
-    $all = $db->find('database_logs', $filter);
-    foreach ($all as $log) $db->deleteOne('database_logs', ['_id' => $log['_id']]);
-    json_response(['success' => true, 'deleted' => count($all)]);
 }
 
 function clientAction($action) {

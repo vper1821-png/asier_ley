@@ -67,6 +67,16 @@ class Database {
                 foreach ($v as $sub) {
                     if (!$this->matchesFilter($doc, $sub)) return false;
                 }
+            } elseif ($k === '$in') {
+                // Para $in, el valor debe estar dentro del array
+                if (!is_array($v)) return false;
+                $fieldValue = $doc[$k] ?? null;
+                // Si la clave es userId, comparamos como strings
+                if ($k === 'userId') {
+                    $fieldValue = (string)$fieldValue;
+                    $v = array_map('strval', $v);
+                }
+                if (!in_array($fieldValue, $v, false)) return false;
             } else {
                 $field = array_key_exists($k, $doc) ? $doc[$k] : null;
                 if (is_array($v)) {
@@ -98,7 +108,6 @@ class Database {
                                 if (!$opVal && array_key_exists($k, $doc)) return false;
                                 break;
                             default:
-                                // Unknown operator: fallback to strict comparison of the array as value
                                 if ($field != $v) return false;
                         }
                     }
@@ -157,7 +166,6 @@ class Database {
         foreach ($data as $doc) {
             if ($this->matchesFilter($doc, $filter)) $results[] = $doc;
         }
-        // Sort by _id descending (newest first)
         usort($results, fn($a, $b) => strcmp($b['_id'] ?? '', $a['_id'] ?? ''));
         $offset = isset($options['offset']) ? (int)$options['offset'] : 0;
         if (isset($options['limit'])) {
@@ -268,6 +276,129 @@ class Database {
         return $count;
     }
 
+    // ── NUEVO: Método aggregate para pipelines de agregación ──
+
+    /**
+     * Ejecuta un pipeline de agregación en MongoDB.
+     * Soporta: $match, $sort, $skip, $limit, $count, $group, $facet.
+     * En modo fallback (sin MongoDB), simula el comportamiento básico.
+     *
+     * @param string $collection Nombre de la colección
+     * @param array  $pipeline   Pipeline de agregación
+     * @return array
+     */
+    public function aggregate($collection, array $pipeline) {
+        if ($this->useMongo) {
+            // Normalizar filtros en $match
+            foreach ($pipeline as &$stage) {
+                if (isset($stage['$match'])) {
+                    $stage['$match'] = $this->normalizeFilter($stage['$match']);
+                }
+            }
+            error_log("[DB] aggregate on {$collection}: " . json_encode($pipeline, JSON_UNESCAPED_UNICODE));
+            $cursor = $this->db->selectCollection($collection)->aggregate($pipeline);
+            $results = [];
+            foreach ($cursor as $doc) {
+                $doc = (array)$doc;
+                if (isset($doc['_id'])) {
+                    $doc['_id'] = (string)$doc['_id'];
+                }
+                $results[] = $doc;
+            }
+            error_log("[DB] aggregate result: " . count($results) . " documents");
+            return $results;
+        }
+
+        // ── Fallback: simulación en archivos JSON ──
+        $data = $this->readCollection($collection);
+        $results = $data;
+
+        foreach ($pipeline as $stage) {
+            if (isset($stage['$match'])) {
+                $filter = $stage['$match'];
+                $results = array_filter($results, function($doc) use ($filter) {
+                    return $this->matchesFilter($doc, $filter);
+                });
+                $results = array_values($results);
+            } elseif (isset($stage['$sort'])) {
+                $sort = $stage['$sort'];
+                usort($results, function($a, $b) use ($sort) {
+                    foreach ($sort as $field => $order) {
+                        $valA = $a[$field] ?? null;
+                        $valB = $b[$field] ?? null;
+                        if ($valA == $valB) continue;
+                        $cmp = ($valA < $valB) ? -1 : 1;
+                        return ($order === -1 || $order === -1) ? -$cmp : $cmp;
+                    }
+                    return 0;
+                });
+            } elseif (isset($stage['$skip'])) {
+                $skip = (int)$stage['$skip'];
+                $results = array_slice($results, $skip);
+            } elseif (isset($stage['$limit'])) {
+                $limit = (int)$stage['$limit'];
+                $results = array_slice($results, 0, $limit);
+            } elseif (isset($stage['$count'])) {
+                $field = $stage['$count'];
+                $results = [[$field => count($results)]];
+            } elseif (isset($stage['$group'])) {
+                $group = $stage['$group'];
+                $grouped = [];
+                foreach ($results as $doc) {
+                    $id = $doc[$group['_id']] ?? null;
+                    if (!isset($grouped[$id])) {
+                        $grouped[$id] = ['_id' => $id];
+                    }
+                    foreach ($group as $field => $expr) {
+                        if ($field === '_id') continue;
+                        if (isset($expr['$sum'])) {
+                            $grouped[$id][$field] = ($grouped[$id][$field] ?? 0) + (float)($doc[$expr['$sum']] ?? 0);
+                        } elseif (isset($expr['$push'])) {
+                            $grouped[$id][$field][] = $doc[$expr['$push']] ?? null;
+                        } elseif (isset($expr['$cond'])) {
+                            // Simplificación básica para $cond (solo para estadísticas)
+                            $cond = $expr['$cond'];
+                            if (isset($cond['$in']) && isset($cond['$in'][1])) {
+                                $value = $doc[$cond['$in'][0]] ?? null;
+                                if (in_array($value, $cond['$in'][1], false)) {
+                                    $grouped[$id][$field] = ($grouped[$id][$field] ?? 0) + 1;
+                                }
+                            } else {
+                                $grouped[$id][$field] = ($grouped[$id][$field] ?? 0) + 0;
+                            }
+                        } else {
+                            // Asignación directa
+                            $grouped[$id][$field] = $doc[$field] ?? null;
+                        }
+                    }
+                }
+                $results = array_values($grouped);
+            } elseif (isset($stage['$facet'])) {
+                $facet = $stage['$facet'];
+                $facetResult = [];
+                foreach ($facet as $key => $subPipeline) {
+                    $subResults = $results;
+                    foreach ($subPipeline as $subStage) {
+                        if (isset($subStage['$count'])) {
+                            $field = $subStage['$count'];
+                            $subResults = [[$field => count($subResults)]];
+                        } elseif (isset($subStage['$skip'])) {
+                            $subResults = array_slice($subResults, (int)$subStage['$skip']);
+                        } elseif (isset($subStage['$limit'])) {
+                            $subResults = array_slice($subResults, 0, (int)$subStage['$limit']);
+                        }
+                    }
+                    $facetResult[$key] = $subResults;
+                }
+                $results = [$facetResult];
+            }
+        }
+
+        return $results;
+    }
+
+    // ── Normalización de filtros ──
+
     private function normalizeFilter($filter) {
         return $this->normalizeFilterRecursive($filter);
     }
@@ -276,16 +407,21 @@ class Database {
         if (!is_array($filter)) return $filter;
         $out = [];
         foreach ($filter as $k => $v) {
+            // Si la clave es _id y es un string hex válido, convertir a ObjectId
             if ($k === '_id' && is_string($v) && preg_match('/^[0-9a-fA-F]{24}$/', $v)) {
                 $out[$k] = new MongoDB\BSON\ObjectId($v);
-            } elseif (($k === '$in' || $k === '$nin') && is_array($v)) {
+            }
+            // Si es $in o $nin y contiene strings hex, convertirlos a ObjectId
+            elseif (($k === '$in' || $k === '$nin') && is_array($v)) {
                 $out[$k] = array_map(function($item) {
                     if (is_string($item) && preg_match('/^[0-9a-fA-F]{24}$/', $item)) {
                         return new MongoDB\BSON\ObjectId($item);
                     }
                     return $item;
                 }, $v);
-            } elseif (is_array($v)) {
+            }
+            // Si es un array anidado, recursión
+            elseif (is_array($v)) {
                 $out[$k] = $this->normalizeFilterRecursive($v);
             } else {
                 $out[$k] = $v;
