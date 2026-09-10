@@ -443,6 +443,14 @@ function download() {
         'mensual' => 'Mensual', 'ocasional' => 'Ocasional', 'unica' => 'Única',
         'interno_solo' => 'Solo personal interno', 'interno_externo' => 'Interno y proveedores',
         'publico' => 'Acceso público', 'terceros' => 'Terceros autorizados',
+        // ✅ NUEVO Art. 14.1.d
+        'no_se_comunica' => 'No se comunican a terceros',
+        'encargados' => 'Encargados del tratamiento',
+        'proveedores_ti' => 'Proveedores TI / Cloud',
+        'autoridades' => 'Autoridades públicas',
+        'auditores' => 'Auditores / Asesores',
+        'bancos' => 'Bancos / Entidades financieras',
+        'publico' => 'Comunicación pública',
         'cifrado_reposo' => 'Cifrado AES-256', 'cifrado_transito' => 'TLS',
         'pseudonimizacion' => 'Seudonimización', 'acceso_controlado' => 'RBAC',
         'mfa' => 'MFA', 'auditoria_accesos' => 'Logs de auditoría', 'backup_cifrado' => 'Backups cifrados',
@@ -771,11 +779,26 @@ function download() {
             $html .= '<tr><td class="f-label">Datos de menores:</td><td class="f-value">' . (!empty($it['childrenData']) ? '<span class="badge badge-danger">SÍ — Art. 17</span>' : 'No') . '</td></tr>';
             $html .= '</table>';
 
-            // 4. Titulares
+                        // 4. Titulares
             $html .= '<h3 style="font-size:10px;font-weight:bold;margin-top:10px">4. Categorías de Titulares</h3>';
             $html .= '<table class="fields"><tr><td class="f-label">Titulares:</td><td class="f-value">';
             $html .= empty($subCats) ? '—' : h_(implode(', ', array_map($L, $subCats)));
             $html .= '</td></tr></table>';
+
+            // ✅ NUEVO 4.bis Destinatarios (Art. 14.1.d)
+            $recipients = toStrArr($it['recipients'] ?? null);
+            $html .= '<h3 style="font-size:10px;font-weight:bold;margin-top:10px">4.bis Destinatarios (Art. 14.1.d)</h3>';
+            if (empty($recipients)) {
+                $html .= '<p style="color:#991b1b;font-weight:bold;font-size:9px">⚠ No especificados — requisito obligatorio Art. 14.1.d</p>';
+            } else {
+                $html .= '<table class="fields"><tr><td class="f-label">Destinatarios:</td><td class="f-value">';
+                $html .= h_(implode(', ', array_map($L, $recipients)));
+                $html .= '</td></tr></table>';
+            }
+            if (!empty($it['recipientsDetail'])) {
+                $recipientsDetailStr = bsonToString($it['recipientsDetail']);
+                $html .= '<table class="fields"><tr><td class="f-label">Detalle:</td><td class="f-value">' . h_($recipientsDetailStr) . '</td></tr></table>';
+            }
 
             // 5. Frecuencia
             $html .= '<h3 style="font-size:10px;font-weight:bold;margin-top:10px">5. Frecuencia y Acceso</h3>';

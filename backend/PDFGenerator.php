@@ -291,6 +291,14 @@ body { font-family: "DejaVu Sans", Helvetica, Arial, sans-serif; margin: 0; padd
             'interno_externo' => 'Personal interno y proveedores',
             'publico'         => 'Acceso público',
             'terceros'        => 'Terceros autorizados',
+            // ✅ NUEVO Art. 14.1.d — Destinatarios
+            'no_se_comunica'      => 'No se comunican a terceros',
+            'encargados'          => 'Encargados del tratamiento',
+            'proveedores_ti'      => 'Proveedores TI / Cloud',
+            'autoridades'         => 'Autoridades públicas',
+            'auditores'           => 'Auditores / Asesores',
+            'bancos'              => 'Bancos / Entidades financieras',
+            'publico'             => 'Comunicación pública',
             'cifrado_reposo'      => 'Cifrado en reposo (AES-256)',
             'cifrado_transito'    => 'Cifrado en tránsito (TLS)',
             'pseudonimizacion'    => 'Seudonimización (Art. 30)',
@@ -458,7 +466,7 @@ body { font-family: "DejaVu Sans", Helvetica, Arial, sans-serif; margin: 0; padd
                 $html .= '<tr><td style="background:#f5f5f5;font-weight:bold">¿Incluye datos de niños / adolescentes? (Art. 17)</td><td>' . (!empty($it['childrenData']) ? '<span class="badge badge-danger">Sí — Requiere consentimiento del representante legal</span>' : 'No') . '</td></tr>';
                 $html .= '</tbody></table>';
 
-                // 4.5 Categorías de titulares
+                              // 4.5 Categorías de titulares
                 $html .= '<h3>4.5 Categorías de Titulares (Art. 14.1.c)</h3>';
                 if (empty($subCats)) {
                     $html .= '<p>No especificadas.</p>';
@@ -470,15 +478,33 @@ body { font-family: "DejaVu Sans", Helvetica, Arial, sans-serif; margin: 0; padd
                     $html .= '</ul>';
                 }
 
-                // 4.6 Frecuencia y acceso
-                $html .= '<h3>4.6 Frecuencia y Control de Acceso (Art. 14.1.e / Art. 25)</h3>';
+                // ✅ NUEVO 4.6 Destinatarios (Art. 14.1.d)
+                $recipients = $toArr($it['recipients'] ?? []);
+                $html .= '<h3>4.6 Destinatarios de los Datos (Art. 14.1.d)</h3>';
+                if (empty($recipients)) {
+                    $html .= '<p style="color:#991b1b;font-weight:bold">⚠ No especificados — requisito obligatorio Art. 14.1.d</p>';
+                } else {
+                    $html .= '<ul style="margin:4px 0;padding-left:16px">';
+                    foreach ($recipients as $r) {
+                        $html .= '<li>' . htmlspecialchars($label($r)) . '</li>';
+                    }
+                    $html .= '</ul>';
+                }
+                if (!empty($it['recipientsDetail'])) {
+                    $html .= '<table class="data-table"><tbody>';
+                    $html .= '<tr><td style="width:30%;background:#f5f5f5;font-weight:bold">Detalle de destinatarios</td><td>' . nl2br(htmlspecialchars($this->safeString($it['recipientsDetail']))) . '</td></tr>';
+                    $html .= '</tbody></table>';
+                }
+
+                // 4.7 Frecuencia y acceso
+                $html .= '<h3>4.7 Frecuencia y Control de Acceso (Art. 14.1.e / Art. 25)</h3>';
                 $html .= '<table class="data-table"><tbody>';
                 $html .= '<tr><td style="width:30%;background:#f5f5f5;font-weight:bold">Frecuencia de tratamiento</td><td>' . htmlspecialchars($label($it['treatmentFrequency'] ?? '—')) . '</td></tr>';
                 $html .= '<tr><td style="background:#f5f5f5;font-weight:bold">Control de acceso</td><td>' . htmlspecialchars($label($it['accessControl'] ?? '—')) . '</td></tr>';
                 $html .= '</tbody></table>';
 
                 // 4.7 Medidas de seguridad
-                $html .= '<h3>4.7 Medidas de Seguridad Implementadas (Art. 25)</h3>';
+                $html .= '<h3>4.8 Medidas de Seguridad Implementadas (Art. 25)</h3>';
                 if (empty($techM)) {
                     $html .= '<p>No especificadas.</p>';
                 } else {
@@ -490,20 +516,20 @@ body { font-family: "DejaVu Sans", Helvetica, Arial, sans-serif; margin: 0; padd
                 }
 
                 // 4.8 Retención
-                $html .= '<h3>4.8 Plazo de Retención (Art. 14.1.e)</h3>';
+                $html .= '<h3>4.9 Plazo de Retención (Art. 14.1.e)</h3>';
                 $html .= '<table class="data-table"><tbody>';
                 $html .= '<tr><td style="width:30%;background:#f5f5f5;font-weight:bold">Plazo de conservación</td><td>' . (!empty($it['retentionDays']) ? (int)$it['retentionDays'] . ' días' : 'No especificado') . '</td></tr>';
                 $html .= '<tr><td style="background:#f5f5f5;font-weight:bold">Almacenamiento</td><td>' . htmlspecialchars($this->safeString($it['storage'] ?? 'No especificado')) . '</td></tr>';
                 $html .= '</tbody></table>';
 
                 // 4.9 Nivel de riesgo
-                $html .= '<h3>4.9 Evaluación del Nivel de Riesgo</h3>';
+                $html .= '<h3>4.10 Evaluación del Nivel de Riesgo</h3>';
                 $html .= '<table class="data-table"><tbody>';
                 $html .= '<tr><td style="width:30%;background:#f5f5f5;font-weight:bold">Nivel de riesgo</td><td><span class="badge ' . $riskBadge . '">' . $label($riskKey) . '</span></td></tr>';
                 $html .= '</tbody></table>';
 
                 // 4.10 Observaciones y evidencia
-                $html .= '<h3>4.10 Observaciones y Evidencia Documental</h3>';
+                $html .= '<h3>4.11 Observaciones y Evidencia Documental</h3>';
                 $html .= '<table class="data-table"><tbody>';
                 $html .= '<tr><td style="width:30%;background:#f5f5f5;font-weight:bold">Observaciones</td><td>' . nl2br(htmlspecialchars($this->safeString($it['notes'] ?? 'Sin observaciones'))) . '</td></tr>';
                 $html .= '<tr><td style="background:#f5f5f5;font-weight:bold">URL de evidencia</td><td>' . (!empty($it['evidenceUrl']) ? htmlspecialchars($it['evidenceUrl']) : '—') . '</td></tr>';

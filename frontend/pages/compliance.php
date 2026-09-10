@@ -1915,6 +1915,26 @@ main.compliance-workspace { position: relative; }
                                         <input type="number" name="fields[retentionDays]" id="inventory-wizard-retention" required class="compliance-input inventory-wizard-field" min="1" max="3650" placeholder="Ej: 365 (1 año)">
                                     </div>
                                 </div>
+                                                                <div class="compliance-form-row mt-4">
+                                    <div class="compliance-form-cell">
+                                        <label class="compliance-form-label">¿A quién se comunican los datos? (Art. 14.1.d) <span class="required">*</span></label>
+                                        <select name="fields[recipients][]" id="inventory-wizard-recipients" multiple required class="compliance-select inventory-wizard-field" size="5">
+                                            <option value="no_se_comunica">No se comunican a terceros</option>
+                                            <option value="encargados">Encargados del tratamiento</option>
+                                            <option value="proveedores_ti">Proveedores TI / Cloud</option>
+                                            <option value="autoridades">Autoridades públicas</option>
+                                            <option value="auditores">Auditores / Asesores</option>
+                                            <option value="bancos">Bancos / Entidades financieras</option>
+                                            <option value="publico">Comunicación pública</option>
+                                        </select>
+                                        <span class="compliance-hint">Ctrl+Click para seleccionar múltiples</span>
+                                    </div>
+                                    <div class="compliance-form-cell">
+                                        <label class="compliance-form-label">Detalle de destinatarios (si aplica)</label>
+                                        <textarea name="fields[recipientsDetail]" rows="2" class="compliance-textarea" placeholder="Ej: AWS (EE.UU.), Banco Santander, SII"></textarea>
+                                    </div>
+                                </div>
+
                                 <div class="compliance-form-row mt-4">
                                     <div class="compliance-form-cell">
                                         <label class="compliance-form-label">Nivel de riesgo <span class="required">*</span></label>
@@ -2357,6 +2377,30 @@ main.compliance-workspace { position: relative; }
                                 </div>
                             </div>
 
+                             <!-- SECCIÓN 4.5: Destinatarios (Art. 14.1.d) -->
+                            <div class="rounded-lg border border-border-theme/50 bg-bg-base/30 p-4">
+                                <p class="text-[11px] font-bold text-indigo-300 uppercase tracking-wider mb-3">Destinatarios de los Datos (Art. 14.1.d)</p>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="compliance-form-label">Categorías de destinatarios <span class="text-red-400">*</span></label>
+                                        <select name="recipients" id="edit-recipients" multiple required class="compliance-select w-full" size="5">
+                                            <option value="no_se_comunica">No se comunican a terceros</option>
+                                            <option value="encargados">Encargados del tratamiento</option>
+                                            <option value="proveedores_ti">Proveedores TI / Cloud</option>
+                                            <option value="autoridades">Autoridades públicas</option>
+                                            <option value="auditores">Auditores / Asesores</option>
+                                            <option value="bancos">Bancos / Entidades financieras</option>
+                                            <option value="publico">Comunicación pública</option>
+                                        </select>
+                                        <p class="text-[9px] text-text-subtle mt-1">Ctrl+Click para seleccionar múltiples</p>
+                                    </div>
+                                    <div>
+                                        <label class="compliance-form-label">Detalle de destinatarios</label>
+                                        <textarea name="recipientsDetail" id="edit-recipientsDetail" rows="4" class="compliance-textarea w-full" placeholder="Ej: AWS (EE.UU.), Banco Santander, SII"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+
                             <!-- SECCIÓN 5: Observaciones -->
                             <div class="rounded-lg border border-border-theme/50 bg-bg-base/30 p-4">
                                 <p class="text-[11px] font-bold text-indigo-300 uppercase tracking-wider mb-3">5. Observaciones y Evidencia</p>
@@ -2591,6 +2635,17 @@ main.compliance-workspace { position: relative; }
                 document.getElementById('edit-notes').value = item.notes || '';
                 document.getElementById('edit-evidenceUrl').value = item.evidenceUrl || '';
 
+                // ✅ NUEVO: Destinatarios (Art. 14.1.d)
+                const recipients = Array.isArray(item.recipients) ? item.recipients : [];
+                const recSelect = document.getElementById('edit-recipients');
+                if (recSelect) {
+                    Array.from(recSelect.options).forEach(opt => {
+                        opt.selected = recipients.includes(opt.value);
+                    });
+                }
+                const recDetail = document.getElementById('edit-recipientsDetail');
+                if (recDetail) recDetail.value = item.recipientsDetail || '';
+
                 const msg = document.getElementById('edit-msg');
                 msg.classList.add('hidden');
 
@@ -2606,6 +2661,9 @@ main.compliance-workspace { position: relative; }
                 // Helper: string → array limpio
                 const splitList = (s) => String(s || '').split(/[,\n]/).map(x => x.trim()).filter(Boolean);
 
+                             const recEl = document.getElementById('edit-recipients');
+                const recipientsSelected = recEl ? Array.from(recEl.selectedOptions).map(o => o.value) : [];
+
                 const payload = {
                     token: '<?= h($token) ?>',
                     name: formData.get('name'),
@@ -2620,6 +2678,8 @@ main.compliance-workspace { position: relative; }
                     treatmentFrequency: formData.get('treatmentFrequency'),
                     accessControl: formData.get('accessControl'),
                     technicalMeasures: splitList(formData.get('technicalMeasures')),
+                    recipients: recipientsSelected,
+                    recipientsDetail: formData.get('recipientsDetail') || '',
                     retentionDays: parseInt(formData.get('retentionDays')) || null,
                     risk: formData.get('risk'),
                     sensitive: formData.get('sensitive') === '1',
