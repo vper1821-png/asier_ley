@@ -1,7 +1,37 @@
 <?php
 // ARCO routes
 
-// ─── Helper: resolver IDs de empresa del usuario ───
+// ─── Helper: convertir BSONDocument/BSONArray/Object a array PHP plano ───
+function arcoToArray($value) {
+    if ($value === null) return null;
+    if (is_object($value)) {
+        // Cubre BSONDocument, BSONArray, PackedArray, stdClass, etc.
+        return json_decode(json_encode($value), true) ?: [];
+    }
+    if (is_array($value)) {
+        $out = [];
+        foreach ($value as $k => $v) {
+            $out[$k] = arcoToArray($v);
+        }
+        return $out;
+    }
+    return $value;
+}
+
+// ─── Helper: construir condiciones $or para un id (string + ObjectId) ───
+function arcoIdConditions($field, $id) {
+    $conditions = [[$field => (string)$id]];
+    if (preg_match('/^[0-9a-fA-F]{24}$/', (string)$id) && class_exists('MongoDB\BSON\ObjectId')) {
+        try {
+            $conditions[] = [$field => new MongoDB\BSON\ObjectId((string)$id)];
+        } catch (\Throwable $e) {
+            // Ignorar si no se puede construir ObjectId
+        }
+    }
+    return $conditions;
+}
+
+// ─── Helper: resolver IDs de empresa del usuario (tolerante a tipos) ───
 function arcoCompanyIds($user, $db) {
     // Admin / superadmin → sin filtro (null = todas las empresas)
     if (!empty($user['isAdmin'])
@@ -16,12 +46,17 @@ function arcoCompanyIds($user, $db) {
 
     $ids = [];
     if ($companyId) {
-        $ids[] = (string)$companyId;
-        // Sub-usuarios que pertenecen a esa empresa
-        $subUsers = $db->find('users', ['companyId' => $companyId]);
-        foreach ($subUsers as $su) {
-            if (!empty($su['_id']))       $ids[] = (string)$su['_id'];
-            if (!empty($su['companyId'])) $ids[] = (string)$su['companyId'];
+        $companyIdStr = (string)$companyId;
+        $ids[] = $companyIdStr;
+
+        // Buscar sub-usuarios por AMBAS formas (string y ObjectId)
+        $orConditions = arcoIdConditions('companyId', $companyIdStr);
+        if (!empty($orConditions)) {
+            $subUsers = $db->find('users', ['$or' => $orConditions]);
+            foreach ($subUsers as $su) {
+                if (!empty($su['_id']))       $ids[] = (string)$su['_id'];
+                if (!empty($su['companyId'])) $ids[] = (string)$su['companyId'];
+            }
         }
     }
     if (!empty($user['_id'])) $ids[] = (string)$user['_id'];
@@ -122,9 +157,22 @@ function listRequests() {
         // Admin / superadmin → todas las solicitudes
         $items = $db->find('arco_requests', []);
     } else {
-        // Todos los usuarios de la empresa
-        $items = $db->find('arco_requests', ['companyId' => ['$in' => $companyIds]]);
+        // Buscar por AMBAS formas (string + ObjectId) para evitar mismatch de tipo
+        $orList = [];
+        foreach ($companyIds as $cid) {
+            foreach (arcoIdConditions('companyId', $cid) as $cond) {
+                $orList[] = $cond;
+            }
+        }
+        if (empty($orList)) {
+            $items = [];
+        } else {
+            $items = $db->find('arco_requests', ['$or' => $orList]);
+        }
     }
+
+    // Convertir BSONDocuments a arrays PHP planos para el frontend
+    $items = array_map('arcoToArray', $items);
 
     json_response($items);
 }
@@ -153,12 +201,16 @@ function updateRequest() {
     $prevStatus   = $req['status'] ?? 'pending';
     $prevResponse = (string)($req['response'] ?? '');
 
-    // Detectar cambios reales
+    // Detectar cambios reales (no borrar respuesta si llega vacía)
     $statusChanged   = ($estado !== '' && $estado !== $prevStatus);
-    $responseChanged = ($hasResp && $respuesta !== $prevResponse);
+    $responseChanged = ($hasResp && $respuesta !== '' && $respuesta !== $prevResponse);
 
     if (!$statusChanged && !$responseChanged) {
-        json_response(['success' => true, 'unchanged' => true, 'history' => $req['statusHistory'] ?? []]);
+        json_response([
+            'success' => true,
+            'unchanged' => true,
+            'history' => arcoToArray($req['statusHistory'] ?? []),
+        ]);
     }
 
     // Construir updates
@@ -188,7 +240,7 @@ function updateRequest() {
     }
 
     // Historial append-only con snapshot completo
-    $history = $req['statusHistory'] ?? [];
+    $history = arcoToArray($req['statusHistory'] ?? []);
     if (!is_array($history)) $history = [];
 
     $newStatus   = $statusChanged ? $estado : $prevStatus;
@@ -259,7 +311,6 @@ function generateResponse() {
 }
 
 // ─── Descargar respuesta en PDF ───
-// ─── Descargar respuesta en PDF ───
 function downloadResponse() {
     $user = Auth::requireAuth();
     $requestId = $_GET['requestId'] ?? $_GET['id'] ?? '';
@@ -269,6 +320,9 @@ function downloadResponse() {
     $req = $db->findOne('arco_requests', ['requestId' => $requestId]);
     if (!$req) json_error('solicitud no encontrada', 404);
 
+    // Convertir a array plano inmediatamente (evita problemas con BSONDocument)
+    $req = arcoToArray($req);
+
     // Verificación de acceso
     if (!arcoCanAccess($user, $db, $req)) {
         if (empty($req['companyId'])) {
@@ -277,7 +331,7 @@ function downloadResponse() {
         json_error('acceso denegado', 403);
     }
 
-    $config = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
+    $config = arcoToArray($db->findOne('compliance_config', ['userId' => $user['_id']]) ?? []);
     $companyName = $config['companyName'] ?? ($user['companyName'] ?? ($user['email'] ?? 'Empresa'));
     $dpdName  = $config['dpdName']  ?? '—';
     $dpdEmail = $config['dpdEmail'] ?? '—';
@@ -294,6 +348,7 @@ function downloadResponse() {
     ];
     $typeLabel = $typeLabels[$type] ?? ucfirst($type);
 
+    // ─── Solicitante: ya es array plano tras arcoToArray ───
     $solicitante = $req['solicitante'] ?? [];
     if (is_string($solicitante)) $solicitante = json_decode($solicitante, true) ?: [];
     if (!is_array($solicitante)) $solicitante = [];
@@ -318,9 +373,23 @@ function downloadResponse() {
     ];
     $statusLabel = $statusLabels[$req['status'] ?? 'pending'] ?? ucfirst($req['status'] ?? 'pendiente');
 
-    $respondedBy = $req['respondedBy'] ?? ($dpdName !== '—' ? $dpdName : 'Responsable');
+    // ─── Responsable: prioriza DPD, luego respondedBy, luego user ───
+    $respondedBy = $req['respondedBy'] ?? null;
+    if (!$respondedBy || $respondedBy === 'kp') {
+        if ($dpdName !== '—') {
+            $respondedBy = $dpdName;
+        } elseif (!empty($user['name'])) {
+            $respondedBy = $user['name'];
+        } elseif (!empty($user['email'])) {
+            $respondedBy = $user['email'];
+        } else {
+            $respondedBy = 'Responsable';
+        }
+    }
 
-    $statusHistory = is_array($req['statusHistory'] ?? null) ? $req['statusHistory'] : [];
+    // ─── Historial: ya es array plano tras arcoToArray ───
+    $statusHistory = $req['statusHistory'] ?? [];
+    if (!is_array($statusHistory)) $statusHistory = [];
 
     $h = fn($s) => htmlspecialchars((string)($s ?? ''), ENT_QUOTES, 'UTF-8');
 
@@ -465,7 +534,6 @@ function downloadResponse() {
     $responseText = trim((string)($req['response'] ?? ''));
     $html .= "<div class='subject'>Respuesta del responsable</div>";
     if ($responseText !== '') {
-        // Dividir por saltos de línea (simples o dobles)
         $lines = preg_split('/\r?\n/', $responseText);
         foreach ($lines as $line) {
             $line = trim($line);
@@ -482,7 +550,6 @@ function downloadResponse() {
     if (!empty($statusHistory)) {
         $html .= "<div class='subject' style='font-size:11px;margin-top:20px'>Historial de gestión</div>";
 
-        // Tabla resumen del timeline
         $html .= "<table class='data-table'>";
         $html .= "<tr><th style='width:100px'>Fecha</th><th style='width:80px'>Estado</th>"
                . "<th style='width:120px'>Responsable</th><th>Tipo de cambio</th></tr>";
@@ -493,7 +560,6 @@ function downloadResponse() {
             $evBy     = $ev['by'] ?? '—';
             $evKind   = $kindLabels[$ev['kind'] ?? ''] ?? '—';
 
-            // Badge de color por estado
             $statusCls = 'badge';
             switch ($ev['status'] ?? '') {
                 case 'pending':     $statusCls .= ' status-pending';   break;
@@ -527,7 +593,6 @@ function downloadResponse() {
             $html .= "<p class='entry-head'><strong>Entrada #{$entryNum}</strong> · {$h($evDate)} · "
                    . "Estado: <strong>{$h($evStatus)}</strong> · Responsable: {$h($evBy)}</p>";
             $html .= "<div class='entry-body'>";
-            // Cada línea no vacía = párrafo
             foreach (preg_split('/\r?\n/', $fullResponse) as $line) {
                 $line = trim($line);
                 if ($line !== '') {
@@ -559,8 +624,11 @@ function downloadResponse() {
     // ─── Render PDF ───
     $dompdf = new Dompdf\Dompdf();
     $dompdf->setPaper('A4', 'portrait');
-    $dompdf->loadHtml($html);
+    $dompdf->loadHtml($html, 'UTF-8');
     $dompdf->render();
+
+    // Limpiar cualquier output accidental (BOM, warnings, espacios)
+    while (ob_get_level() > 0) { ob_end_clean(); }
 
     header('Content-Type: application/pdf');
     header('Content-Disposition: attachment; filename="respuesta_arco_' . $requestId . '.pdf"');
@@ -578,13 +646,15 @@ function exportPortabilidad() {
     $req = $db->findOne('arco_requests', ['requestId' => $requestId]);
     if (!$req) json_error('solicitud no encontrada', 404);
 
+    // Convertir a array plano
+    $req = arcoToArray($req);
+
     if (!arcoCanAccess($user, $db, $req)) {
         json_error('acceso denegado', 403);
     }
 
     $format = strtolower($_GET['format'] ?? 'json');
 
-    // Recolectar todos los datos del titular en el sistema
     $uid = $req['companyId'] ?? $user['_id'];
 
     $solicitante = $req['solicitante'] ?? [];
@@ -592,14 +662,14 @@ function exportPortabilidad() {
     if (!is_array($solicitante)) $solicitante = [];
 
     $email = ($solicitante['email'] ?? $req['email'] ?? '');
-    $rut = ($solicitante['rut'] ?? $req['rut'] ?? '');
-    $name = ($solicitante['nombre'] ?? $req['name'] ?? '');
+    $rut   = ($solicitante['rut']   ?? $req['rut']   ?? '');
+    $name  = ($solicitante['nombre'] ?? $req['name'] ?? '');
 
     $data = [
         'solicitante' => [
             'nombre' => $name,
-            'rut' => $rut,
-            'email' => $email,
+            'rut'    => $rut,
+            'email'  => $email,
         ],
         'consentimientos' => $db->find('compliance_consents', [
             'userId' => $uid,
@@ -612,7 +682,7 @@ function exportPortabilidad() {
             'companyId' => $uid,
             '$or' => [
                 ['solicitante.email' => $email],
-                ['solicitante.rut' => $rut],
+                ['solicitante.rut'   => $rut],
             ],
         ]),
         'inventario' => $db->find('compliance_inventory', [
@@ -622,7 +692,7 @@ function exportPortabilidad() {
             'userId' => $uid,
             '$or' => [
                 ['affectedEmail' => $email],
-                ['affectedRut' => $rut],
+                ['affectedRut'   => $rut],
             ],
         ]),
         'capacitaciones' => $db->find('compliance_trainings', [
@@ -668,6 +738,9 @@ function downloadReceipt() {
     $req = $db->findOne('arco_requests', ['requestId' => $requestId]);
     if (!$req) json_error('solicitud no encontrada', 404);
 
+    // Convertir a array plano
+    $req = arcoToArray($req);
+
     // Verificación mínima para evitar acceso a ciegas por ID
     $solicitante = $req['solicitante'] ?? [];
     if (is_string($solicitante)) $solicitante = json_decode($solicitante, true) ?: [];
@@ -678,26 +751,26 @@ function downloadReceipt() {
         json_error('verificación de email fallida', 403);
     }
 
-    $company = $db->findOne('users', ['_id' => ($req['companyId'] ?? '')]) ?? [];
+    $company = arcoToArray($db->findOne('users', ['_id' => ($req['companyId'] ?? '')]) ?? []);
     $companyName = $company['companyName'] ?? ($company['name'] ?? 'Empresa');
-    $dpdName = $company['dpdName'] ?? '—';
+    $dpdName  = $company['dpdName']  ?? '—';
     $dpdEmail = $company['dpdEmail'] ?? '—';
 
     $type = $req['tipo'] ?? $req['type'] ?? 'acceso';
     $typeLabels = [
-        'acceso' => 'Acceso',
+        'acceso'        => 'Acceso',
         'rectificacion' => 'Rectificación',
-        'cancelacion' => 'Cancelación',
-        'oposicion' => 'Oposición',
-        'portabilidad' => 'Portabilidad',
-        'supresion' => 'Supresión',
-        'bloqueo' => 'Bloqueo',
+        'cancelacion'   => 'Cancelación',
+        'oposicion'     => 'Oposición',
+        'portabilidad'  => 'Portabilidad',
+        'supresion'     => 'Supresión',
+        'bloqueo'       => 'Bloqueo',
     ];
     $typeLabel = $typeLabels[$type] ?? ucfirst($type);
 
-    $name = $solicitante['nombre'] ?? ($req['name'] ?? 'Titular');
-    $rut = $solicitante['rut'] ?? ($req['rut'] ?? '—');
-    $emailView = $solicitante['email'] ?? ($req['email'] ?? '—');
+    $name       = $solicitante['nombre'] ?? ($req['name']  ?? 'Titular');
+    $rut        = $solicitante['rut']    ?? ($req['rut']   ?? '—');
+    $emailView  = $solicitante['email']  ?? ($req['email'] ?? '—');
     $requestDate = substr(($req['createdAt'] ?? date('c')), 0, 10);
     $receiptDate = date('d/m/Y');
 
@@ -766,8 +839,11 @@ function downloadReceipt() {
 
     $dompdf = new Dompdf\Dompdf();
     $dompdf->setPaper('A4', 'portrait');
-    $dompdf->loadHtml($html);
+    $dompdf->loadHtml($html, 'UTF-8');
     $dompdf->render();
+
+    // Limpiar output previo (BOM, warnings)
+    while (ob_get_level() > 0) { ob_end_clean(); }
 
     header('Content-Type: application/pdf');
     header('Content-Disposition: attachment; filename="comprobante_arco_' . $requestId . '.pdf"');
