@@ -5897,7 +5897,8 @@ $isDpoOrDpd = in_array($currentRole, ['dpo', 'dpd', 'superadmin'], true) || !emp
             const el = document.getElementById(id);
             if (!el) return;
             // El contenedor de inventario ya tiene su botón "Nuevo"
-            if (id !== 'inventory-create-form') {
+            if (id !== 'inventory-create-form' && id !== 'dpia-create-form') {
+
                 const btn = document.createElement('button');
                 btn.type = 'button';
                 btn.className = 'cp-new-btn mb-4';
@@ -7253,119 +7254,7 @@ document.getElementById('assign-modal').addEventListener('click', function (e) {
     if (e.target.id === 'assign-modal') closeAssignModal();
 });
 
-// ═══ DPIA WIZARD ═══
-(function() {
-    const wizardForm = document.getElementById('dpia-wizard-form');
-    if (!wizardForm) return;
 
-    let currentStep = 1;
-    const totalSteps = 2;
-
-    const stepText = document.querySelector('.dpia-wizard-step-text');
-    const stepPercentage = document.querySelector('.dpia-wizard-percentage');
-    const progressFill = document.querySelector('.dpia-wizard-progress-fill');
-    const prevBtn = document.getElementById('dpia-prev-btn');
-    const nextBtn = document.getElementById('dpia-next-btn');
-    const submitBtn = document.getElementById('dpia-submit-btn');
-
-    function updateWizard() {
-        // Update progress text
-        stepText.textContent = 'Paso ' + currentStep + ' de ' + totalSteps;
-        stepPercentage.textContent = Math.round((currentStep / totalSteps) * 100) + '%';
-        progressFill.style.width = (currentStep / totalSteps) * 100 + '%';
-
-        // Update step indicators
-        for (let i = 1; i <= totalSteps; i++) {
-            const indicator = document.querySelector('.dpia-step-' + i);
-            const stepNumber = indicator.querySelector('.dpia-step-number');
-            const stepLabel = indicator.querySelector('.dpia-step-label');
-
-            indicator.classList.remove('active', 'completed');
-            stepNumber.classList.remove('bg-accent', 'text-white', 'bg-emerald-500', 'text-white');
-            stepNumber.classList.add('bg-bg-elevated', 'text-text-subtle');
-            stepLabel.classList.remove('text-text-heading');
-            stepLabel.classList.add('text-text-subtle');
-
-            if (i < currentStep) {
-                indicator.classList.add('completed');
-                stepNumber.classList.remove('bg-bg-elevated', 'text-text-subtle');
-                stepNumber.classList.add('bg-emerald-500', 'text-white');
-                stepLabel.classList.remove('text-text-subtle');
-                stepLabel.classList.add('text-text-heading');
-                stepNumber.innerHTML = '✓';
-            } else if (i === currentStep) {
-                indicator.classList.add('active');
-                stepNumber.classList.remove('bg-bg-elevated', 'text-text-subtle');
-                stepNumber.classList.add('bg-accent', 'text-white');
-                stepLabel.classList.remove('text-text-subtle');
-                stepLabel.classList.add('text-text-heading');
-                stepNumber.textContent = i;
-            } else {
-                stepNumber.textContent = i;
-            }
-        }
-
-        // Show/hide steps
-        document.querySelectorAll('.dpia-wizard-step').forEach(function(step) {
-            if (parseInt(step.dataset.step) === currentStep) {
-                step.classList.remove('hidden');
-            } else {
-                step.classList.add('hidden');
-            }
-        });
-
-        // Update buttons
-        prevBtn.classList.toggle('hidden', currentStep === 1);
-        nextBtn.classList.toggle('hidden', currentStep === totalSteps);
-        submitBtn.classList.toggle('hidden', currentStep !== totalSteps);
-    }
-
-    function validateStep(step) {
-        const stepContent = document.querySelector('.dpia-step-' + step + '-content');
-        const requiredFields = stepContent.querySelectorAll('[required]');
-        let valid = true;
-
-        requiredFields.forEach(function(field) {
-            if (!field.value.trim()) {
-                valid = false;
-                field.style.borderColor = '#ef4444';
-                field.addEventListener('input', function() {
-                    field.style.borderColor = '';
-                }, { once: true });
-            }
-        });
-
-        return valid;
-    }
-
-    nextBtn.addEventListener('click', function() {
-        if (!validateStep(currentStep)) {
-            alert('Por favor completa los campos requeridos antes de continuar.');
-            return;
-        }
-        if (currentStep < totalSteps) {
-            currentStep++;
-            updateWizard();
-        }
-    });
-
-    prevBtn.addEventListener('click', function() {
-        if (currentStep > 1) {
-            currentStep--;
-            updateWizard();
-        }
-    });
-
-    wizardForm.addEventListener('submit', function(e) {
-        if (!validateStep(currentStep)) {
-            e.preventDefault();
-            alert('Por favor completa los campos requeridos antes de continuar.');
-        }
-    });
-
-    // Initialize wizard
-    updateWizard();
-})();
 
 // ═══ BREACH PROTOCOL MODAL WIZARD ═══
 (function() {
@@ -8308,9 +8197,9 @@ document.getElementById('generic-edit-form')?.addEventListener('submit', async f
             content.classList.toggle('active', parseInt(content.dataset.step) === currentStep);
         });
         prevBtn.disabled = currentStep === 1;
-        nextBtn.style.display = currentStep === totalSteps ? 'none' : 'inline-flex';
-        submitBtn.style.display = currentStep === totalSteps ? 'inline-flex' : 'none';
-        errorDiv.classList.remove('show');
+nextBtn.style.display = currentStep === totalSteps ? 'none' : 'inline-flex';
+submitBtn.classList.toggle('visible', currentStep === totalSteps);
+errorDiv.classList.remove('show');
     }
 
     function validateStep(step) {
@@ -8355,9 +8244,46 @@ async function rejectDpia(id) {
         if (data.success) location.reload(); else alert('Error: ' + (data.error || 'no se pudo rechazar'));
     } catch (e) { alert('Error de conexión: ' + e.message); }
 }
-function downloadDpiaPDF(id) {
+async function downloadDpiaPDF(id) {
     const url = '/api-proxy.php?path=' + encodeURIComponent('/api/compliance/dpia/pdf' + (id ? '?id=' + id : '')) + '&token=<?= h($token) ?>';
-    window.open(url, '_blank');
+    try {
+        const response = await fetch(url);
+        const rawText = await response.text();
+        let data = null;
+        try { data = JSON.parse(rawText); } catch (e) { data = null; }
+
+        if (!data) {
+            alert('El servidor no devolvió JSON válido (HTTP ' + response.status + ')');
+            return;
+        }
+        if (!data.success) {
+            alert('Error: ' + (data.error || 'no se pudo generar el PDF'));
+            return;
+        }
+
+        const base64 = data.pdfBase64 || '';
+        if (base64.trim() !== '') {
+            const a = document.createElement('a');
+            a.href = 'data:application/pdf;base64,' + base64;
+            a.download = 'dpia-' + (id ? id.substring(0, 8) : 'all') + '-' + new Date().toISOString().slice(0,10) + '.pdf';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        } else if (data.pdfUrl) {
+            const a = document.createElement('a');
+            a.href = data.pdfUrl.startsWith('/api/')
+                ? '/api-proxy.php?path=' + encodeURIComponent(data.pdfUrl)
+                : data.pdfUrl;
+            a.download = 'dpia-' + (id ? id.substring(0, 8) : 'all') + '.pdf';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        } else {
+            alert('El servidor no devolvió ni pdfBase64 ni pdfUrl');
+        }
+    } catch (e) {
+        alert('Error de conexión al generar PDF: ' + e.message);
+    }
 }
 
 
