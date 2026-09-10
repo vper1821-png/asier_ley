@@ -579,7 +579,7 @@ async function loadBreaches() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// Archivos & PII — filtra por agentId + userId (backend)
+// Archivos & PII — Schema real: analysisResult.patterns
 // ═══════════════════════════════════════════════════════════
 async function loadFiles() {
     const L = document.getElementById('files-loading');
@@ -590,80 +590,108 @@ async function loadFiles() {
         B.classList.remove('hidden');
 
         const bytes = Number(d.totalBytes || 0);
-        const volLabel = bytes >= 1048576
-            ? (bytes / 1048576).toFixed(1) + ' MB'
-            : (bytes / 1024).toFixed(1) + ' KB';
+        const volLabel = bytes >= 1073741824 ? (bytes/1073741824).toFixed(2) + ' GB'
+                       : bytes >= 1048576    ? (bytes/1048576).toFixed(1) + ' MB'
+                       : bytes >= 1024       ? (bytes/1024).toFixed(1) + ' KB'
+                       : bytes + ' B';
 
-        const piiList = Array.isArray(d.piiTypes) ? d.piiTypes : [];
-        const agentList = Array.isArray(d.byAgent) ? d.byAgent : [];
-        const recentList = Array.isArray(d.recent) ? d.recent : [];
-        const maxPiiCount = Math.max(1, ...piiList.map(t => Number(t.count) || 0));
-        const maxAgentCount = Math.max(1, ...agentList.map(a => Number(a.count) || 0));
+        const piiList   = Array.isArray(d.piiTypes)   ? d.piiTypes   : [];
+        const extList   = Array.isArray(d.byExt)      ? d.byExt      : [];
+        const agentList = Array.isArray(d.byAgent)    ? d.byAgent    : [];
+        const recent    = Array.isArray(d.recent)     ? d.recent     : [];
+
+        const maxPii   = Math.max(1, ...piiList.map(t => Number(t.count) || 0));
+        const maxExt   = Math.max(1, ...extList.map(t => Number(t.count) || 0));
+        const maxAgent = Math.max(1, ...agentList.map(t => Number(t.count) || 0));
 
         B.innerHTML = `
-          <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            ${kpiMini('Archivos', d.total ?? 0, 'Monitoreados', '#818cf8')}
+          <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
+            ${kpiMini('Archivos', d.total ?? 0, `${d.fromAgents ?? 0} de agentes · ${d.fromUsers ?? 0} manuales`, '#818cf8')}
             ${kpiMini('Con PII', d.withPii ?? 0, 'Datos sensibles', (d.withPii ?? 0) > 0 ? '#f87171' : '#34d399')}
             ${kpiMini('Volumen', volLabel, 'Total escaneado', '#22d3ee')}
             ${kpiMini('Tipos PII', piiList.length, 'Categorías detectadas', '#fbbf24')}
+            ${kpiMini('Extensiones', extList.length, 'Formatos distintos', '#a78bfa')}
           </div>
 
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div class="rounded-xl border border-white/[0.04] bg-white/[0.01] p-5">
               <p class="text-[10px] font-medium text-text-subtle uppercase tracking-widest mb-3">Tipos de PII detectados</p>
               ${piiList.length === 0
                 ? '<p class="text-[11px] text-text-subtle text-center py-4">Sin datos sensibles detectados.</p>'
-                : piiList.map(t => {
-                    const label = piiLabel(t.type ?? t);
-                    const count = Number(t.count) || 0;
-                    const width = Math.min(100, (count / maxPiiCount) * 100);
-                    return `
-                    <div class="mb-2">
-                      <div class="flex justify-between text-[10px] text-text-muted mb-1"><span>${esc(label)}</span><span>${count}</span></div>
-                      <div class="h-1.5 rounded-full bg-white/[0.04] overflow-hidden"><div class="h-full rounded-full bg-[#f87171]" style="width:${width}%"></div></div>
-                    </div>`;
-                  }).join('')}
+                : piiList.map(t => `
+                <div class="mb-2">
+                  <div class="flex justify-between text-[10px] text-text-muted mb-1">
+                    <span class="capitalize">${esc(t.type)}</span><span>${t.count}</span>
+                  </div>
+                  <div class="h-1.5 rounded-full bg-white/[0.04] overflow-hidden">
+                    <div class="h-full rounded-full bg-[#f87171]" style="width:${Math.min(100,(t.count/maxPii)*100)}%"></div>
+                  </div>
+                </div>`).join('')}
             </div>
 
             <div class="rounded-xl border border-white/[0.04] bg-white/[0.01] p-5">
-              <p class="text-[10px] font-medium text-text-subtle uppercase tracking-widest mb-3">Top agentes por archivos</p>
+              <p class="text-[10px] font-medium text-text-subtle uppercase tracking-widest mb-3">Por extensión</p>
+              ${extList.length === 0
+                ? '<p class="text-[11px] text-text-subtle text-center py-4">Sin archivos.</p>'
+                : extList.slice(0, 8).map(t => `
+                <div class="mb-2">
+                  <div class="flex justify-between text-[10px] text-text-muted mb-1">
+                    <span class="uppercase font-mono">${esc(t.ext)}</span><span>${t.count}</span>
+                  </div>
+                  <div class="h-1.5 rounded-full bg-white/[0.04] overflow-hidden">
+                    <div class="h-full rounded-full bg-[#22d3ee]" style="width:${Math.min(100,(t.count/maxExt)*100)}%"></div>
+                  </div>
+                </div>`).join('')}
+            </div>
+
+            <div class="rounded-xl border border-white/[0.04] bg-white/[0.01] p-5">
+              <p class="text-[10px] font-medium text-text-subtle uppercase tracking-widest mb-3">Top agentes / orígenes</p>
               ${agentList.length === 0
                 ? '<p class="text-[11px] text-text-subtle text-center py-4">Sin agentes reportando.</p>'
-                : agentList.map(a => {
-                    const aid = String(a.agentId || 'desconocido');
-                    const count = Number(a.count) || 0;
-                    const width = Math.min(100, (count / maxAgentCount) * 100);
-                    return `
-                    <div class="mb-2">
-                      <div class="flex justify-between text-[10px] text-text-muted mb-1">
-                        <span class="font-mono">${esc(aid.slice(0, 12))}${aid.length > 12 ? '…' : ''}</span>
-                        <span>${count}</span>
-                      </div>
-                      <div class="h-1.5 rounded-full bg-white/[0.04] overflow-hidden"><div class="h-full rounded-full bg-[#818cf8]" style="width:${width}%"></div></div>
-                    </div>`;
-                  }).join('')}
+                : agentList.slice(0, 8).map(a => `
+                <div class="mb-2">
+                  <div class="flex justify-between text-[10px] text-text-muted mb-1">
+                    <span class="truncate">${esc(a.agent)}</span><span>${a.count}</span>
+                  </div>
+                  <div class="h-1.5 rounded-full bg-white/[0.04] overflow-hidden">
+                    <div class="h-full rounded-full bg-[#818cf8]" style="width:${Math.min(100,(a.count/maxAgent)*100)}%"></div>
+                  </div>
+                </div>`).join('')}
             </div>
           </div>
 
           <div class="rounded-xl border border-white/[0.04] bg-white/[0.01] overflow-hidden">
             <div class="px-5 py-3 border-b border-white/[0.04] flex items-center justify-between">
               <p class="text-[11px] font-semibold text-text-heading">Últimos archivos con datos sensibles</p>
-              <span class="text-[10px] text-text-subtle">${recentList.length} recientes</span>
+              <span class="text-[10px] text-text-subtle">${recent.length} recientes</span>
             </div>
             <div class="divide-y divide-white/[0.03]">
-              ${recentList.length === 0
+              ${recent.length === 0
                 ? '<p class="px-5 py-6 text-center text-[11px] text-text-subtle">Sin archivos con PII detectada.</p>'
-                : recentList.map(f => {
+                : recent.map(f => {
+                    const isAgent = f.sourceType === 'agent';
+                    const sourceBadge = isAgent
+                      ? `<span class="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">${esc(f.hostname || 'agente')}</span>`
+                      : `<span class="text-[9px] px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-400 border border-violet-500/20">subida manual</span>`;
                     const types = Array.isArray(f.piiTypes) ? f.piiTypes : [];
                     return `
-                    <div class="px-5 py-3 flex items-center justify-between gap-4">
-                      <div class="min-w-0">
-                        <p class="text-[12px] font-medium text-text-heading truncate">${esc(f.name || 'archivo')}</p>
-                        <p class="text-[10px] text-text-subtle mt-0.5 truncate">${esc(f.path || '')}</p>
+                    <div class="px-5 py-3 flex items-start justify-between gap-4">
+                      <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-2 flex-wrap">
+                          <p class="text-[12px] font-medium text-text-heading truncate">${esc(f.name)}</p>
+                          ${sourceBadge}
+                          ${f.rows ? `<span class="text-[9px] text-text-subtle">${f.rows} filas</span>` : ''}
+                          ${f.osUser ? `<span class="text-[9px] text-text-subtle">· OS: ${esc(f.osUser)}</span>` : ''}
+                        </div>
+                        ${f.path ? `<p class="text-[10px] text-text-subtle mt-0.5 truncate font-mono">${esc(f.path)}</p>` : ''}
+                        <div class="flex flex-wrap gap-1 mt-1.5">
+                          ${types.slice(0, 5).map(t => `<span class="text-[9px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20 capitalize">${esc(t)}</span>`).join('')}
+                          ${types.length > 5 ? `<span class="text-[9px] px-1.5 py-0.5 rounded bg-white/[0.04] text-text-subtle">+${types.length - 5}</span>` : ''}
+                        </div>
                       </div>
-                      <div class="flex-shrink-0 flex flex-wrap gap-1 justify-end max-w-[45%]">
-                        ${types.slice(0, 4).map(t => `<span class="text-[9px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20 whitespace-nowrap">${esc(piiLabel(t))}</span>`).join('')}
-                        ${types.length > 4 ? `<span class="text-[9px] px-1.5 py-0.5 rounded bg-white/[0.04] text-text-subtle">+${types.length - 4}</span>` : ''}
+                      <div class="text-right flex-shrink-0">
+                        <p class="text-[10px] text-text-subtle tabular-nums">${esc((f.createdAt || '').slice(0, 16).replace('T', ' '))}</p>
+                        <p class="text-[10px] text-text-subtle mt-0.5">${(f.size/1024).toFixed(1)} KB</p>
                       </div>
                     </div>`;
                   }).join('')}

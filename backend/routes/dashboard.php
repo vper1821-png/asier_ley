@@ -444,105 +444,178 @@ function breachTimers() {
 }
 
 // =========================================================
-// files-summary (FIX: agentId + userId)
+// files-summary — Schema real: analysisResult.patterns + sensitive
 // =========================================================
 function filesSummary() {
     $user  = Auth::requireAuth();
     $db    = Database::getInstance();
     $scope = _dash_scope($user, $db);
 
-    $fileFilter = _dash_agent_filter($scope, $db);
-    $files = $db->find('compliance_files', $fileFilter, ['limit' => 5000]);
-    if (empty($files)) $files = $db->find('compliance_files_index', $fileFilter, ['limit' => 5000]);
-    if (empty($files)) $files = $db->find('monitored_files', $fileFilter, ['limit' => 5000]);
+    // El userId se setea en agentScan() y en upload(), por lo que el
+    // scope por empresa cubre tanto archivos subidos manualmente como
+    // los reportados por agentes.
+    $files = $db->find('compliance_files', $scope['filter'], ['limit' => 5000]);
 
-    $total = count($files); $withPii = 0; $bytes = 0;
-    $piiTypes = []; $byKind = []; $byAgent = []; $recent = [];
+    $total       = count($files);
+    $withPii     = 0;
+    $bytes       = 0;
+    $fromAgents  = 0;
+    $fromUsers   = 0;
+
+    $piiTypes = [];   // {rut: 12, email: 5}
+    $byExt    = [];   // {xlsx: 10, csv: 4}
+    $byAgent  = [];   // {hostname: 8, 'Subida manual': 3}
+    $recent   = [];
 
     foreach ($files as $f) {
-        $size = (int)($f['size'] ?? $f['fileSize'] ?? 0);
+        $size = (int)($f['size'] ?? 0);
         $bytes += $size;
-        $has = !empty($f['hasSensitiveData']) || !empty($f['piiDetected']) || !empty($f['containsPII'])
-            || !empty($f['sensitive']) || !empty($f['piiTypes']) || !empty($f['sensitiveColumns']);
-        if ($has) $withPii++;
 
-        $kind = $f['kind'] ?? $f['mime'] ?? $f['extension'] ?? 'otro';
-        $byKind[$kind] = ($byKind[$kind] ?? 0) + 1;
+        $src = $f['sourceType'] ?? 'user';
+        if ($src === 'agent') $fromAgents++;
+        else                  $fromUsers++;
 
+        // ── Análisis embebido ──
+        $analysis     = $f['analysisResult'] ?? [];
+        $patterns     = $analysis['patterns'] ?? [];        // { colName: ["rut","email"] }
+        $isSensitive  = !empty($analysis['sensitive']);
+
+        // Extraer tipos PII únicos
         $types = [];
-        if (!empty($f['piiTypes']) && is_array($f['piiTypes'])) $types = $f['piiTypes'];
-        elseif (!empty($f['sensitiveTypes']) && is_array($f['sensitiveTypes'])) $types = $f['sensitiveTypes'];
-        elseif (!empty($f['sensitiveColumns']) && is_array($f['sensitiveColumns'])) $types = $f['sensitiveColumns'];
-        foreach ($types as $t) {
-            $key = is_array($t) ? ($t['type'] ?? json_encode($t)) : (string)$t;
-            $piiTypes[$key] = ($piiTypes[$key] ?? 0) + 1;
+        if (is_array($patterns) && !empty($patterns)) {
+            foreach ($patterns as $col => $list) {
+                if (is_array($list)) {
+                    foreach ($list as $t) {
+                        $t = (string)$t;
+                        if ($t === '') continue;
+                        $types[$t] = true;
+                        $piiTypes[$t] = ($piiTypes[$t] ?? 0) + 1;
+                    }
+                } elseif (is_string($list) && $list !== '') {
+                    $types[$list] = true;
+                    $piiTypes[$list] = ($piiTypes[$list] ?? 0) + 1;
+                }
+            }
         }
+        $types = array_keys($types);
 
-        $agentId = (string)($f['agentId'] ?? 'desconocido');
-        $byAgent[$agentId] = ($byAgent[$agentId] ?? 0) + 1;
+        $hasPii = $isSensitive || count($types) > 0;
+        if ($hasPii) $withPii++;
 
-        if ($has && count($recent) < 15) {
+        // Extensiones
+        $ext = strtolower((string)($f['ext'] ?? ''));
+        if ($ext === '') $ext = 'sin ext';
+        $byExt[$ext] = ($byExt[$ext] ?? 0) + 1;
+
+        // Agentes (hostname o "Subida manual")
+        $hostname = trim((string)($f['hostname'] ?? ''));
+        $agentKey = $hostname !== '' ? $hostname : 'Subida manual';
+        $byAgent[$agentKey] = ($byAgent[$agentKey] ?? 0) + 1;
+
+        // Recientes con PII
+        if ($hasPii && count($recent) < 20) {
+            $name = $f['originalName'] ?? '';
+            if ($name === '' && !empty($f['path'])) {
+                $name = basename($f['path']);
+            }
             $recent[] = [
-                'id' => $f['_id'], 'name' => $f['fileName'] ?? $f['name'] ?? 'archivo',
-                'path' => $f['path'] ?? $f['filePath'] ?? '', 'piiTypes' => $types,
-                'agentId' => $agentId, 'createdAt' => $f['createdAt'] ?? $f['detectedAt'] ?? null,
-                'size' => $size,
+                'id'         => $f['_id'] ?? '',
+                'name'       => $name ?: 'archivo',
+                'path'       => $f['path'] ?? null,
+                'piiTypes'   => $types,
+                'agentId'    => $f['agentId'] ?? null,
+                'hostname'   => $hostname ?: null,
+                'osUser'     => $f['user'] ?? null,
+                'rows'       => (int)($analysis['rowCount'] ?? 0),
+                'createdAt'  => $f['createdAt'] ?? null,
+                'size'       => $size,
+                'sourceType' => $src,
+                'sensitive'  => $isSensitive,
             ];
         }
     }
-    arsort($piiTypes); arsort($byKind); arsort($byAgent);
 
-    $invFilter = _dash_agent_filter($scope, $db);
-    $inv = $db->find('sensitive_inventory', $invFilter, ['limit' => 5000]);
-    if (empty($inv)) $inv = $db->find('compliance_sensitive_inventory', $invFilter, ['limit' => 5000]);
+    arsort($piiTypes);
+    arsort($byExt);
+    arsort($byAgent);
+    usort($recent, fn($a, $b) => strcmp($b['createdAt'] ?? '', $a['createdAt'] ?? ''));
+
+    // Inventario vinculado (top categorías declaradas)
+    $inv = $db->find('compliance_inventory', $scope['filter'], ['limit' => 5000]);
     $invTypes = [];
     foreach ($inv as $i) {
-        $types = $i['types'] ?? $i['piiTypes'] ?? [];
-        if (is_array($types)) foreach ($types as $t) {
-            $key = is_array($t) ? ($t['type'] ?? json_encode($t)) : (string)$t;
-            $invTypes[$key] = ($invTypes[$key] ?? 0) + 1;
+        $cats = $i['dataCategories'] ?? '';
+        if (is_array($cats)) {
+            foreach ($cats as $c) {
+                $c = trim((string)$c);
+                if ($c !== '') $invTypes[$c] = ($invTypes[$c] ?? 0) + 1;
+            }
+        } elseif (is_string($cats) && $cats !== '') {
+            foreach (array_map('trim', explode(',', $cats)) as $c) {
+                if ($c !== '') $invTypes[$c] = ($invTypes[$c] ?? 0) + 1;
+            }
         }
     }
     arsort($invTypes);
 
     json_response([
-        'total' => $total, 'withPii' => $withPii, 'totalBytes' => $bytes,
-        'piiTypes' => array_slice(array_map(fn($k,$v)=>['type'=>$k,'count'=>$v], array_keys($piiTypes), array_values($piiTypes)), 0, 10),
-        'byKind'   => array_map(fn($k,$v)=>['kind'=>$k,'count'=>$v], array_keys($byKind), array_values($byKind)),
-        'byAgent'  => array_slice(array_map(fn($k,$v)=>['agentId'=>$k,'count'=>$v], array_keys($byAgent), array_values($byAgent)), 0, 10),
-        'inventoryPii' => array_slice(array_map(fn($k,$v)=>['type'=>$k,'count'=>$v], array_keys($invTypes), array_values($invTypes)), 0, 10),
-        'recent'   => $recent,
+        'total'        => $total,
+        'withPii'      => $withPii,
+        'totalBytes'   => $bytes,
+        'fromAgents'   => $fromAgents,
+        'fromUsers'    => $fromUsers,
+        'piiTypes'     => array_map(fn($k,$v)=>['type'=>$k,'count'=>$v], array_keys($piiTypes), array_values($piiTypes)),
+        'byExt'        => array_map(fn($k,$v)=>['ext'=>$k,'count'=>$v], array_keys($byExt), array_values($byExt)),
+        'byAgent'      => array_map(fn($k,$v)=>['agent'=>$k,'count'=>$v], array_keys($byAgent), array_values($byAgent)),
+        'inventoryPii' => array_map(fn($k,$v)=>['type'=>$k,'count'=>$v], array_keys($invTypes), array_values($invTypes)),
+        'recent'       => $recent,
     ]);
 }
 
 // =========================================================
-// recent-activity (audit)
+// recent-activity — Compatible con audit_logs.details (objeto)
 // =========================================================
 function recentActivity() {
     $user  = Auth::requireAuth();
     $db    = Database::getInstance();
     $scope = _dash_scope($user, $db);
 
-    $collections = ['activity_logs', 'audit_logs', 'activity', 'logs', 'audit'];
+    // audit_logs primero (es la que usa agentScan)
+    $collections = ['audit_logs', 'activity_logs', 'activity', 'logs'];
     $logs = [];
     foreach ($collections as $col) {
         $logs = $db->find($col, $scope['filter'], ['limit' => 200]);
         if (!empty($logs)) break;
     }
-    if (empty($logs) && !$scope['isSuperAdmin'] && $scope['companyId']) {
-        foreach ($collections as $col) {
-            $logs = $db->find($col, ['companyId' => $scope['companyId']], ['limit' => 200]);
-            if (!empty($logs)) break;
-        }
-    }
 
     $items = [];
     foreach ($logs as $l) {
+        // `details` es un objeto con { agentId, path, user, sensitive, categories }
+        $details = $l['details'] ?? $l['meta'] ?? null;
+        $target = '';
+        $osUser = '';
+        if (is_array($details)) {
+            $target = $details['path']
+                   ?? $details['resource']
+                   ?? $details['target']
+                   ?? $details['file']
+                   ?? '';
+            $osUser = $details['user'] ?? '';
+            if ($target === '') {
+                foreach ($details as $k => $v) {
+                    if (is_scalar($v) && $v !== '') { $target = "$k: $v"; break; }
+                }
+            }
+        } elseif (is_string($details)) {
+            $target = $details;
+        }
+
         $items[] = [
-            'id' => $l['_id'], 'action' => $l['action'] ?? $l['event'] ?? $l['type'] ?? 'evento',
-            'user' => $l['userEmail'] ?? $l['email'] ?? $l['userId'] ?? '',
-            'target' => $l['target'] ?? $l['resource'] ?? $l['details'] ?? '',
-            'severity' => $l['severity'] ?? $l['level'] ?? 'info',
+            'id'        => $l['_id'],
+            'action'    => $l['action'] ?? $l['event'] ?? $l['type'] ?? 'evento',
+            'user'      => $l['userEmail'] ?? $l['email'] ?? $osUser ?: ($l['userId'] ?? ''),
+            'target'    => $target,
+            'severity'  => $l['severity'] ?? $l['level'] ?? 'info',
             'createdAt' => $l['createdAt'] ?? $l['timestamp'] ?? $l['ts'] ?? null,
         ];
         if (count($items) >= 200) break;
