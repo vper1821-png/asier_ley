@@ -385,7 +385,8 @@ class CertificateGenerator {
             .data-table th { background: #1a1a1a; color: #cccccc; font-size: 8px; font-weight: bold; text-align: left; padding: 6px 8px; }
             .data-table td { border-bottom: 0.3px solid #e0e0e0; padding: 6px 8px; font-size: 9px; }
             .sig-box { margin-top: 50px; text-align: center; }
-            .hash-box { margin-top: 30px; padding: 10px; background: #f8f8f8; border: 0.5px dashed #999; font-family: 'DejaVu Sans Mono', monospace; font-size: 8px; color: #555; }
+            .hash-box { margin-top: 30px; padding: 10px; background: #f8f8f8; border: 0.5px dashed #999; font-family: "DejaVu Sans Mono", monospace; font-size: 8px; color: #555; }
+
         </style></head><body>
         <div class="footer-fixed">Certificado de Cumplimiento Ley 21.719 · ' . $h($company['name'] ?? '') . '</div>';
 
