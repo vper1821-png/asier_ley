@@ -44,12 +44,6 @@ function getJwtSecret() {
     return hash_hmac('sha256', $base . $rotation, 'rotation_salt');
 }
 
-// Override Auth::createToken to use rotated secret
-$originalCreateToken = ['Auth', 'createToken'];
-if (is_callable($originalCreateToken)) {
-    // We'll handle this in Auth.php directly
-}
-
 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $method = $_SERVER['REQUEST_METHOD'];
 
@@ -66,7 +60,7 @@ if ($uri === '/api/hardening/check-waf') {
 
 // Route matching
 $routes = [
-    // Auth (React uses /api/login, /api/register; PHP uses /api/auth/*)
+    // Auth
     'POST /api/auth/login'     => 'routes/auth.php@login',
     'POST /api/login'          => 'routes/auth.php@login',
     'POST /api/auth/register'  => 'routes/auth.php@register',
@@ -87,7 +81,7 @@ $routes = [
     'GET /api/dashboard/stats'   => 'routes/dashboard.php@stats',
     'POST /api/dashboard/stats'  => 'routes/dashboard.php@stats',
 
-    // Dashboard — extra (lazy tabs)
+    // Dashboard — extra
     'GET /api/dashboard/arco-summary'      => 'routes/dashboard.php@arcoSummary',
     'POST /api/dashboard/arco-summary'     => 'routes/dashboard.php@arcoSummary',
     'GET /api/dashboard/breach-timers'     => 'routes/dashboard.php@breachTimers',
@@ -96,8 +90,6 @@ $routes = [
     'POST /api/dashboard/files-summary'    => 'routes/dashboard.php@filesSummary',
     'GET /api/dashboard/recent-activity'   => 'routes/dashboard.php@recentActivity',
     'POST /api/dashboard/recent-activity'  => 'routes/dashboard.php@recentActivity',
-
-    // Debug ARCO (puedes quitarlo en producción)
     'GET /api/dashboard/arco-debug'        => 'routes/dashboard.php@arcoDebug',
     'POST /api/dashboard/arco-debug'       => 'routes/dashboard.php@arcoDebug',
 
@@ -140,8 +132,8 @@ $routes = [
     'POST /api/databases/connect' => 'routes/databases.php@connect',
     'POST /api/databases/local-connect' => 'routes/databases.php@localConnect',
     'POST /api/databases/logs/list' => 'routes/databases.php@logList',
-'POST /api/databases/logs/download' => 'routes/databases.php@logExportCsv',
-'GET /api/databases/logs/download' => 'routes/databases.php@logExportCsv',
+    'POST /api/databases/logs/download' => 'routes/databases.php@logExportCsv',
+    'GET /api/databases/logs/download' => 'routes/databases.php@logExportCsv',
     'POST /api/databases/logs/stats' => 'routes/databases.php@logStats',
     'POST /api/databases/logs/skip-query' => 'routes/databases.php@skipQuery',
     'POST /api/databases/logs/skipped' => 'routes/databases.php@skippedQueries',
@@ -186,7 +178,7 @@ $routes = [
     'POST /api/host-monitor/events' => 'routes/hostMonitor.php@events',
     'POST /api/host-monitor/stats' => 'routes/hostMonitor.php@eventsStats',
 
-    // Host Privacy Control Panel - Ley 21.719
+    // Host Privacy
     'POST /api/host-privacy/summary' => 'routes/hostPrivacy.php@summary',
     'POST /api/host-privacy/arco' => 'routes/hostPrivacy.php@arcoCreate',
     'POST /api/host-privacy/breach' => 'routes/hostPrivacy.php@breachReport',
@@ -257,19 +249,14 @@ $routes = [
     'POST /api/compliance/sign'          => 'routes/compliance.php@sign',
     'GET /api/compliance/public-policy'  => 'routes/compliance.php@generatePublicPolicy',
 
-    // ─── Compliance Files ───
+    // Compliance Files
     'POST /api/compliance/files/upload'    => 'routes/compliance_files.php@upload',
     'POST /api/compliance/files/analyze'   => 'routes/compliance_files.php@analyze',
     'GET  /api/compliance/files'           => 'routes/compliance_files.php@listFiles',
     'DELETE /api/compliance/files'         => 'routes/compliance_files.php@deleteFile',
     'POST /api/compliance/files/map'       => 'routes/compliance_files.php@mapColumns',
-  
-     // ─── Compliance Files (Agente) ───
     'POST /api/compliance/files/agent-scan' => 'routes/compliance_files.php@agentScan',
-
-     // ─── Audit logs de archivos ───
     'GET /api/compliance/files/audit-logs' => 'routes/compliance_files.php@listFileAuditLogs',
-
 
     // ARCO
     'POST /api/arco/requests'      => 'routes/arco.php@create',
@@ -284,23 +271,11 @@ $routes = [
     'POST /api/admin/alerts'      => 'routes/admin.php@alerts',
     'POST /api/admin/alerts/public' => 'routes/admin.php@publicAlerts',
 
-    // Payments
-    'POST /api/payments/my-info' => 'routes/payments.php@myInfo',
-
     // Account
     'POST /api/account/update'          => 'routes/account.php@update',
     'POST /api/account/change-password' => 'routes/account.php@changePassword',
     'POST /api/account/change-email'    => 'routes/account.php@changeEmail',
     'POST /api/account/logout-all'      => 'routes/account.php@logoutAll',
-
-    // Notifications
-    'POST /api/notifications' => 'routes/notifications.php@listAll',
-
-    // Tickets
-    'POST /api/tickets' => 'routes/tickets.php@listAll',
-
-    // Reports
-    'POST /api/reports' => 'routes/reports.php@listAll',
 
     // Compliant Companies
     'GET /api/compliant-companies'  => 'routes/compliantCompanies.php@search',
@@ -319,21 +294,22 @@ $routes = [
     'GET /api/hardening/check-waf' => 'routes/hardening.php@checkWaf',
     'POST /api/hardening/check-waf' => 'routes/hardening.php@checkWaf',
 
-    // SMTP
-    'POST /api/smtp/test' => 'routes/smtp.php@test',
-
     // Onboarding
     'POST /api/onboarding' => 'routes/onboarding.php@save',
     'GET /api/onboarding'  => 'routes/onboarding.php@get',
 
-    // User Monitor
-    'POST /api/user-monitor' => 'routes/userMonitor.php@listAll',
-
-    // Captcha
-    'POST /api/captcha' => 'routes/captcha.php@verify',
-
     // Passkey
     'POST /api/passkey' => 'routes/passkey.php@register',
+
+    // ═══════ Certification ═══════
+    'GET /api/certification/dashboard'              => 'routes/certification.php@certDashboard',
+    'POST /api/certification/dashboard'             => 'routes/certification.php@certDashboard',
+    'POST /api/certification/documents/generate'    => 'routes/certification.php@certGenerateDocument',
+    'POST /api/certification/documents/status'      => 'routes/certification.php@certUpdateDocumentStatus',
+    'POST /api/certification/issue'                 => 'routes/certification.php@certIssue',
+    'POST /api/certification/list'                  => 'routes/certification.php@certList',
+    'POST /api/certification/revoke'                => 'routes/certification.php@certRevoke',
+    'GET /api/certification/verify'                 => 'routes/certification.php@certVerify',
 ];
 
 // Check static routes first
@@ -465,6 +441,30 @@ if (preg_match('#^/api/agents/([a-zA-Z0-9_-]+)$#', $uri, $m) && $method === 'POS
     exit;
 }
 
+// ═══════ Certification — descargas ═══════
+// ⚠️ FIX: el certId contiene puntos (CERT-21.719-YYYY-XXXX) → regex acepta \.
+if (preg_match('#^/api/certification/download/([A-Z0-9\-\.]+)/master$#', $uri, $m) && $method === 'GET') {
+    $_GET['certId'] = $m[1];
+    require_once __DIR__ . '/routes/certification.php';
+    certDownloadMaster();
+    exit;
+}
+
+if (preg_match('#^/api/certification/download/([A-Z0-9\-\.]+)/zip$#', $uri, $m) && $method === 'GET') {
+    $_GET['certId'] = $m[1];
+    require_once __DIR__ . '/routes/certification.php';
+    certDownloadZip();
+    exit;
+}
+
+// Verificación pública (sin auth)
+if (preg_match('#^/api/certification/verify/([A-Z0-9\-\.]+)$#', $uri, $m) && $method === 'GET') {
+    $_GET['certId'] = $m[1];
+    require_once __DIR__ . '/routes/certification.php';
+    certVerify();
+    exit;
+}
+
 if ($uri === '/api/folders/list' && $method === 'POST') {
     require_once __DIR__ . '/routes/agents.php';
     folderList();
@@ -525,7 +525,6 @@ if (preg_match('#^/api/admin/user/([a-zA-Z0-9]+)$#', $uri, $m)) {
     exit;
 }
 
-// ── Agent Deploy (admin) ──
 if (preg_match('#^/api/admin/agent-deploy$#', $uri) && $method === 'POST') {
     require_once __DIR__ . '/routes/admin.php';
     agentDeployCreate();
@@ -539,7 +538,6 @@ if (preg_match('#^/api/agent/download/([a-zA-Z0-9_-]+)$#', $uri, $m)) {
     exit;
 }
 
-// ── Data Reset (superadmin only) ──
 if (preg_match('#^/api/admin/data-reset/backup$#', $uri) && $method === 'POST') {
     require_once __DIR__ . '/routes/admin.php';
     dataResetBackup();
@@ -651,7 +649,6 @@ if (preg_match('#^/api/db-logs$#', $uri)) {
     exit;
 }
 
-// Generate PDF for Incident Response Plan
 if (preg_match('#^/api/generate-incident-response-pdf$#', $uri) && $method === 'POST') {
     require_once __DIR__ . '/generate-incident-response-pdf.php';
     exit;
@@ -662,7 +659,6 @@ if (preg_match('#^/backend/reports/(.+\.pdf)$#', $uri, $matches) && $method === 
     $filename = basename($matches[1]);
     $filePath = __DIR__ . '/reports/' . $filename;
     
-    // Security check: ensure the file is in the reports directory
     $realPath = realpath($filePath);
     $reportsDir = realpath(__DIR__ . '/reports');
     
@@ -673,7 +669,6 @@ if (preg_match('#^/backend/reports/(.+\.pdf)$#', $uri, $matches) && $method === 
     }
     
     if (file_exists($filePath) && is_file($filePath) && is_readable($filePath)) {
-        // Verify it's a PDF file
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
         $mimeType = finfo_file($finfo, $filePath);
         finfo_close($finfo);
@@ -685,7 +680,6 @@ if (preg_match('#^/backend/reports/(.+\.pdf)$#', $uri, $matches) && $method === 
             header('Cache-Control: no-cache, must-revalidate');
             header('Pragma: no-cache');
             header('Expires: Sat, 26 Jul 1997 05:00:00 GMT');
-            
             readfile($filePath);
             exit;
         } else {
@@ -700,12 +694,11 @@ if (preg_match('#^/backend/reports/(.+\.pdf)$#', $uri, $matches) && $method === 
     }
 }
 
-// Alternative endpoint to serve PDFs through API (public access for generated files)
+// Alternative endpoint to serve PDFs through API
 if (preg_match('#^/api/reports/download/(.+\.pdf)$#', $uri, $matches) && $method === 'GET') {
     $filename = basename($matches[1]);
     $filePath = __DIR__ . '/reports/' . $filename;
     
-    // Security check: ensure the file is in the reports directory
     $realPath = realpath($filePath);
     $reportsDir = realpath(__DIR__ . '/reports');
     
@@ -716,7 +709,6 @@ if (preg_match('#^/api/reports/download/(.+\.pdf)$#', $uri, $matches) && $method
     }
     
     if (file_exists($filePath) && is_file($filePath) && is_readable($filePath)) {
-        // Verify it's a PDF file
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
         $mimeType = finfo_file($finfo, $filePath);
         finfo_close($finfo);
@@ -727,7 +719,6 @@ if (preg_match('#^/api/reports/download/(.+\.pdf)$#', $uri, $matches) && $method
             header('Content-Length: ' . filesize($filePath));
             header('Cache-Control: public, max-age=3600');
             header('Access-Control-Allow-Origin: *');
-            
             readfile($filePath);
             exit;
         } else {
