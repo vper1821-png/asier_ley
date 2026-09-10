@@ -4,10 +4,23 @@
 // ─── Helper: convertir BSONDocument/BSONArray/Object a array PHP plano ───
 function arcoToArray($value) {
     if ($value === null) return null;
+
+    // BSONDocument y BSONArray implementan Traversable, getArrayCopy(),
+    // jsonSerialize() o bsonSerialize() según la versión.
     if (is_object($value)) {
-        // Cubre BSONDocument, BSONArray, PackedArray, stdClass, etc.
-        return json_decode(json_encode($value), true) ?: [];
+        if (method_exists($value, 'getArrayCopy')) {
+            $value = $value->getArrayCopy();
+        } elseif (method_exists($value, 'jsonSerialize')) {
+            $value = $value->jsonSerialize();
+        } elseif (method_exists($value, 'bsonSerialize')) {
+            $value = (array)$value->bsonSerialize();
+        } elseif ($value instanceof \Traversable) {
+            $value = iterator_to_array($value);
+        } else {
+            $value = get_object_vars($value);
+        }
     }
+
     if (is_array($value)) {
         $out = [];
         foreach ($value as $k => $v) {
@@ -15,6 +28,7 @@ function arcoToArray($value) {
         }
         return $out;
     }
+
     return $value;
 }
 
