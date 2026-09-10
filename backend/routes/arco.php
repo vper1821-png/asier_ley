@@ -129,53 +129,107 @@ function listRequests() {
     json_response($items);
 }
 
-// ─── Actualizar solicitud ───
+// ─── Actualizar solicitud (historial append-only con snapshot completo) ───
 function updateRequest() {
     $user = Auth::requireAuth();
     $body = get_body();
     $db = Database::getInstance();
 
     $requestId = $body['requestId'] ?? '';
-    $estado = $body['estado'] ?? $body['status'] ?? '';
-    $respuesta = $body['respuesta'] ?? $body['response'] ?? '';
     if (!$requestId) json_error('requestId requerido');
 
     $req = $db->findOne('arco_requests', ['requestId' => $requestId]);
     if (!$req) json_error('solicitud no encontrada', 404);
-
-    if (!arcoCanAccess($user, $db, $req)) {
-        json_error('acceso denegado', 403);
-    }
+    if (!arcoCanAccess($user, $db, $req)) json_error('acceso denegado', 403);
 
     $now = date('c');
     $respondedBy = $user['name'] ?? ($user['companyName'] ?? ($user['email'] ?? 'Responsable'));
 
-    $updates = [
-        'updatedAt' => $now,
-        // Siempre guardar el contenido de la respuesta (permite editar o vaciar)
-        'response' => $respuesta,
-        'respondedBy' => $respondedBy,
-        'respondedAt' => $now,
-    ];
-    if ($estado !== '') {
-        $updates['status'] = $estado;
-        if (in_array($estado, ['completed', 'resolved'], true)) $updates['resolvedAt'] = $now;
-        if ($estado === 'rejected') $updates['rejectedAt'] = $now;
+    // Normalizar entradas
+    $estado    = trim((string)($body['estado'] ?? $body['status'] ?? ''));
+    $hasResp   = array_key_exists('response', $body) || array_key_exists('respuesta', $body);
+    $respuesta = trim((string)($body['response'] ?? $body['respuesta'] ?? ''));
+
+    $prevStatus   = $req['status'] ?? 'pending';
+    $prevResponse = (string)($req['response'] ?? '');
+
+    // Detectar cambios reales
+    $statusChanged   = ($estado !== '' && $estado !== $prevStatus);
+    $responseChanged = ($hasResp && $respuesta !== $prevResponse);
+
+    if (!$statusChanged && !$responseChanged) {
+        json_response(['success' => true, 'unchanged' => true, 'history' => $req['statusHistory'] ?? []]);
     }
 
-    // Historial de gestión (queda detallado en el PDF)
+    // Construir updates
+    $updates = ['updatedAt' => $now];
+
+    if ($responseChanged) {
+        $updates['response']    = $respuesta;
+        $updates['respondedBy'] = $respondedBy;
+        $updates['respondedAt'] = $now;
+    }
+
+    if ($statusChanged) {
+        $updates['status'] = $estado;
+
+        if ($estado === 'in_progress' && empty($req['startedAt'])) {
+            $updates['startedAt'] = $now;
+        }
+        if (in_array($estado, ['completed', 'resolved'], true)) {
+            $updates['resolvedAt'] = $now;
+        }
+        if ($estado === 'finished') {
+            $updates['finishedAt'] = $now;
+        }
+        if ($estado === 'rejected') {
+            $updates['rejectedAt'] = $now;
+        }
+    }
+
+    // Historial append-only con snapshot completo
     $history = $req['statusHistory'] ?? [];
     if (!is_array($history)) $history = [];
-    $history[] = [
-        'status' => $estado !== '' ? $estado : ($req['status'] ?? 'pending'),
-        'note' => $respuesta,
-        'by' => $respondedBy,
-        'at' => $now,
+
+    $newStatus   = $statusChanged ? $estado : $prevStatus;
+    $newResponse = $responseChanged ? $respuesta : $prevResponse;
+
+    $notePreview = mb_strlen($newResponse) > 140
+        ? mb_substr($newResponse, 0, 140) . '…'
+        : $newResponse;
+
+    $kind = $statusChanged && $responseChanged ? 'status+response'
+          : ($statusChanged ? 'status' : 'response');
+
+    $entry = [
+        'at'         => $now,
+        'by'         => $respondedBy,
+        'status'     => $newStatus,
+        'prevStatus' => $prevStatus,
+        'kind'       => $kind,
+        'response'   => $newResponse,
+        'note'       => $notePreview,
     ];
-    $updates['statusHistory'] = $history;
+
+    // Evitar entradas duplicadas consecutivas idénticas
+    $last = !empty($history) ? end($history) : null;
+    $isDuplicate = $last
+        && ($last['status'] ?? '') === $entry['status']
+        && (string)($last['response'] ?? '') === $entry['response'];
+
+    if (!$isDuplicate) {
+        $history[] = $entry;
+        if (count($history) > 200) $history = array_slice($history, -200);
+        $updates['statusHistory'] = $history;
+    }
 
     $db->updateOne('arco_requests', ['requestId' => $requestId], $updates);
-    json_response(['success' => true]);
+
+    json_response([
+        'success' => true,
+        'status'  => $newStatus,
+        'history' => $history,
+    ]);
 }
 
 // ─── Generar respuesta automática ───
@@ -251,11 +305,12 @@ function downloadResponse() {
     $responseDate = date('d/m/Y', strtotime($responseDate));
 
     $statusLabels = [
-        'pending' => 'Pendiente',
-        'in_progress' => 'En proceso',
-        'completed' => 'Completada',
-        'resolved' => 'Completada',
-        'rejected' => 'Rechazada',
+    'pending'     => 'Pendiente',
+    'in_progress' => 'En proceso',
+    'completed'   => 'Completada',
+    'resolved'    => 'Completada',
+    'finished'    => 'Terminada',
+    'rejected'    => 'Rechazada',
     ];
     $statusLabel = $statusLabels[$req['status'] ?? 'pending'] ?? ucfirst($req['status'] ?? 'pendiente');
     $respondedBy = $req['respondedBy'] ?? $dpdName;
@@ -376,19 +431,54 @@ function downloadResponse() {
         $html .= "<p style='font-size:10px;color:#555555;font-style:italic'>Aún no se ha registrado una respuesta específica para esta solicitud.</p>";
     }
 
-    // Historial de gestión
+        // ─── Historial de gestión: timeline + respuestas completas ───
     if (!empty($statusHistory)) {
+        $kindLabels = [
+            'status'          => 'Cambio de estado',
+            'response'        => 'Respuesta agregada',
+            'status+response' => 'Estado + respuesta',
+        ];
+
         $html .= "<div class='subject' style='font-size:10px;margin-top:18px'>Historial de gestión</div>";
-        $html .= "<table class='data-table'><tr><th>Fecha</th><th>Estado</th><th>Responsable</th><th>Detalle</th></tr>";
+
+        // Tabla resumen del timeline
+        $html .= "<table class='data-table'>";
+        $html .= "<tr><th style='width:110px'>Fecha</th><th style='width:90px'>Estado</th>"
+               . "<th style='width:130px'>Responsable</th><th>Tipo de cambio</th></tr>";
+
         foreach ($statusHistory as $ev) {
-            $evDate = !empty($ev['at']) ? date('d/m/Y H:i', strtotime($ev['at'])) : '—';
+            $evDate   = !empty($ev['at']) ? date('d/m/Y H:i', strtotime($ev['at'])) : '—';
             $evStatus = $statusLabels[$ev['status'] ?? ''] ?? ucfirst($ev['status'] ?? '—');
-            $evBy = $ev['by'] ?? '—';
-            $evNote = trim((string)($ev['note'] ?? ''));
-            if (mb_strlen($evNote) > 120) $evNote = mb_substr($evNote, 0, 120) . '…';
-            $html .= "<tr><td>{$h($evDate)}</td><td>{$h($evStatus)}</td><td>{$h($evBy)}</td><td>{$h($evNote !== '' ? $evNote : '—')}</td></tr>";
+            $evBy     = $ev['by'] ?? '—';
+            $evKind   = $kindLabels[$ev['kind'] ?? ''] ?? '—';
+
+            $html .= "<tr><td>{$h($evDate)}</td><td>{$h($evStatus)}</td>"
+                   . "<td>{$h($evBy)}</td><td>{$h($evKind)}</td></tr>";
         }
         $html .= "</table>";
+
+        // Cuerpo completo de cada respuesta registrada
+        $html .= "<div style='margin-top:14px'>";
+        foreach ($statusHistory as $idx => $ev) {
+            $fullResponse = trim((string)($ev['response'] ?? ''));
+            if ($fullResponse === '') continue;
+
+            $evDate   = !empty($ev['at']) ? date('d/m/Y H:i', strtotime($ev['at'])) : '—';
+            $evStatus = $statusLabels[$ev['status'] ?? ''] ?? ucfirst($ev['status'] ?? '—');
+            $evBy     = $ev['by'] ?? '—';
+
+            $html .= "<div style='border-left:3px solid #000;padding:6px 0 6px 10px;margin:10px 0 14px'>";
+            $html .= "<p style='font-size:9px;color:#555;margin:0 0 4px'>"
+                   . "<strong>Entrada #" . ($idx + 1) . "</strong> · {$h($evDate)} · "
+                   . "Estado: {$h($evStatus)} · Responsable: {$h($evBy)}</p>";
+            foreach (preg_split('/\r?\n/', $fullResponse) as $line) {
+                if (trim($line) !== '') {
+                    $html .= "<p style='font-size:10px;text-align:justify;margin:0 0 6px'>{$h(trim($line))}</p>";
+                }
+            }
+            $html .= "</div>";
+        }
+        $html .= "</div>";
     }
 
     $html .= "<div class='signature'><p>Atentamente,</p>";

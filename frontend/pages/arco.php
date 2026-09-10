@@ -47,15 +47,17 @@ $typeAccent = [
     'bloqueo' => 'text-slate-300 bg-slate-500/10 border-slate-500/25',
 ];
 $statusCfg = [
-    'pending' => ['label' => 'Pendiente', 'class' => 'bg-amber-500/10 text-amber-400 border-amber-500/20', 'dot' => 'bg-amber-400', 'bar' => 'bg-amber-400'],
-    'in_progress' => ['label' => 'En proceso', 'class' => 'bg-blue-500/10 text-blue-400 border-blue-500/20', 'dot' => 'bg-blue-400', 'bar' => 'bg-blue-400'],
-    'completed' => ['label' => 'Completada', 'class' => 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', 'dot' => 'bg-emerald-400', 'bar' => 'bg-emerald-400'],
-    'rejected' => ['label' => 'Rechazada', 'class' => 'bg-red-500/10 text-red-400 border-red-500/20', 'dot' => 'bg-red-400', 'bar' => 'bg-red-400'],
+    'pending'     => ['label' => 'Pendiente',  'class' => 'bg-amber-500/10 text-amber-400 border-amber-500/20',     'dot' => 'bg-amber-400',  'bar' => 'bg-amber-400'],
+    'in_progress' => ['label' => 'En proceso', 'class' => 'bg-blue-500/10 text-blue-400 border-blue-500/20',        'dot' => 'bg-blue-400',   'bar' => 'bg-blue-400'],
+    'completed'   => ['label' => 'Completada', 'class' => 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20','dot' => 'bg-emerald-400','bar' => 'bg-emerald-400'],
+    'finished'    => ['label' => 'Terminada',  'class' => 'bg-teal-500/10 text-teal-400 border-teal-500/20',         'dot' => 'bg-teal-400',   'bar' => 'bg-teal-400'],
+    'rejected'    => ['label' => 'Rechazada',  'class' => 'bg-red-500/10 text-red-400 border-red-500/20',           'dot' => 'bg-red-400',    'bar' => 'bg-red-400'],
 ];
-$pending = count(array_filter($requests, fn($r) => ($r['status'] ?? 'pending') === 'pending'));
+$pending    = count(array_filter($requests, fn($r) => ($r['status'] ?? 'pending') === 'pending'));
 $inProgress = count(array_filter($requests, fn($r) => ($r['status'] ?? '') === 'in_progress'));
-$completed = count(array_filter($requests, fn($r) => ($r['status'] ?? '') === 'completed'));
-$rejected = count(array_filter($requests, fn($r) => ($r['status'] ?? '') === 'rejected'));
+$completed  = count(array_filter($requests, fn($r) => in_array($r['status'] ?? '', ['completed', 'resolved'], true)));
+$finished   = count(array_filter($requests, fn($r) => ($r['status'] ?? '') === 'finished'));
+$rejected   = count(array_filter($requests, fn($r) => ($r['status'] ?? '') === 'rejected'));
 
 $typeCounts = [];
 foreach ($requests as $r) {
@@ -229,7 +231,7 @@ $publicUrl = ($publicUrl ?: '') . '/arco-solicitud';
             <?php endif; ?>
 
             <!-- KPI Cards -->
-            <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
+            <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
                 <div class="group bg-bg-panel/70 border border-border-theme rounded-2xl p-4 backdrop-blur-md flex items-center justify-between hover:border-surface-600 hover:-translate-y-0.5 transition-all duration-200">
                     <div>
                         <p class="text-[10px] uppercase font-semibold text-text-subtle tracking-wider">Total</p>
@@ -237,7 +239,7 @@ $publicUrl = ($publicUrl ?: '') . '/arco-solicitud';
                         <p class="text-[10px] text-text-subtle mt-0.5">Solicitudes recibidas</p>
                     </div>
                     <div class="w-9 h-9 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center text-text-muted group-hover:text-white transition-colors">
-                        <svg class="w-4.5 h-4.5 w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                     </div>
                 </div>
 
@@ -271,6 +273,19 @@ $publicUrl = ($publicUrl ?: '') . '/arco-solicitud';
                     </div>
                     <div class="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
                         <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                    </div>
+                </div>
+
+                <div class="group bg-bg-panel/70 border border-teal-500/15 rounded-2xl p-4 backdrop-blur-md flex items-center justify-between hover:border-teal-500/30 hover:-translate-y-0.5 transition-all duration-200">
+                    <div>
+                        <p class="text-[10px] uppercase font-semibold text-teal-400/90 tracking-wider">Terminadas</p>
+                        <p class="text-2xl font-bold text-teal-400 font-mono mt-1"><?= $finished ?></p>
+                        <p class="text-[10px] text-teal-200/50 mt-0.5">Cierre definitivo</p>
+                    </div>
+                    <div class="w-9 h-9 rounded-xl bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-400">
+                        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/>
+                        </svg>
                     </div>
                 </div>
 
@@ -335,6 +350,10 @@ $publicUrl = ($publicUrl ?: '') . '/arco-solicitud';
                                 class="arco-status-tab-btn px-2.5 py-1 rounded-lg text-[10px] font-medium transition-all text-text-muted hover:text-white hover:bg-white/[0.04] border border-transparent whitespace-nowrap">
                             Completadas (<?= $completed ?>)
                         </button>
+                        <button type="button" onclick="setArcoStatusFilter('finished')" data-status="finished"
+                                class="arco-status-tab-btn px-2.5 py-1 rounded-lg text-[10px] font-medium transition-all text-text-muted hover:text-white hover:bg-white/[0.04] border border-transparent whitespace-nowrap">
+                            Terminadas (<?= $finished ?>)
+                        </button>
                         <button type="button" onclick="setArcoStatusFilter('rejected')" data-status="rejected"
                                 class="arco-status-tab-btn px-2.5 py-1 rounded-lg text-[10px] font-medium transition-all text-text-muted hover:text-white hover:bg-white/[0.04] border border-transparent whitespace-nowrap">
                             Rechazadas (<?= $rejected ?>)
@@ -378,7 +397,7 @@ $publicUrl = ($publicUrl ?: '') . '/arco-solicitud';
                         $rut = arcoRut($r);
                         $initials = arcoInitials($name);
                         $searchText = mb_strtolower($name . ' ' . $email . ' ' . $rut . ' ' . $shortId . ' ' . $reqType);
-                        $isClosed = in_array($statusKey, ['completed', 'rejected'], true);
+                        $isClosed = in_array($statusKey, ['completed', 'resolved', 'finished', 'rejected'], true);
                         $bdays = $isClosed ? 0 : arcoBusinessDays($dateStr);
                         if ($isClosed) {
                             $deadlineBadge = null;
@@ -466,7 +485,72 @@ $publicUrl = ($publicUrl ?: '') . '/arco-solicitud';
 
                         <!-- Expandable Response Panel -->
                         <div id="arco-resp-<?= h($rid) ?>" class="hidden border-t border-white/[0.06] bg-gradient-to-b from-blue-500/[0.05] via-indigo-500/[0.02] to-transparent">
-                            <form method="POST" class="p-4 space-y-4">
+
+                            <?php
+                            $history = is_array($r['statusHistory'] ?? null) ? $r['statusHistory'] : [];
+                            if (!empty($history)):
+                                $kindLabels = [
+                                    'status'          => ['label' => 'Cambio de estado',   'cls' => 'text-blue-300 bg-blue-500/10 border-blue-500/25'],
+                                    'response'        => ['label' => 'Respuesta',          'cls' => 'text-violet-300 bg-violet-500/10 border-violet-500/25'],
+                                    'status+response' => ['label' => 'Estado + respuesta', 'cls' => 'text-emerald-300 bg-emerald-500/10 border-emerald-500/25'],
+                                ];
+                                $lastEntry = end($history);
+                            ?>
+                            <div class="p-4 pb-0">
+                                <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3.5">
+                                    <div class="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                                        <p class="text-[11px] font-semibold text-text-heading flex items-center gap-1.5">
+                                            <svg class="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                            </svg>
+                                            Historial de gestión
+                                            <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-300 font-mono">
+                                                <?= count($history) ?>
+                                            </span>
+                                        </p>
+                                        <span class="text-[9px] text-text-subtle font-mono">
+                                            última actualización <?= h(substr($lastEntry['at'] ?? '', 0, 16)) ?>
+                                        </span>
+                                    </div>
+
+                                    <ol class="relative border-l border-white/[0.08] ml-2 space-y-3 max-h-[400px] overflow-y-auto scrollbar-custom pr-2">
+                                        <?php foreach ($history as $idx => $ev):
+                                            $evStatusKey = $ev['status'] ?? 'pending';
+                                            $evSt = $statusCfg[$evStatusKey] ?? $statusCfg['pending'];
+                                            $kd = $kindLabels[$ev['kind'] ?? ''] ?? ['label' => '—', 'cls' => 'text-text-muted bg-white/5 border-white/10'];
+                                            $respFull = trim((string)($ev['response'] ?? ''));
+                                            $isLast = ($idx === count($history) - 1);
+                                        ?>
+                                        <li class="ml-4 relative">
+                                            <span class="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full <?= $evSt['dot'] ?> <?= $isLast ? 'ring-2 ring-blue-500/30' : '' ?>"></span>
+                                            <div class="flex items-center gap-2 flex-wrap mb-1">
+                                                <span class="text-[10px] font-mono text-text-subtle"><?= h(substr($ev['at'] ?? '', 0, 16)) ?></span>
+                                                <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium border <?= $evSt['class'] ?>">
+                                                    <span class="w-1 h-1 rounded-full <?= $evSt['dot'] ?>"></span> <?= h($evSt['label']) ?>
+                                                </span>
+                                                <span class="px-1.5 py-0.5 rounded-md text-[9px] border <?= $kd['cls'] ?>"><?= h($kd['label']) ?></span>
+                                                <span class="text-[10px] text-text-muted">· <?= h($ev['by'] ?? '—') ?></span>
+                                            </div>
+                                            <?php if ($respFull !== ''): ?>
+                                                <details class="group" <?= $isLast ? 'open' : '' ?>>
+                                                    <summary class="cursor-pointer text-[11px] text-text-muted hover:text-white truncate list-none flex items-center gap-1">
+                                                        <svg class="w-3 h-3 flex-shrink-0 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                                                        </svg>
+                                                        <?= h(mb_substr($respFull, 0, 90)) ?><?= mb_strlen($respFull) > 90 ? '…' : '' ?>
+                                                    </summary>
+                                                    <pre class="mt-1.5 text-[10px] text-text-body whitespace-pre-wrap font-sans bg-black/20 rounded-lg p-2.5 border border-white/[0.05] leading-relaxed"><?= h($respFull) ?></pre>
+                                                </details>
+                                            <?php endif; ?>
+                                        </li>
+                                        <?php endforeach; ?>
+                                    </ol>
+                                </div>
+                            </div>
+                            <?php endif; ?>
+
+                            <form method="POST" class="p-4 space-y-4 border-t border-white/[0.05] mt-3">
                                 <input type="hidden" name="request_id" value="<?= h($rid) ?>">
 
                                 <!-- Panel header -->
@@ -498,7 +582,7 @@ $publicUrl = ($publicUrl ?: '') . '/arco-solicitud';
                                             <option value="<?= $val ?>" <?= $statusKey === $val ? 'selected' : '' ?>><?= h($cfg['label']) ?></option>
                                             <?php endforeach; ?>
                                         </select>
-                                        <p class="text-[9px] text-text-subtle mt-2 leading-relaxed">Marca "En proceso" mientras gestionas y "Completada" al entregar la respuesta.</p>
+                                        <p class="text-[9px] text-text-subtle mt-2 leading-relaxed">Flujo: En proceso → Completada → Terminada. Cada cambio queda registrado en el historial.</p>
                                     </div>
 
                                     <!-- Response textarea -->
@@ -508,7 +592,7 @@ $publicUrl = ($publicUrl ?: '') . '/arco-solicitud';
                                             Respuesta al titular
                                         </label>
                                         <textarea name="response" rows="4" placeholder="Ej.: Se adjunta copia de los datos personales registrados a nombre del titular, conforme al derecho de acceso (Art. 8)..." class="input-premium w-full resize-none text-[12px] leading-relaxed"><?= h($r['response'] ?? '') ?></textarea>
-                                        <p class="text-[9px] text-text-subtle mt-1.5 leading-relaxed">Redacta una respuesta clara y con fundamento. Si rechazas la solicitud, indica la causal legal.</p>
+                                        <p class="text-[9px] text-text-subtle mt-1.5 leading-relaxed">Cada versión se preserva en el historial. Si dejas el texto igual, no se añadirá una nueva entrada.</p>
                                     </div>
                                 </div>
 
