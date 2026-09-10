@@ -490,11 +490,19 @@ if ($uri === '/api/reports/download-all' && $method === 'GET') {
     exit;
 }
 
-if (preg_match('#^/api/reports/download/(.+)$#', $uri, $m) && $method === 'GET') {
-    $_GET['id'] = $m[1];
-    require_once __DIR__ . '/routes/reports.php';
-    download();
-    exit;
+// ⚠️ FIX: Si es un archivo .pdf, NO lo tratamos como ID de reporte.
+// Lo dejamos caer al handler "Serve PDF files" del final del archivo.
+// Si no es .pdf, entonces sí es un ID y va al handler normal.
+if (preg_match('#^/api/reports/download/([^/]+)$#', $uri, $m) && $method === 'GET') {
+    if (str_ends_with($m[1], '.pdf')) {
+        // no hagas exit: deja que el handler de PDF lo atrape más abajo
+        // (no hace nada aquí, sigue el flujo)
+    } else {
+        $_GET['id'] = $m[1];
+        require_once __DIR__ . '/routes/reports.php';
+        download();
+        exit;
+    }
 }
 
 if (preg_match('#^/api/arco/requests/([A-Z0-9-]+)/document$#', $uri, $m) && $method === 'GET') {
