@@ -514,82 +514,124 @@ body { font-family: "DejaVu Sans", Helvetica, Arial, sans-serif; margin: 0; padd
         return $html;
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // NUEVO: DPIA PDF
-    // ═══════════════════════════════════════════════════════════════
-    public function generateDPIAPDF($itemId = null) {
-        $company = $this->getCompanyInfo();
-        $filter = $this->getCompanyFilter();
-        if ($itemId) $filter['_id'] = $itemId;
-        $items = $this->db->find('compliance_dpia', $filter);
+    /**
+ * Genera PDF de una Evaluación de Impacto (DPIA/EIPD) completa.
+ * Ley 21.719 — Art. 15 ter.
+ */
+public function generateDPIAPDF($itemId = null) {
+    $company = $this->getCompanyInfo();
+    $filter = $this->getCompanyFilter();
+    if ($itemId) $filter['_id'] = $itemId;
+    $items = $this->db->find('compliance_dpia', $filter);
 
-        $html = $this->getHeaderHTML('EVALUACIÓN DE IMPACTO (DPIA)', 'Ley 21.719 - Art. 14 quinquies - Evaluación de Impacto relativa a la Protección de Datos');
+    $html = $this->getHeaderHTML('EVALUACIÓN DE IMPACTO (EIPD/DPIA)', 'Ley 21.719 - Art. 15 ter - Protección de Datos Personales');
 
-        $total = count($items);
-        $approved = count(array_filter($items, fn($i) => ($i['status'] ?? '') === 'approved'));
-        $rejected = count(array_filter($items, fn($i) => ($i['status'] ?? '') === 'rejected'));
-        $pending = $total - $approved - $rejected;
-        $highRisk = count(array_filter($items, fn($i) => in_array($i['riskLevel'] ?? '', ['high','critical']) && ($i['status'] ?? '') !== 'approved'));
+    $total = count($items);
+    $approved = count(array_filter($items, fn($i) => ($i['status'] ?? '') === 'approved'));
+    $html .= '<div class="section"><div class="status-box"><h3>Estado del Registro: ' . $approved . '/' . $total . ' Aprobadas</h3><p>Última actualización: ' . $this->formatDate(date('c')) . '</p></div></div>';
+    
+    // Sección de información de la empresa
+    $html .= '<div class="section"><h2>1. Información del Responsable</h2><div class="info-grid">';
+    $html .= '<div class="info-item"><label>Empresa:</label><span>' . $company['name'] . '</span></div>';
+    $html .= '<div class="info-item"><label>RUT:</label><span>' . ($company['companyRut'] ?: 'No especificado') . '</span></div>';
+    $html .= '<div class="info-item"><label>DPD:</label><span>' . $company['dpdName'] . '</span></div>';
+    $html .= '<div class="info-item"><label>Contacto DPD:</label><span>' . $company['dpdEmail'] . ' | ' . $company['dpdPhone'] . '</span></div>';
+    $html .= '</div></div>';
 
-        $html .= '<div class="section"><div class="status-box"><h3>Estado: ' . $approved . '/' . $total . ' Aprobadas</h3><p>Última actualización: ' . $this->formatDate(date('c')) . '</p></div></div>';
-        $html .= '<div class="section"><h2>1. Información de la Empresa</h2><div class="info-grid">';
-        $html .= '<div class="info-item"><label>Empresa:</label><span>' . $company['name'] . '</span></div>';
-        $html .= '<div class="info-item"><label>DPD:</label><span>' . $company['dpdName'] . '</span></div>';
-        $html .= '<div class="info-item"><label>Contacto:</label><span>' . $company['dpdEmail'] . ' | ' . $company['dpdPhone'] . '</span></div>';
-        $html .= '</div></div>';
+    if (empty($items)) {
+        $html .= '<div class="section"><div class="checklist"><div class="checklist-item">No hay evaluaciones de impacto registradas.</div></div></div>';
+    } else {
+        foreach ($items as $i => $doc) {
+            if ($i > 0) $html .= '<div style="page-break-before:always"></div>';
+            
+            $status = strtolower($doc['status'] ?? 'pending');
+            $stLabel = ['approved' => 'APROBADA', 'rejected' => 'RECHAZADA', 'pending' => 'PENDIENTE'][$status] ?? 'PENDIENTE';
+            $stClass = ['approved' => 'badge-success', 'rejected' => 'badge-danger', 'pending' => 'badge-warning'][$status] ?? 'badge-warning';
+            
+            $riskMap = ['low' => 'BAJO', 'medium' => 'MEDIO', 'high' => 'ALTO', 'critical' => 'CRÍTICO'];
+            $riskLevel = strtoupper($riskMap[strtolower($doc['riskLevel'] ?? 'medium')] ?? 'MEDIO');
 
-        $html .= '<div class="section"><h2>2. Resumen</h2><div class="info-grid">';
-        $html .= '<div class="info-item"><label>Total evaluaciones:</label><span>' . $total . '</span></div>';
-        $html .= '<div class="info-item"><label>Aprobadas:</label><span>' . $approved . '</span></div>';
-        $html .= '<div class="info-item"><label>Rechazadas:</label><span>' . $rejected . '</span></div>';
-        $html .= '<div class="info-item"><label>Pendientes:</label><span>' . $pending . '</span></div>';
-        $html .= '</div></div>';
+            $html .= '<div class="section"><h2>Evaluación #' . ($i + 1) . ': ' . htmlspecialchars($this->safeString($doc['name'] ?? 'Sin nombre')) . '</h2>';
+            $html .= '<div class="info-grid">';
+            $html .= '<div class="info-item"><label>ID:</label><span>' . htmlspecialchars((string)($doc['_id'] ?? '—')) . '</span></div>';
+            $html .= '<div class="info-item"><label>Estado:</label><span><span class="badge ' . $stClass . '">' . $stLabel . '</span></span></div>';
+            $html .= '<div class="info-item"><label>Nivel de Riesgo Inherente:</label><span>' . $riskLevel . '</span></div>';
+            $html .= '<div class="info-item"><label>Fecha de Creación:</label><span>' . (!empty($doc['createdAt']) ? $this->formatDate($doc['createdAt']) : '—') . '</span></div>';
+            if (!empty($doc['approvedAt'])) $html .= '<div class="info-item"><label>Aprobado el:</label><span>' . $this->formatDate($doc['approvedAt']) . '</span></div>';
+            if (!empty($doc['approvedByName'])) $html .= '<div class="info-item"><label>Aprobado por:</label><span>' . htmlspecialchars($this->safeString($doc['approvedByName'])) . ' (' . htmlspecialchars($this->safeString($doc['approvedByRole'] ?? '')) . ')</span></div>';
+            if (!empty($doc['rejectionReason'])) $html .= '<div class="info-item"><label>Motivo del Rechazo:</label><span>' . htmlspecialchars($this->safeString($doc['rejectionReason'])) . '</span></div>';
+            $html .= '</div>';
 
-        $statusMap = ['approved' => ['Aprobada', 'badge-success'], 'rejected' => ['Rechazada', 'badge-danger'], 'pending' => ['Pendiente', 'badge-warning']];
-        $riskMap = ['low' => ['Bajo', 'badge-success'], 'medium' => ['Medio', 'badge-warning'], 'high' => ['Alto', 'badge-danger'], 'critical' => ['Crítico', 'badge-danger']];
+            // 1. Descripción del Tratamiento
+            $html .= '<h3>1. Descripción Sistemática del Tratamiento</h3>';
+            $html .= '<p><strong>Finalidad:</strong> ' . htmlspecialchars($this->safeString($doc['purpose'] ?? 'No especificada')) . '</p>';
+            $html .= '<p><strong>Base de Licitud:</strong> ' . htmlspecialchars($this->safeString($doc['legalBasis'] ?? 'No especificada')) . '</p>';
+            $html .= '<p><strong>Descripción:</strong><br>' . nl2br(htmlspecialchars($this->safeString($doc['description'] ?? 'No especificada'))) . '</p>';
+            
+            $dataCats = $doc['dataCategories'] ?? [];
+            if (is_array($dataCats) && !empty($dataCats)) $html .= '<p><strong>Categorías de Datos:</strong> ' . htmlspecialchars(implode(', ', $dataCats)) . '</p>';
+            $subjectCats = $doc['subjectCategories'] ?? [];
+            if (is_array($subjectCats) && !empty($subjectCats)) $html .= '<p><strong>Categorías de Titulares:</strong> ' . htmlspecialchars(implode(', ', $subjectCats)) . '</p>';
+            if (!empty($doc['technologies'])) $html .= '<p><strong>Tecnologías:</strong> ' . htmlspecialchars($this->safeString($doc['technologies'])) . '</p>';
+            
+            $html .= '<p><strong>Datos Sensibles:</strong> ' . (($doc['hasSensitiveData'] ?? 'no') === 'si' ? 'Sí' : 'No') . '</p>';
+            $html .= '<p><strong>Transferencias Internacionales:</strong> ' . (($doc['hasInternationalTransfers'] ?? 'no') === 'si' ? 'Sí' : 'No') . '</p>';
 
-        if ($total > 0) {
-            foreach ($items as $i => $doc) {
-                if ($i > 0) $html .= '<div style="page-break-before:always"></div>';
-                $status = strtolower($doc['status'] ?? 'pending');
-                $st = $statusMap[$status] ?? $statusMap['pending'];
-                $rk = strtolower($doc['riskLevel'] ?? 'low');
-                $rkl = $riskMap[$rk] ?? $riskMap['low'];
+            // 2. Necesidad y Proporcionalidad
+            $html .= '<h3>2. Evaluación de Necesidad y Proporcionalidad</h3>';
+            $html .= '<p><strong>Justificación de la Necesidad:</strong><br>' . nl2br(htmlspecialchars($this->safeString($doc['necessityJustification'] ?? 'No especificada'))) . '</p>';
+            if (!empty($doc['alternativesAnalysis'])) $html .= '<p><strong>Alternativas Evaluadas:</strong><br>' . nl2br(htmlspecialchars($this->safeString($doc['alternativesAnalysis']))) . '</p>';
+            $html .= '<p><strong>Minimización de Datos:</strong> ' . (($doc['dataMinimization'] ?? 'si') === 'si' ? 'Sí se aplica' : 'No se aplica') . '</p>';
+            if (!empty($doc['retentionPeriod'])) $html .= '<p><strong>Período de Retención:</strong> ' . htmlspecialchars($this->safeString($doc['retentionPeriod'])) . '</p>';
 
-                $html .= '<div class="section"><h2>Evaluación #' . ($i + 1) . ': ' . htmlspecialchars($this->safeString($doc['name'] ?? 'Sin nombre')) . '</h2>';
-                $html .= '<div class="info-grid">';
-                $html .= '<div class="info-item"><label>ID:</label><span>' . htmlspecialchars((string)($doc['_id'] ?? '—')) . '</span></div>';
-                $html .= '<div class="info-item"><label>Nombre:</label><span>' . htmlspecialchars($this->safeString($doc['name'] ?? '—')) . '</span></div>';
-                $html .= '<div class="info-item"><label>Nivel de riesgo:</label><span><span class="badge ' . $rkl[1] . '">' . $rkl[0] . '</span></span></div>';
-                $html .= '<div class="info-item"><label>Estado:</label><span><span class="badge ' . $st[1] . '">' . $st[0] . '</span></span></div>';
-                $html .= '<div class="info-item"><label>Creado:</label><span>' . (!empty($doc['createdAt']) ? $this->formatDate($doc['createdAt']) : '—') . '</span></div>';
-                $html .= '<div class="info-item"><label>Actualizado:</label><span>' . (!empty($doc['updatedAt']) ? $this->formatDate($doc['updatedAt']) : '—') . '</span></div>';
-                if (!empty($doc['approvedAt'])) $html .= '<div class="info-item"><label>Aprobado:</label><span>' . $this->formatDate($doc['approvedAt']) . '</span></div>';
-                if (!empty($doc['approvedByName'])) $html .= '<div class="info-item"><label>Aprobado por:</label><span>' . htmlspecialchars($this->safeString($doc['approvedByName'])) . ' (' . htmlspecialchars($this->safeString($doc['approvedByRole'] ?? '')) . ')</span></div>';
-                if (!empty($doc['rejectedAt'])) $html .= '<div class="info-item"><label>Rechazado:</label><span>' . $this->formatDate($doc['rejectedAt']) . '</span></div>';
-                if (!empty($doc['rejectionReason'])) $html .= '<div class="info-item"><label>Motivo rechazo:</label><span>' . htmlspecialchars($this->safeString($doc['rejectionReason'])) . '</span></div>';
-                $html .= '</div>';
-
-                if (!empty($doc['description'])) {
-                    $html .= '<h3>Descripción del tratamiento</h3><p>' . nl2br(htmlspecialchars($this->safeString($doc['description']))) . '</p>';
+            // 3. Riesgos Identificados
+            $html .= '<h3>3. Identificación y Evaluación de Riesgos</h3>';
+            $risks = $doc['risks'] ?? [];
+            if (is_array($risks) && !empty($risks)) {
+                $html .= '<table class="data-table"><thead><tr><th>Riesgo</th><th>Probabilidad</th><th>Impacto</th></tr></thead><tbody>';
+                $riskLabels = [
+                    'riesgo_acceso' => 'Acceso o divulgación no autorizada',
+                    'riesgo_modificacion' => 'Modificación no deseada',
+                    'riesgo_perdida' => 'Pérdida o destrucción de datos',
+                    'riesgo_uso_indebido' => 'Uso indebido de datos',
+                    'riesgo_decision_automatizada' => 'Decisiones automatizadas',
+                ];
+                foreach ($risks as $key => $data) {
+                    if (($data['present'] ?? false)) {
+                        $html .= '<tr><td>' . htmlspecialchars($riskLabels[$key] ?? $key) . '</td><td>' . htmlspecialchars($data['probability'] ?? '—') . '</td><td>' . htmlspecialchars($data['impact'] ?? '—') . '</td></tr>';
+                    }
                 }
-                if (!empty($doc['treatmentDescription'])) {
-                    $html .= '<h3>Detalle del tratamiento</h3><p>' . nl2br(htmlspecialchars($this->safeString($doc['treatmentDescription']))) . '</p>';
-                }
-                if (!empty($doc['measures'])) {
-                    $html .= '<h3>Medidas mitigadoras</h3><p>' . nl2br(htmlspecialchars($this->safeString($doc['measures']))) . '</p>';
-                }
-                $html .= '</div>';
+                $html .= '</tbody></table>';
+            } else {
+                $html .= '<p>No se identificaron riesgos específicos.</p>';
             }
-        } else {
-            $html .= '<div class="section"><div class="checklist"><div class="checklist-item">Sin evaluaciones registradas</div></div></div>';
+            if (!empty($doc['otherRisks'])) $html .= '<p><strong>Otros Riesgos:</strong><br>' . nl2br(htmlspecialchars($this->safeString($doc['otherRisks']))) . '</p>';
+
+            // 4. Medidas de Mitigación
+            $html .= '<h3>4. Medidas de Mitigación y Riesgo Residual</h3>';
+            $html .= '<p><strong>Medidas Técnicas:</strong><br>' . nl2br(htmlspecialchars($this->safeString($doc['technicalMeasures'] ?? 'No especificadas'))) . '</p>';
+            $html .= '<p><strong>Medidas Organizativas:</strong><br>' . nl2br(htmlspecialchars($this->safeString($doc['organizationalMeasures'] ?? 'No especificadas'))) . '</p>';
+            if (!empty($doc['legalMeasures'])) $html .= '<p><strong>Medidas Jurídicas:</strong><br>' . nl2br(htmlspecialchars($this->safeString($doc['legalMeasures']))) . '</p>';
+            
+            $residualRiskMap = ['bajo' => 'Bajo', 'medio' => 'Medio', 'alto' => 'Alto'];
+            $html .= '<p><strong>Riesgo Residual:</strong> ' . htmlspecialchars($residualRiskMap[strtolower($doc['residualRisk'] ?? 'medio')] ?? 'Medio') . '</p>';
+            $html .= '<p><strong>Consulta Previa APDP:</strong> ' . (($doc['consultationRequired'] ?? 'no') === 'si' ? 'Sí, requerida' : 'No requerida') . '</p>';
+
+            // 5. Conclusión
+            $html .= '<h3>5. Conclusión y Aprobación</h3>';
+            $resultMap = ['aprobado' => 'Aprobado', 'aprobado_condicional' => 'Aprobado con condiciones', 'rechazado' => 'Rechazado'];
+            $html .= '<p><strong>Resultado:</strong> ' . htmlspecialchars($resultMap[$doc['evaluationResult'] ?? ''] ?? 'No especificado') . '</p>';
+            if (!empty($doc['recommendations'])) $html .= '<p><strong>Recomendaciones:</strong><br>' . nl2br(htmlspecialchars($this->safeString($doc['recommendations']))) . '</p>';
+            
+            $html .= '</div>';
         }
-
-        $html .= '<div class="section"><h2>Marco Legal</h2><div class="legal-notice"><h3>Art. 14 quinquies Ley 21.719</h3><p>La evaluación de impacto es obligatoria cuando un tratamiento entrañe un alto riesgo para los derechos y libertades de las personas.</p><p><strong>Sanciones:</strong> Hasta 10.000 UTM (Infracción Grave)</p></div></div>';
-
-        $html .= $this->getFooterHTML('DPIA');
-        return $html;
     }
+
+    $html .= '<div class="section"><h2>Marco Legal</h2><div class="legal-notice"><h3>Art. 15 ter Ley 21.719</h3><p>La Evaluación de Impacto en la Protección de Datos (EIPD) es obligatoria antes de iniciar tratamientos que, por su naturaleza, alcance, contexto o fines, puedan producir un alto riesgo para los derechos de los titulares.</p><p><strong>Documento obligatorio y auditable</strong> ante la Agencia de Protección de Datos Personales.</p></div></div>';
+
+    $html .= $this->getFooterHTML('Evaluación de Impacto (EIPD)');
+    return $html;
+}
 
     private function formatDate($date) {
         if (empty($date)) return 'No registrado';

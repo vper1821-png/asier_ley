@@ -3420,117 +3420,268 @@ main.compliance-workspace { position: relative; }
 
             <?php elseif ($tab === 'dpia'): ?>
 <?php
+// Estadísticas y configuración de visualización
 $dApproved = count(array_filter($items, fn($it) => ($it['status'] ?? '') === 'approved'));
 $dPending = count($items) - $dApproved;
 $dRejected = count(array_filter($items, fn($it) => ($it['status'] ?? '') === 'rejected'));
 $dHighRisk = count(array_filter($items, fn($it) => in_array($it['riskLevel'] ?? '', ['high', 'critical']) && ($it['status'] ?? '') !== 'approved'));
+
 $riskBadge = ['high' => 'bg-orange-500/15 text-orange-400 border-orange-500/30', 'medium' => 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30', 'low' => 'bg-green-500/15 text-green-400 border-green-500/30', 'critical' => 'bg-red-500/15 text-red-400 border-red-500/30'];
 $riskLabel = ['high' => 'Alto', 'medium' => 'Medio', 'low' => 'Bajo', 'critical' => 'Crítico'];
 
-// ✅ NUEVO: verificar si el usuario actual puede aprobar/rechazar DPIA
+// Verificación de rol para aprobación
 $currentRole = strtolower($user['role'] ?? '');
 $isDpoOrDpd = in_array($currentRole, ['dpo', 'dpd', 'superadmin'], true) || !empty($user['isAdmin']);
 ?>
-<?php renderSectionHeader('Evaluación de Impacto — DPIA', 'Evaluación de riesgos para tratamientos de alto riesgo — Art. 14 quater / Art. 16', 'dpia'); ?>
-<div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-    <?php renderComplianceStat('Total DPIA', count($items), 'text-white', cIcon('shield')); ?>
+<?php renderSectionHeader('Evaluación de Impacto (EIPD/DPIA)', 'Análisis de riesgos para tratamientos de alto riesgo — Art. 15 ter Ley 21.719', 'dpia'); ?>
+
+<!-- Tarjetas de Estadísticas -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+    <?php renderComplianceStat('Total EIPD', count($items), 'text-white', cIcon('shield')); ?>
     <?php renderComplianceStat('Aprobadas', $dApproved, 'text-emerald-400', cIcon('check')); ?>
     <?php renderComplianceStat('Pendientes', $dPending, $dPending ? 'text-amber-400' : 'text-emerald-400', cIcon('pen')); ?>
-    <?php renderComplianceStat('Alto riesgo', $dHighRisk, $dHighRisk ? 'text-red-400' : 'text-text-subtle', cIcon('alert')); ?>
+    <?php renderComplianceStat('Alto Riesgo', $dHighRisk, $dHighRisk ? 'text-red-400' : 'text-text-subtle', cIcon('alert')); ?>
 </div>
 
 <?php if (!$isDpoOrDpd): ?>
-<div class="rounded-xl border border-amber-500/25 bg-amber-500/[0.06] px-4 py-3 flex items-start gap-3">
-    <span class="text-amber-400 mt-0.5">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-    </span>
+<div class="rounded-xl border border-amber-500/25 bg-amber-500/[0.06] px-4 py-3 flex items-start gap-3 mb-5">
+    <span class="text-amber-400 mt-0.5"><?= cIcon('alert', 'w-4 h-4') ?></span>
     <p class="text-[10px] md:text-[11px] text-text-muted leading-relaxed">
         <strong class="text-amber-300">Aprobación restringida:</strong>
-        solo el <strong>DPO/DPD</strong> (o un superadministrador) puede aprobar o rechazar evaluaciones de impacto. Puedes crear y editar DPIAs, pero la aprobación final requiere un DPO.
+        solo el <strong>DPO/DPD</strong> (o un superadministrador) puede aprobar o rechazar evaluaciones de impacto. Puedes crear y editar EIPDs, pero la aprobación final requiere un DPO.
     </p>
 </div>
 <?php endif; ?>
 
+<!-- Botón para abrir el panel de creación -->
+<div class="mb-4">
+    <button onclick="cpOpenPanel('dpia-create-form')" class="cp-new-btn">
+        <?= cIcon('plus', 'w-4 h-4') ?> Nueva Evaluación de Impacto (EIPD)
+    </button>
+</div>
+
+<!-- PANEL LATERAL DE CREACIÓN (WIZARD 5 PASOS) -->
 <div id="dpia-create-form" class="hidden rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5">
     <div class="flex items-center justify-between mb-4">
-        <p class="text-[12px] font-semibold text-white">Nueva evaluación de impacto (DPIA)</p>
+        <p class="text-[14px] font-semibold text-white">Nueva Evaluación de Impacto en Protección de Datos</p>
         <?php renderImportBtn('dpia'); ?>
     </div>
 
     <form method="POST" id="dpia-wizard-form" novalidate>
         <input type="hidden" name="collection" value="dpia">
 
-        <div class="dpia-wizard-progress mb-6">
-            <div class="flex items-center justify-between mb-2">
-                <span class="dpia-wizard-step-text text-[11px] font-semibold text-text-subtle">Paso 1 de 2</span>
-                <span class="dpia-wizard-percentage text-[11px] font-semibold text-accent">50%</span>
+        <!-- Wizard Progress -->
+        <div class="wizard-progress mb-5">
+            <div class="wizard-progress-header">
+                <span class="wizard-progress-title">Progreso de la EIPD</span>
+                <span class="wizard-progress-steps" id="dpia-wizard-step-text">Paso 1 de 5</span>
             </div>
-            <div class="dpia-wizard-progress-bar bg-bg-elevated/50 rounded-full h-2 overflow-hidden">
-                <div class="dpia-wizard-progress-fill h-full rounded-full transition-all duration-500" style="width: 50%"></div>
+            <div class="wizard-progress-bar">
+                <div class="wizard-progress-fill" id="dpia-wizard-progress-fill" style="width: 20%"></div>
             </div>
-            <div class="flex items-center justify-between mt-3">
-                <div class="dpia-wizard-step-indicator dpia-step-1 flex items-center gap-2">
-                    <div class="dpia-step-number w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold bg-accent text-white">1</div>
-                    <span class="dpia-step-label text-[11px] font-medium text-text-heading">Información del Proyecto</span>
+            <div class="wizard-steps-indicator">
+                <div class="wizard-step-dot active" data-step="1"><span class="wizard-step-number">1</span><span class="wizard-step-label">Descripción</span></div>
+                <div class="wizard-step-dot" data-step="2"><span class="wizard-step-number">2</span><span class="wizard-step-label">Necesidad</span></div>
+                <div class="wizard-step-dot" data-step="3"><span class="wizard-step-number">3</span><span class="wizard-step-label">Riesgos</span></div>
+                <div class="wizard-step-dot" data-step="4"><span class="wizard-step-number">4</span><span class="wizard-step-label">Mitigación</span></div>
+                <div class="wizard-step-dot" data-step="5"><span class="wizard-step-number">5</span><span class="wizard-step-label">Conclusión</span></div>
+            </div>
+        </div>
+
+        <!-- Error Message -->
+        <div class="wizard-error-message" id="dpia-wizard-error">
+            <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span class="wizard-error-message-text" id="dpia-wizard-error-text">Por favor complete los campos requeridos.</span>
+        </div>
+
+        <!-- PASO 1: DESCRIPCIÓN SISTEMÁTICA DEL TRATAMIENTO -->
+        <div class="wizard-step-content active" data-step="1">
+            <h3 class="wizard-step-title">Paso 1: Descripción Sistemática del Tratamiento</h3>
+            <div class="wizard-fieldset">
+                <div class="compliance-form-row">
+                    <div class="compliance-form-cell"><label class="compliance-form-label">Nombre del Proyecto o Tratamiento <span class="required">*</span></label><input type="text" name="fields[name]" required class="compliance-input" placeholder="Ej: Sistema de Gestión de Clientes CRM"></div>
+                    <div class="compliance-form-cell"><label class="compliance-form-label">Finalidad del Tratamiento <span class="required">*</span></label><input type="text" name="fields[purpose]" required class="compliance-input" placeholder="Ej: Gestión comercial, facturación y soporte"></div>
                 </div>
-                <div class="dpia-wizard-step-indicator dpia-step-2 flex items-center gap-2">
-                    <div class="dpia-step-number w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold bg-bg-elevated text-text-subtle border border-border-color">2</div>
-                    <span class="dpia-step-label text-[11px] font-medium text-text-subtle">Evaluación de Riesgo</span>
+                <div class="compliance-form-row mt-4">
+                    <div class="compliance-form-cell"><label class="compliance-form-label">Descripción Detallada del Tratamiento <span class="required">*</span></label><textarea name="fields[description]" required rows="4" class="compliance-textarea" placeholder="Describe la naturaleza, alcance, contexto y fines del tratamiento. Incluye qué operaciones se realizan con los datos (recolección, almacenamiento, uso, comunicación, etc.)."></textarea></div>
+                </div>
+                <div class="compliance-form-row mt-4">
+                    <div class="compliance-form-cell">
+                        <label class="compliance-form-label">Base de Licitud (Art. 12-13) <span class="required">*</span></label>
+                        <select name="fields[legalBasis]" required class="compliance-select">
+                            <option value="">Seleccionar base legal</option>
+                            <option value="consentimiento">Consentimiento del titular</option>
+                            <option value="contrato">Ejecución de contrato</option>
+                            <option value="obligacion_legal">Obligación legal</option>
+                            <option value="interes_vital">Interés vital</option>
+                            <option value="interes_publico">Interés público</option>
+                            <option value="interes_legitimo">Interés legítimo</option>
+                        </select>
+                    </div>
+                    <div class="compliance-form-cell">
+                        <label class="compliance-form-label">Categorías de Datos Personales <span class="required">*</span></label>
+                        <select name="fields[dataCategories][]" multiple required class="compliance-select" size="6">
+                            <option value="identificacion">Identificación (nombre, RUT, dirección)</option>
+                            <option value="contacto">Contacto (email, teléfono)</option>
+                            <option value="financieros">Financieros (cuentas, ingresos)</option>
+                            <option value="laborales">Laborales (cargo, sueldo)</option>
+                            <option value="salud">Salud (historial, diagnósticos)</option>
+                            <option value="biometricos">Biométricos (huella, facial)</option>
+                            <option value="geneticos">Genéticos</option>
+                            <option value="navegacion">Navegación (IP, cookies)</option>
+                            <option value="ubicacion">Ubicación geográfica</option>
+                            <option value="perfilado">Perfilado y comportamiento</option>
+                        </select>
+                        <span class="compliance-hint">Ctrl+Click para seleccionar múltiples</span>
+                    </div>
+                </div>
+                <div class="compliance-form-row mt-4">
+                    <div class="compliance-form-cell">
+                        <label class="compliance-form-label">Categorías de Titulares <span class="required">*</span></label>
+                        <select name="fields[subjectCategories][]" multiple required class="compliance-select" size="5">
+                            <option value="clientes">Clientes / Usuarios</option>
+                            <option value="empleados">Empleados / Colaboradores</option>
+                            <option value="proveedores">Proveedores</option>
+                            <option value="postulantes">Postulantes a empleo</option>
+                            <option value="ninos">Niños / Adolescentes</option>
+                            <option value="pacientes">Pacientes / Usuarios de salud</option>
+                        </select>
+                    </div>
+                    <div class="compliance-form-cell">
+                        <label class="compliance-form-label">Tecnologías Involucradas</label>
+                        <textarea name="fields[technologies]" rows="2" class="compliance-textarea" placeholder="Ej: CRM en la nube, algoritmos de scoring, IA, etc."></textarea>
+                    </div>
+                </div>
+                <div class="compliance-form-row mt-4">
+                    <div class="compliance-form-cell"><label class="compliance-form-label">¿Incluye Datos Sensibles? (Art. 16) <span class="required">*</span></label><select name="fields[hasSensitiveData]" required class="compliance-select"><option value="no">No</option><option value="si">Sí - Requiere consentimiento explícito y medidas reforzadas</option></select></div>
+                    <div class="compliance-form-cell"><label class="compliance-form-label">¿Transferencias Internacionales? (Art. 21) <span class="required">*</span></label><select name="fields[hasInternationalTransfers]" required class="compliance-select"><option value="no">No</option><option value="si">Sí - Indicar mecanismo de garantía (SCC, BCR, etc.)</option></select></div>
                 </div>
             </div>
         </div>
 
-        <div class="dpia-wizard-step dpia-step-1-content" data-step="1">
-            <div class="compliance-form-row">
-                <div class="compliance-form-cell">
-                    <label for="dpia-name" class="compliance-form-label">Nombre del proyecto <span class="required">*</span></label>
-                    <input type="text" id="dpia-name" name="fields[name]" required placeholder="Ej: Sistema de gestión de clientes" class="compliance-input">
+        <!-- PASO 2: EVALUACIÓN DE NECESIDAD Y PROPORCIONALIDAD -->
+        <div class="wizard-step-content" data-step="2">
+            <h3 class="wizard-step-title">Paso 2: Evaluación de Necesidad y Proporcionalidad</h3>
+            <div class="wizard-fieldset">
+                <div class="bg-blue-500/[0.05] border border-blue-500/20 rounded-lg p-3 mb-4 text-[11px] text-text-muted leading-relaxed">
+                    <p><strong class="text-blue-300">¿Por qué es necesario?</strong> Debes justificar que el tratamiento es necesario para la finalidad y que no existen alternativas menos intrusivas para la privacidad.</p>
                 </div>
-                <div class="compliance-form-cell">
-                    <label for="dpia-description" class="compliance-form-label">Descripción del tratamiento</label>
-                    <input type="text" id="dpia-description" name="fields[description]" placeholder="Descripción breve del tratamiento de datos" class="compliance-input">
+                <div class="compliance-form-row">
+                    <div class="compliance-form-cell"><label class="compliance-form-label">Justificación de la Necesidad <span class="required">*</span></label><textarea name="fields[necessityJustification]" required rows="4" class="compliance-textarea" placeholder="Explica por qué el tratamiento de estos datos es indispensable para lograr la finalidad. ¿Podrías usar datos anonimizados o menos datos?"></textarea></div>
                 </div>
-            </div>
-        </div>
-
-        <div class="dpia-wizard-step dpia-step-2-content hidden" data-step="2">
-            <div class="compliance-form-row">
-                <div class="compliance-form-cell">
-                    <label for="dpia-riskLevel" class="compliance-form-label">Nivel de riesgo <span class="required">*</span></label>
-                    <select id="dpia-riskLevel" name="fields[riskLevel]" required class="compliance-select">
-                        <option value="">Seleccionar nivel de riesgo</option>
-                        <option value="low">Riesgo bajo</option>
-                        <option value="medium">Riesgo medio</option>
-                        <option value="high">Riesgo alto</option>
-                    </select>
+                <div class="compliance-form-row mt-4">
+                    <div class="compliance-form-cell"><label class="compliance-form-label">Análisis de Alternativas menos Intrusivas</label><textarea name="fields[alternativesAnalysis]" rows="3" class="compliance-textarea" placeholder="¿Se evaluaron otras formas de lograr el objetivo con un menor impacto en la privacidad? ¿Por qué se descartaron?"></textarea></div>
                 </div>
-                <div class="compliance-form-cell">
-                    <label for="dpia-treatmentDescription" class="compliance-form-label">Descripción del tratamiento</label>
-                    <textarea id="dpia-treatmentDescription" name="fields[treatmentDescription]" rows="4" placeholder="Describe detalladamente el tratamiento de datos y medidas de seguridad" class="compliance-input min-h-[100px] resize-none"></textarea>
+                <div class="compliance-form-row mt-4">
+                    <div class="compliance-form-cell">
+                        <label class="compliance-form-label">¿Se aplica el Principio de Minimización de Datos? (Art. 4) <span class="required">*</span></label>
+                        <select name="fields[dataMinimization]" required class="compliance-select">
+                            <option value="si">Sí - Se tratan solo los datos estrictamente necesarios</option>
+                            <option value="no">No - Se necesita una justificación adicional</option>
+                        </select>
+                    </div>
+                    <div class="compliance-form-cell">
+                        <label class="compliance-form-label">Período de Retención de los Datos <span class="required">*</span></label>
+                        <input type="text" name="fields[retentionPeriod]" required class="compliance-input" placeholder="Ej: 5 años, según obligación legal">
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div class="compliance-form-actions">
-            <button type="button" id="dpia-prev-btn" class="compliance-btn-secondary hidden">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
-                Anterior
-            </button>
-            <button type="button" id="dpia-next-btn" class="compliance-btn-primary">
-                Siguiente
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-            </button>
-            <button type="submit" id="dpia-submit-btn" name="create_item" value="1" class="compliance-btn-primary hidden">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                Crear DPIA
-            </button>
+        <!-- PASO 3: IDENTIFICACIÓN Y EVALUACIÓN DE RIESGOS -->
+        <div class="wizard-step-content" data-step="3">
+            <h3 class="wizard-step-title">Paso 3: Identificación y Evaluación de Riesgos</h3>
+            <div class="wizard-fieldset">
+                <p class="text-[11px] text-text-muted mb-3">Identifica los riesgos potenciales para los derechos de los titulares, asigna una probabilidad e impacto, y calcula el riesgo inherente (probabilidad × impacto).</p>
+                <!-- Matriz de Riesgos -->
+                <div class="space-y-3">
+                    <?php
+                    $risks = [
+                        'riesgo_acceso' => 'Acceso o divulgación no autorizada',
+                        'riesgo_modificacion' => 'Modificación no deseada de datos',
+                        'riesgo_perdida' => 'Pérdida, destrucción o desaparición de datos',
+                        'riesgo_uso_indebido' => 'Uso indebido o desviado de la finalidad',
+                        'riesgo_decision_automatizada' => 'Decisiones automatizadas con efectos significativos',
+                    ];
+                    foreach ($risks as $key => $label): ?>
+                    <div class="rounded-lg border border-border-theme/50 p-3 bg-bg-base/30">
+                        <div class="flex items-center gap-2 mb-2">
+                            <input type="checkbox" name="fields[risks][<?= $key ?>][present]" id="risk-<?= $key ?>" value="1" class="w-4 h-4 rounded border-border-theme text-accent focus:ring-accent">
+                            <label for="risk-<?= $key ?>" class="text-[11px] font-semibold text-text-heading"><?= $label ?></label>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3 pl-6">
+                            <select name="fields[risks][<?= $key ?>][probability]" class="compliance-select text-[11px]"><option value="">Probabilidad</option><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option></select>
+                            <select name="fields[risks][<?= $key ?>][impact]" class="compliance-select text-[11px]"><option value="">Impacto</option><option value="bajo">Bajo</option><option value="medio">Medio</option><option value="alto">Alto</option></select>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <div class="compliance-form-row mt-4">
+                    <div class="compliance-form-cell"><label class="compliance-form-label">Otros Riesgos Identificados</label><textarea name="fields[otherRisks]" rows="2" class="compliance-textarea" placeholder="Describe cualquier otro riesgo específico no listado arriba."></textarea></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PASO 4: MEDIDAS DE MITIGACIÓN Y RIESGO RESIDUAL -->
+        <div class="wizard-step-content" data-step="4">
+            <h3 class="wizard-step-title">Paso 4: Medidas de Mitigación y Riesgo Residual</h3>
+            <div class="wizard-fieldset">
+                <p class="text-[11px] text-text-muted mb-3">Para cada riesgo identificado, define las medidas técnicas y organizativas que reducirán el riesgo.</p>
+                <div class="compliance-form-row">
+                    <div class="compliance-form-cell"><label class="compliance-form-label">Medidas Técnicas de Mitigación</label><textarea name="fields[technicalMeasures]" rows="3" class="compliance-textarea" placeholder="Ej: Cifrado AES-256, seudonimización, control de acceso basado en roles (RBAC), MFA, auditoría de logs."></textarea></div>
+                    <div class="compliance-form-cell"><label class="compliance-form-label">Medidas Organizativas de Mitigación</label><textarea name="fields[organizationalMeasures]" rows="3" class="compliance-textarea" placeholder="Ej: Políticas internas, capacitación del personal, contratos con encargados, procedimientos de respuesta a incidentes."></textarea></div>
+                </div>
+                <div class="compliance-form-row mt-4">
+                    <div class="compliance-form-cell"><label class="compliance-form-label">Medidas Jurídicas o Contractuales</label><textarea name="fields[legalMeasures]" rows="2" class="compliance-textarea" placeholder="Ej: Cláusulas contractuales tipo (SCC), acuerdos de procesamiento de datos (DPA), términos de uso."></textarea></div>
+                </div>
+                <div class="compliance-form-row mt-4">
+                    <div class="compliance-form-cell">
+                        <label class="compliance-form-label">Riesgo Residual tras aplicar medidas <span class="required">*</span></label>
+                        <select name="fields[residualRisk]" required class="compliance-select">
+                            <option value="">Seleccionar nivel de riesgo residual</option>
+                            <option value="bajo">Bajo - Riesgo aceptable</option>
+                            <option value="medio">Medio - Requiere monitoreo</option>
+                            <option value="alto">Alto - Riesgo inaceptable (considerar consulta previa a la APDP)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="compliance-form-row mt-4">
+                    <div class="compliance-form-cell"><label class="compliance-form-label">¿Requiere Consulta Previa a la Agencia (APDP)?</label><select name="fields[consultationRequired]" class="compliance-select"><option value="no">No - El riesgo residual es aceptable</option><option value="si">Sí - El riesgo residual es alto y debe consultarse (Art. 15 quáter)</option></select></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PASO 5: CONCLUSIÓN Y APROBACIÓN -->
+        <div class="wizard-step-content" data-step="5">
+            <h3 class="wizard-step-title">Paso 5: Conclusión y Aprobación Formal</h3>
+            <div class="wizard-fieldset">
+                <div class="compliance-form-row">
+                    <div class="compliance-form-cell"><label class="compliance-form-label">Resultado de la Evaluación <span class="required">*</span></label><select name="fields[evaluationResult]" required class="compliance-select"><option value="">Seleccionar resultado</option><option value="aprobado">Aprobado - Se puede proceder con el tratamiento</option><option value="aprobado_condicional">Aprobado con condiciones - Implementar medidas y monitorear</option><option value="rechazado">Rechazado - El riesgo es inaceptable</option></select></div>
+                </div>
+                <div class="compliance-form-row mt-4">
+                    <div class="compliance-form-cell"><label class="compliance-form-label">Recomendaciones y Condiciones</label><textarea name="fields[recommendations]" rows="3" class="compliance-textarea" placeholder="Ej: Implementar cifrado antes de iniciar, realizar auditoría trimestral, etc."></textarea></div>
+                </div>
+                <div class="bg-indigo-500/[0.05] border border-indigo-500/20 rounded-lg p-3 mt-4">
+                    <p class="text-[11px] text-indigo-300 font-semibold mb-1"><?= cIcon('shield', 'w-3.5 h-3.5 inline mr-1') ?> Aprobación del DPO/DPD</p>
+                    <p class="text-[10px] text-text-muted leading-relaxed">Este campo es completado automáticamente por el sistema al aprobar la evaluación desde la lista principal.</p>
+                    <p class="text-[10px] text-text-subtle mt-2">El estado inicial será "Pendiente" y requerirá la aprobación de un usuario con rol DPO/DPD.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navegación del Wizard -->
+        <div class="wizard-navigation">
+            <button type="button" class="wizard-btn-prev" id="dpia-prev-btn" disabled><?= cIcon('arrowRight', 'w-4 h-4 rotate-180') ?> Anterior</button>
+            <button type="button" class="wizard-btn-next" id="dpia-next-btn">Siguiente <?= cIcon('arrowRight', 'w-4 h-4') ?></button>
+            <button type="submit" class="wizard-btn-submit" id="dpia-submit-btn" name="create_item" value="1" style="display: none;"><?= cIcon('check', 'w-4 h-4') ?> Registrar EIPD</button>
         </div>
     </form>
 </div>
 
+<!-- LISTA DE EVALUACIONES EXISTENTES -->
 <?php if (empty($items)): ?>
 <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-10 text-center">
-    <p class="text-[11px] text-text-subtle">Sin evaluaciones de impacto todavía. Crea una o usa «Importar masivo».</p>
+    <p class="text-[11px] text-text-subtle">Sin evaluaciones de impacto registradas. Crea una nueva EIPD para comenzar.</p>
 </div>
 <?php else: ?>
 <div class="space-y-2">
@@ -3540,76 +3691,31 @@ $isDpoOrDpd = in_array($currentRole, ['dpo', 'dpd', 'superadmin'], true) || !emp
         $rejected = $status === 'rejected';
         $rl = $it['riskLevel'] ?? 'medium';
         $rb = $riskBadge[$rl] ?? $riskBadge['medium'];
-        $statusBadge = $approved
-            ? ['label' => 'Aprobada',  'cls' => 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20']
-            : ($rejected
-                ? ['label' => 'Rechazada', 'cls' => 'bg-red-500/10 text-red-400 border-red-500/20']
-                : ['label' => 'Pendiente', 'cls' => 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20']);
+        $statusBadge = $approved ? ['label' => 'Aprobada', 'cls' => 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'] : ($rejected ? ['label' => 'Rechazada', 'cls' => 'bg-red-500/10 text-red-400 border-red-500/20'] : ['label' => 'Pendiente', 'cls' => 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20']);
     ?>
     <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm hover:border-border-theme/60 transition-colors p-4 flex flex-col md:flex-row md:items-center gap-3">
-        <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 <?= $approved ? 'bg-emerald-500/10 text-emerald-400' : ($rejected ? 'bg-red-500/10 text-red-400' : 'bg-blue-500/10 text-blue-400') ?>">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
-        </div>
+        <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 <?= $approved ? 'bg-emerald-500/10 text-emerald-400' : ($rejected ? 'bg-red-500/10 text-red-400' : 'bg-blue-500/10 text-blue-400') ?>"><?= cIcon('shield', 'w-4 h-4') ?></div>
         <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 flex-wrap">
-                <p class="text-[12px] font-medium text-text-heading truncate"><?= h($it['name'] ?? 'DPIA') ?></p>
+                <p class="text-[12px] font-medium text-text-heading truncate"><?= h($it['name'] ?? 'EIPD sin nombre') ?></p>
                 <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border <?= $rb ?>">Riesgo <?= h($riskLabel[$rl] ?? $rl) ?></span>
                 <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border <?= $statusBadge['cls'] ?>"><?= h($statusBadge['label']) ?></span>
-                <?php if ($approved && !empty($it['approvedByName'])): ?>
-                <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-medium rounded-md border bg-indigo-500/10 text-indigo-300 border-indigo-500/20">
-                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                    Por <?= h($it['approvedByName']) ?><?= !empty($it['approvedByRole']) ? ' (' . h($it['approvedByRole']) . ')' : '' ?>
-                </span>
-                <?php endif; ?>
-                <?php if ($rejected && !empty($it['rejectionReason'])): ?>
-                <span class="text-[9px] text-red-300 italic truncate max-w-[180px]" title="<?= h($it['rejectionReason']) ?>">
-                    Motivo: <?= h($it['rejectionReason']) ?>
-                </span>
-                <?php endif; ?>
+                <?php if ($approved && !empty($it['approvedByName'])): ?><span class="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-medium rounded-md border bg-indigo-500/10 text-indigo-300 border-indigo-500/20"><?= cIcon('check', 'w-3 h-3') ?> Por <?= h($it['approvedByName']) ?> (<?= h($it['approvedByRole'] ?? '') ?>)</span><?php endif; ?>
             </div>
-            <p class="text-[10px] text-text-subtle mt-0.5">
-                <?= h($it['description'] ?? '') ?>
-                · <?= h(substr($it['createdAt'] ?? '', 0, 10)) ?>
-                <?php if ($approved && !empty($it['approvedAt'])): ?>
-                    · Aprobada: <?= h(substr($it['approvedAt'], 0, 10)) ?>
-                <?php endif; ?>
-            </p>
+            <p class="text-[10px] text-text-subtle mt-0.5"><?= h($it['purpose'] ?? '') ?> · <?= h(substr($it['createdAt'] ?? '', 0, 10)) ?><?php if ($approved && !empty($it['approvedAt'])): ?> · Aprobada: <?= h(substr($it['approvedAt'], 0, 10)) ?><?php endif; ?></p>
         </div>
         <div class="flex items-center gap-2 flex-shrink-0">
             <?php if (!$approved && !$rejected): ?>
                 <?php if ($isDpoOrDpd): ?>
-                    <button type="button" onclick="approveDpia('<?= h($it['_id'] ?? '') ?>')"
-                            class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/25 transition-all">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                        Aprobar
-                    </button>
-                    <button type="button" onclick="rejectDpia('<?= h($it['_id'] ?? '') ?>')"
-                            class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/25 transition-all">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                        Rechazar
-                    </button>
+                    <button onclick="approveDpia('<?= h($it['_id'] ?? '') ?>')" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/25 transition-all"><?= cIcon('check', 'w-3.5 h-3.5') ?> Aprobar</button>
+                    <button onclick="rejectDpia('<?= h($it['_id'] ?? '') ?>')" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/25 transition-all"><?= cIcon('xmark', 'w-3.5 h-3.5') ?> Rechazar</button>
                 <?php else: ?>
-                    <span class="text-[9px] text-text-subtle italic px-2 py-1 rounded-md border border-white/[0.06] bg-white/[0.02]"
-                          title="Solo el DPO/DPD puede aprobar evaluaciones de impacto">
-                        Requiere DPO/DPD
-                    </span>
+                    <span class="text-[9px] text-text-subtle italic px-2 py-1 rounded-md border border-white/[0.06] bg-white/[0.02]" title="Solo el DPO/DPD puede aprobar">Requiere DPO/DPD</span>
                 <?php endif; ?>
             <?php endif; ?>
-
-            <button type="button" onclick="downloadDpiaPDF('<?= h($it['_id'] ?? '') ?>')"
-                    class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/25 transition-all"
-                    title="Descargar PDF de esta evaluación">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                PDF
-            </button>
-
+            <button onclick="downloadDpiaPDF('<?= h($it['_id'] ?? '') ?>')" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/25 transition-all"><?= cIcon('fileText', 'w-3.5 h-3.5') ?> PDF</button>
             <?php renderEditBtn('dpia', $it['_id'] ?? ''); ?>
-
-            <form method="POST" class="inline">
-                <input type="hidden" name="collection" value="dpia">
-                <input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>">
-                <button type="submit" name="delete_item" value="1" onclick="return confirm('¿Eliminar esta evaluación?')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all">Eliminar</button>
-            </form>
+            <form method="POST" class="inline"><input type="hidden" name="collection" value="dpia"><input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>"><button type="submit" name="delete_item" value="1" onclick="return confirm('¿Eliminar esta evaluación?')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all">Eliminar</button></form>
         </div>
     </div>
     <?php endforeach; ?>
@@ -8176,50 +8282,79 @@ document.getElementById('generic-edit-form')?.addEventListener('submit', async f
     }
 });
 
-// ═══ DPIA: Aprobar / Rechazar (solo DPO/DPD/superadmin) ═══
+// ═══ DPIA: Wizard de 5 Pasos ═══
+(function() {
+    const form = document.getElementById('dpia-wizard-form');
+    if (!form) return;
+    const totalSteps = 5;
+    let currentStep = 1;
+    const stepText = document.getElementById('dpia-wizard-step-text');
+    const progressFill = document.getElementById('dpia-wizard-progress-fill');
+    const prevBtn = document.getElementById('dpia-prev-btn');
+    const nextBtn = document.getElementById('dpia-next-btn');
+    const submitBtn = document.getElementById('dpia-submit-btn');
+    const errorDiv = document.getElementById('dpia-wizard-error');
+    const errorText = document.getElementById('dpia-wizard-error-text');
+
+    function updateWizard() {
+        stepText.textContent = `Paso ${currentStep} de ${totalSteps}`;
+        progressFill.style.width = `${(currentStep / totalSteps) * 100}%`;
+        document.querySelectorAll('#dpia-create-form .wizard-step-dot').forEach(dot => {
+            const step = parseInt(dot.dataset.step);
+            dot.classList.toggle('active', step === currentStep);
+            dot.classList.toggle('completed', step < currentStep);
+        });
+        document.querySelectorAll('#dpia-create-form .wizard-step-content').forEach(content => {
+            content.classList.toggle('active', parseInt(content.dataset.step) === currentStep);
+        });
+        prevBtn.disabled = currentStep === 1;
+        nextBtn.style.display = currentStep === totalSteps ? 'none' : 'inline-flex';
+        submitBtn.style.display = currentStep === totalSteps ? 'inline-flex' : 'none';
+        errorDiv.classList.remove('show');
+    }
+
+    function validateStep(step) {
+        const stepContent = form.querySelector(`.wizard-step-content[data-step="${step}"]`);
+        const requiredFields = stepContent.querySelectorAll('[required]');
+        let isValid = true;
+        let errors = [];
+        requiredFields.forEach(field => {
+            field.style.borderColor = '';
+            if (field.type === 'select-multiple' && field.selectedOptions.length === 0) {
+                isValid = false; field.style.borderColor = '#ef4444'; errors.push('Seleccione al menos una opción');
+            } else if (field.type !== 'select-multiple' && !field.value.trim()) {
+                isValid = false; field.style.borderColor = '#ef4444'; errors.push('Complete los campos requeridos');
+            }
+        });
+        if (!isValid) { errorText.textContent = errors.join('. '); errorDiv.classList.add('show'); }
+        return isValid;
+    }
+
+    nextBtn.addEventListener('click', () => { if (validateStep(currentStep) && currentStep < totalSteps) { currentStep++; updateWizard(); } });
+    prevBtn.addEventListener('click', () => { if (currentStep > 1) { currentStep--; updateWizard(); } });
+    form.querySelectorAll('input, select, textarea').forEach(field => { field.addEventListener('input', function() { this.style.borderColor = ''; errorDiv.classList.remove('show'); }); });
+    updateWizard();
+})();
+
+// ═══ DPIA: Aprobar / Rechazar / PDF ═══
 async function approveDpia(id) {
     if (!confirm('¿Aprobar esta evaluación de impacto? Esta acción quedará registrada con tu usuario y rol.')) return;
     try {
-        const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/compliance/dpia/' + id + '/approve'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token: '<?= h($token) ?>' })
-        });
+        const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/compliance/dpia/' + id + '/approve'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: '<?= h($token) ?>' }) });
         const data = await res.json();
-        if (data.success) {
-            location.reload();
-        } else {
-            alert('Error: ' + (data.error || 'no se pudo aprobar la DPIA'));
-        }
-    } catch (e) {
-        alert('Error de conexión: ' + e.message);
-    }
+        if (data.success) location.reload(); else alert('Error: ' + (data.error || 'no se pudo aprobar'));
+    } catch (e) { alert('Error de conexión: ' + e.message); }
 }
-
 async function rejectDpia(id) {
-    const motivo = prompt('Indica el motivo del rechazo (quedará registrado en la DPIA):', '');
+    const motivo = prompt('Indica el motivo del rechazo (quedará registrado):', '');
     if (motivo === null) return;
-    if (!motivo.trim()) {
-        alert('El motivo del rechazo es obligatorio.');
-        return;
-    }
+    if (!motivo.trim()) { alert('El motivo es obligatorio.'); return; }
     try {
-        const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/compliance/dpia/' + id + '/reject'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token: '<?= h($token) ?>', response: motivo.trim() })
-        });
+        const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/compliance/dpia/' + id + '/reject'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: '<?= h($token) ?>', response: motivo.trim() }) });
         const data = await res.json();
-        if (data.success) {
-            location.reload();
-        } else {
-            alert('Error: ' + (data.error || 'no se pudo rechazar la DPIA'));
-        }
-    } catch (e) {
-        alert('Error de conexión: ' + e.message);
-    }
+        if (data.success) location.reload(); else alert('Error: ' + (data.error || 'no se pudo rechazar'));
+    } catch (e) { alert('Error de conexión: ' + e.message); }
 }
-
 function downloadDpiaPDF(id) {
     const url = '/api-proxy.php?path=' + encodeURIComponent('/api/compliance/dpia/pdf' + (id ? '?id=' + id : '')) + '&token=<?= h($token) ?>';
     window.open(url, '_blank');
