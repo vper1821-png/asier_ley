@@ -133,7 +133,7 @@ function download() {
     $id = $_GET['id'] ?? '';
     $db = Database::getInstance();
 
-    // Servir PDFs generados por PDFGenerator guardados en disco (por nombre de archivo)
+    // Servir PDFs ya generados
     if (preg_match('/\.pdf$/i', $id)) {
         $safe = basename($id);
         $path = __DIR__ . '/../reports/' . $safe;
@@ -148,275 +148,452 @@ function download() {
     }
 
     if ($id === '' || $id === 'all') {
-        $filename = 'reportes.pdf';
-        $reportTitle = 'Reporte de Cumplimiento - ' . date('Y-m-d');
+        $filename = 'reporte_compliance_' . date('Ymd-His') . '.pdf';
+        $reportTitle = 'Informe de Cumplimiento Ley 21.719';
     } else {
         $report = $db->findOne('reports', ['_id' => $id, 'userId' => $user['_id']]);
         if (!$report) json_error('reporte no encontrado', 404);
         $filename = 'reporte_' . ($report['_id'] ?? $id) . '.pdf';
-        $reportTitle = $report['title'] ?? ('Reporte de Cumplimiento - ' . date('Y-m-d'));
+        $reportTitle = $report['title'] ?? 'Informe de Cumplimiento Ley 21.719';
     }
 
-    if (!empty($report['type']) && $report['type'] !== 'compliance') {
-        if ($report['type'] === 'security') {
-            downloadSecurityReport($user, $report);
-            exit;
-        } elseif ($report['type'] === 'training') {
-            downloadTrainingReport($user, $report);
-            exit;
-        }
+    if (!empty($report['type']) && $report['type'] === 'security') {
+        downloadSecurityReport($user, $report);
+        exit;
+    }
+    if (!empty($report['type']) && $report['type'] === 'training') {
+        downloadTrainingReport($user, $report);
+        exit;
     }
 
-    $uid = $user['_id'];
-    $agents = $db->find('agents', ['userId' => $uid]);
-    $databases = $db->find('databases', ['userId' => $uid]);
-    $consents = $db->find('compliance_consents', ['userId' => $uid]);
-    $inventory = $db->find('compliance_inventory', ['userId' => $uid]);
-    $breaches = $db->find('compliance_breaches', ['userId' => $uid]);
-    $config = $db->findOne('compliance_config', ['userId' => $uid]) ?? [];
-    $dpias = $db->find('compliance_dpia', ['userId' => $uid]);
-    $dpas = $db->find('compliance_dpa', ['userId' => $uid]);
-    $trainings = $db->find('compliance_trainings', ['userId' => $uid]);
-    $pseudoRules = $db->find('compliance_pseudonymization', ['userId' => $uid]);
-    $auditLogs = $db->find('audit_logs', ['userId' => $uid], ['limit' => 50]);
-    $fileEvents = $db->find('file_events', ['userId' => $uid], ['limit' => 100]);
-    $dbLogs = $db->find('database_logs', ['userId' => $uid], ['limit' => 100]);
-    $hostEvents = $db->find('host_events', ['userId' => $uid], ['limit' => 100]);
-    $fileAudits = $db->find('file_audit_logs', ['userId' => $uid], ['limit' => 100]);
+    // ═══════════════════════════════════════════════════════════════
+    // RESOLVER IDs DE EMPRESA (todos los sub-usuarios)
+    // ═══════════════════════════════════════════════════════════════
+    $isSuperAdmin = !empty($user['isAdmin']) || ($user['role'] ?? '') === 'superadmin';
+    if ($isSuperAdmin) {
+        $userIds = null; // sin filtro
+        $uid = $user['_id'];
+    } else {
+        $record = $db->findOne('users', ['_id' => $user['_id']]);
+        $companyId = $record['companyId'] ?? $user['_id'];
+        $uid = $companyId;
+        $subs = $db->find('users', ['companyId' => $companyId]);
+        $userIds = array_values(array_unique(array_map('strval', array_merge(
+            [$companyId, $user['_id']],
+            array_column($subs, '_id')
+        ))));
+    }
+    $filter = $userIds === null ? [] : ['userId' => ['$in' => $userIds]];
+    $filterCompany = $userIds === null ? [] : ['companyId' => ['$in' => $userIds]];
 
+    // ═══════════════════════════════════════════════════════════════
+    // RECOLECTAR TODA LA DATA
+    // ═══════════════════════════════════════════════════════════════
+    $config = $db->findOne('compliance_config', $filter) ?? [];
+
+    $agents              = $db->find('agents', $filter);
+    $databases           = $db->find('databases', $filter);
+    $alerts              = $db->find('alerts', $filter);
+    $consents            = $db->find('compliance_consents', $filter);
+    $inventory           = $db->find('compliance_inventory', $filter);
+    $breaches            = $db->find('compliance_breaches', $filter);
+    $dpias               = $db->find('compliance_dpia', $filter);
+    $dpas                = $db->find('compliance_dpa', $filter);
+    $trainings           = $db->find('compliance_trainings', $filter);
+    $pseudoRules         = $db->find('compliance_pseudonymization', $filter);
+    $processors          = $db->find('compliance_processors', $filter);
+    $transfers           = $db->find('compliance_transfers', $filter);
+    $invites             = $db->find('compliance_invites', $filter);
+    $breachProtocol      = $db->findOne('compliance_breach_protocol', $filter) ?? [];
+    $incidentResponse    = $db->findOne('compliance_incident_response', $filter) ?? [];
+    $arcoRequests        = $db->find('arco_requests', $filterCompany);
+    $auditLogs           = $db->find('audit_logs', $filter, ['limit' => 50]);
+    $fileEvents          = $db->find('file_events', $filter, ['limit' => 100]);
+    $dbLogs              = $db->find('database_logs', $filter, ['limit' => 100]);
+    $hostEvents          = $db->find('host_events', $filter, ['limit' => 100]);
+    $fileAudits          = $db->find('file_audit_logs', $filter, ['limit' => 100]);
+
+    // ═══════════════════════════════════════════════════════════════
+    // ESTADÍSTICAS
+    // ═══════════════════════════════════════════════════════════════
     $companyName = $config['companyName'] ?? ($user['companyName'] ?? ($user['email'] ?? 'Empresa'));
     $months = ['', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
     $dateStr = date('j') . ' de ' . $months[(int)date('n')] . ' de ' . date('Y') . ' a las ' . date('H:i');
 
-    $onlineAgents = count(array_filter($agents, fn($a) => ($a['status'] ?? '') === 'online'));
-    $openBreaches = count(array_filter($breaches, fn($b) => ($b['status'] ?? '') !== 'resolved'));
-    $resolvedBreaches = count($breaches) - $openBreaches;
-    $activeConsents = count(array_filter($consents, fn($c) => empty($c['revokedAt'])));
-    $sensitiveItems = array_values(array_filter($inventory, fn($i) => !empty($i['sensitive'])));
-    $highRiskItems = array_values(array_filter($inventory, fn($i) => in_array($i['risk'] ?? '', ['high', 'critical'])));
-    $trainedCount = count(array_filter($trainings, fn($t) => !empty($t['signatureData'])));
+    $onlineAgents       = count(array_filter($agents, fn($a) => ($a['status'] ?? '') === 'online'));
+    $openBreaches       = count(array_filter($breaches, fn($b) => ($b['status'] ?? '') !== 'resolved'));
+    $resolvedBreaches   = count($breaches) - $openBreaches;
+    $activeConsents     = count(array_filter($consents, fn($c) => empty($c['revokedAt'])));
+    $sensitiveItems     = array_values(array_filter($inventory, fn($i) => !empty($i['sensitive'])));
+    $childrenItems      = array_values(array_filter($inventory, fn($i) => !empty($i['childrenData'])));
+    $highRiskItems      = array_values(array_filter($inventory, fn($i) => in_array($i['risk'] ?? '', ['high', 'critical'])));
+    $trainedCount       = count(array_filter($trainings, fn($t) => !empty($t['signatureData']) || !empty($t['signerName'])));
+    $signedInvitesCount = count(array_filter($invites, fn($i) => !empty($i['signed'])));
+    $approvedDpias      = count(array_filter($dpias, fn($d) => ($d['status'] ?? '') === 'approved'));
+    $activeDpas         = count(array_filter($dpas, fn($d) => ($d['status'] ?? '') === 'active'));
+    $executedPseudo     = count(array_filter($pseudoRules, fn($r) => ($r['status'] ?? '') === 'executed' || !empty($r['executed'])));
+    $resolvedArco       = count(array_filter($arcoRequests, fn($r) => in_array($r['status'] ?? '', ['resolved','completed'], true)));
 
-    $hasDpd = !empty($config['dpdEmail']);
-    $hasApdp = !empty($config['apdpRegistered']);
-    $hasPrivacyPolicy = !empty($config['privacyPolicyUrl']);
-    $hasCookiesPolicy = !empty($config['cookiesPolicyUrl']);
-    $hasRetentionPolicy = !empty($config['dataRetentionPolicy']);
-    $hasInventory = count($inventory) > 0;
-    $hasConsents = count($consents) > 0;
-    $allConsentsActive = $hasConsents && $activeConsents === count($consents);
-    $hasDpias = count($dpias) > 0;
-    $approvedDpias = count(array_filter($dpias, fn($d) => ($d['status'] ?? '') === 'approved'));
-    $hasDpas = count($dpas) > 0;
-    $activeDpas = count(array_filter($dpas, fn($d) => ($d['status'] ?? '') === 'active'));
-    $hasBreaches = count($breaches) > 0;
-    $hasTrainings = count($trainings) > 0;
-    $allTrained = $hasTrainings && $trainedCount === count($trainings);
-    $consentForPurpose = fn($purpose) => count(array_filter($consents, fn($c) => empty($c['revokedAt']) && ($c['purpose'] ?? null) === $purpose)) > 0;
-    $hasSensitiveHandled = count($sensitiveItems) === 0 || count(array_filter($sensitiveItems, fn($si) => !$consentForPurpose($si['purpose'] ?? null))) === 0;
-    $hasHighRiskDpias = count($highRiskItems) === 0 || $hasDpias;
-    $hasIntlTransferOk = count(array_filter($dpas, fn($d) => !empty($d['internationalTransfer']) && (empty($d['transferGuarantees']) || ($d['status'] ?? '') !== 'active'))) === 0;
-    $hasPseudo = count($pseudoRules) > 0;
-    $arcoResponses = count(array_filter($auditLogs, fn($a) => ($a['action'] ?? '') === 'arco_response'));
-    $complianceLevel = $config['complianceLevel'] ?? '';
+    // Flags de cumplimiento
+    $hasDpd              = !empty($config['dpdEmail']) && !empty($config['dpdName']);
+    $hasApdp             = !empty($config['apdpRegistered']) && !empty($config['apdpRegistrationNumber']);
+    $hasPrivacyPolicy    = !empty($config['privacyPolicyUrl']);
+    $hasCookiesPolicy    = !empty($config['cookiesPolicyUrl']);
+    $hasRetentionPolicy  = !empty($config['dataRetentionPolicy']);
+    $hasInventory        = count($inventory) > 0;
+    $hasConsents         = count($consents) > 0;
+    $allConsentsActive   = $hasConsents && $activeConsents === count($consents);
+    $hasDpias            = count($dpias) > 0;
+    $hasDpas             = count($dpas) > 0;
+    $hasBreaches         = count($breaches) > 0;
+    $hasTrainings        = count($trainings) > 0;
+    $allTrained          = $hasTrainings && $trainedCount === count($trainings);
+    $hasPseudo           = count($pseudoRules) > 0;
+    $hasProcessors       = count($processors) > 0;
+    $hasTransfers        = count($transfers) > 0;
+    $hasBreachProtocol   = !empty($breachProtocol['protocolName']);
+    $hasIncidentResponse = !empty($incidentResponse['planName']);
+    $hasArco             = count($arcoRequests) > 0 || !empty($config['arcoChannelUrl']);
+    $arcoResponses       = $resolvedArco;
 
+    // ═══════════════════════════════════════════════════════════════
+    // CHECKLIST DE CUMPLIMIENTO POR ARTÍCULO
+    // ═══════════════════════════════════════════════════════════════
     $checks = [
-        ['category' => 'Identificación y Registro', 'items' => [
-            ['label' => 'Delegado de Protección de Datos (DPD) designado', 'pass' => $hasDpd, 'article' => 'Art. 28', 'severity' => 'grave', 'detail' => $hasDpd ? ('DPD: ' . ($config['dpdName'] ?? '') . ' (' . $config['dpdEmail'] . ')') : 'No se ha designado un Delegado de Protección de Datos'],
-            ['label' => 'Inscripción en Registro de la APDP', 'pass' => $hasApdp, 'article' => 'Art. 31', 'severity' => 'grave', 'detail' => $hasApdp ? 'Registrado ante la APDP' : 'No se ha registrado ante la Agencia de Protección de Datos Personales'],
-            ['label' => 'Razón social y RUT identificados', 'pass' => !empty($config['companyName']) && !empty($config['companyRut']), 'article' => 'Art. 14 ter', 'severity' => 'leve', 'detail' => !empty($config['companyRut']) ? ('RUT: ' . $config['companyRut']) : 'Falta identificación formal de la empresa'],
+        ['category' => 'Identificación del Responsable (Art. 14, 28, 31)', 'items' => [
+            ['label' => 'Razón social y RUT identificados', 'pass' => !empty($config['companyName']) && !empty($config['companyRut']), 'article' => 'Art. 14 ter', 'severity' => 'leve', 'detail' => !empty($config['companyRut']) ? ('RUT: ' . $config['companyRut']) : 'Falta RUT de la empresa'],
+            ['label' => 'Delegado de Protección de Datos (DPD) designado', 'pass' => $hasDpd, 'article' => 'Art. 28', 'severity' => 'grave', 'detail' => $hasDpd ? ($config['dpdName'] . ' (' . $config['dpdEmail'] . ')') : 'No se ha designado DPD'],
+            ['label' => 'Inscripción en Registro Nacional APDP', 'pass' => $hasApdp, 'article' => 'Art. 31', 'severity' => 'grave', 'detail' => $hasApdp ? ('Registro: ' . $config['apdpRegistrationNumber']) : 'No se ha registrado ante la APDP'],
         ]],
-        ['category' => 'Política de Privacidad', 'items' => [
-            ['label' => 'Política de privacidad publicada', 'pass' => $hasPrivacyPolicy, 'article' => 'Art. 14 ter', 'severity' => 'leve', 'detail' => $hasPrivacyPolicy ? ('URL: ' . $config['privacyPolicyUrl']) : 'No se ha publicado política de privacidad'],
-            ['label' => 'Política de cookies publicada', 'pass' => $hasCookiesPolicy, 'article' => 'Art. 14 ter', 'severity' => 'leve', 'detail' => $hasCookiesPolicy ? ('URL: ' . $config['cookiesPolicyUrl']) : 'No se ha publicado política de cookies'],
-            ['label' => 'Política de retención de datos definida', 'pass' => $hasRetentionPolicy, 'article' => 'Art. 14', 'severity' => 'leve', 'detail' => $hasRetentionPolicy ? ('Retención: ' . $config['dataRetentionPolicy']) : 'No se ha definido política de retención'],
+        ['category' => 'Transparencia y Políticas (Art. 14 ter)', 'items' => [
+            ['label' => 'Política de privacidad publicada', 'pass' => $hasPrivacyPolicy, 'article' => 'Art. 14 ter', 'severity' => 'leve', 'detail' => $hasPrivacyPolicy ? $config['privacyPolicyUrl'] : 'Sin política publicada'],
+            ['label' => 'Política de cookies publicada', 'pass' => $hasCookiesPolicy, 'article' => 'Art. 14 ter', 'severity' => 'leve', 'detail' => $hasCookiesPolicy ? $config['cookiesPolicyUrl'] : 'Sin política de cookies'],
+            ['label' => 'Política de retención de datos definida', 'pass' => $hasRetentionPolicy, 'article' => 'Art. 14', 'severity' => 'leve', 'detail' => $hasRetentionPolicy ? 'Definida' : 'No definida'],
         ]],
-        ['category' => 'Base de Licitud y Consentimiento', 'items' => [
-            ['label' => 'Consentimientos registrados para datos tratados', 'pass' => $allConsentsActive, 'article' => 'Art. 12', 'severity' => 'grave', 'detail' => $hasConsents ? ($activeConsents . ' consentimiento(s) activo(s) de ' . count($consents) . ' total') : 'No existen consentimientos registrados'],
-            ['label' => 'Todos los datos sensibles con base legal', 'pass' => $hasSensitiveHandled, 'article' => 'Art. 16', 'severity' => 'gravísima', 'detail' => $hasSensitiveHandled ? 'Todos los datos sensibles tienen base legal asociada' : (count(array_filter($sensitiveItems, fn($si) => !$consentForPurpose($si['purpose'] ?? null))) . ' dato(s) sensible(s) sin base legal')],
-            ['label' => 'Datos de menores con consentimiento parental', 'pass' => count(array_filter($inventory, fn($i) => ($i['category'] ?? '') === 'children')) === 0 || $consentForPurpose('children_data'), 'article' => 'Art. 16 quáter', 'severity' => 'gravísima', 'detail' => 'Consentimiento de padres/tutores para menores de 14 años'],
+        ['category' => 'Base de Licitud y Consentimiento (Art. 12-13)', 'items' => [
+            ['label' => 'Consentimientos registrados y trazables', 'pass' => $allConsentsActive, 'article' => 'Art. 12', 'severity' => 'grave', 'detail' => $hasConsents ? ($activeConsents . ' activos de ' . count($consents)) : 'Sin consentimientos'],
+            ['label' => 'Datos sensibles con base legal específica', 'pass' => count($sensitiveItems) === 0 || $activeConsents > 0, 'article' => 'Art. 16', 'severity' => 'gravísima', 'detail' => count($sensitiveItems) . ' items sensibles'],
+            ['label' => 'Datos de niños con consentimiento parental', 'pass' => count($childrenItems) === 0 || $activeConsents > 0, 'article' => 'Art. 17', 'severity' => 'gravísima', 'detail' => count($childrenItems) . ' items con datos de menores'],
         ]],
-        ['category' => 'Inventario de Tratamiento (RAT)', 'items' => [
-            ['label' => 'Inventario de datos personales registrado', 'pass' => $hasInventory, 'article' => 'Art. 14', 'severity' => 'grave', 'detail' => $hasInventory ? (count($inventory) . ' item(s) en inventario') : 'No existe registro de actividades de tratamiento'],
-            ['label' => 'Categorías de datos documentadas', 'pass' => !$hasInventory || count(array_filter($inventory, fn($i) => empty($i['category']))) === 0, 'article' => 'Art. 14', 'severity' => 'leve', 'detail' => 'Cada item debe tener categoría asignada'],
-            ['label' => 'Finalidades del tratamiento definidas', 'pass' => !$hasInventory || count(array_filter($inventory, fn($i) => empty($i['purpose']))) === 0, 'article' => 'Art. 3 literal b)', 'severity' => 'grave', 'detail' => 'Finalidad específica documentada para cada tratamiento'],
+        ['category' => 'Registro de Actividades de Tratamiento - RAT (Art. 14)', 'items' => [
+            ['label' => 'Inventario registrado', 'pass' => $hasInventory, 'article' => 'Art. 14', 'severity' => 'grave', 'detail' => count($inventory) . ' actividades'],
+            ['label' => 'Todas con finalidad definida', 'pass' => !$hasInventory || count(array_filter($inventory, fn($i) => empty($i['purpose']))) === 0, 'article' => 'Art. 3.b', 'severity' => 'grave', 'detail' => 'Verificar campo finalidad'],
+            ['label' => 'Todas con base legal definida', 'pass' => !$hasInventory || count(array_filter($inventory, fn($i) => empty($i['legalBasis']))) === 0, 'article' => 'Art. 14.1.b', 'severity' => 'grave', 'detail' => 'Verificar campo base legal'],
+            ['label' => 'Todas con categorías de datos', 'pass' => !$hasInventory || count(array_filter($inventory, fn($i) => empty($i['dataCategories']))) === 0, 'article' => 'Art. 14.1.c', 'severity' => 'grave', 'detail' => 'Verificar categorías'],
+            ['label' => 'Todas con plazo de retención', 'pass' => !$hasInventory || count(array_filter($inventory, fn($i) => empty($i['retentionDays']))) === 0, 'article' => 'Art. 14.1.e', 'severity' => 'grave', 'detail' => 'Verificar retención'],
         ]],
-        ['category' => 'Medidas de Seguridad', 'items' => [
-            ['label' => 'Nivel de seguridad adecuado al riesgo', 'pass' => $complianceLevel !== '' && $complianceLevel !== 'basic', 'article' => 'Art. 14 quinquies', 'severity' => 'grave', 'detail' => $complianceLevel !== '' ? ('Nivel: ' . $complianceLevel) : 'No se ha evaluado el nivel de seguridad'],
-            ['label' => 'Cifrado/seudonimización implementado', 'pass' => $hasPseudo, 'article' => 'Art. 14 quinquies', 'severity' => 'grave', 'detail' => $hasPseudo ? (count($pseudoRules) . ' regla(s) de seudonimización') : 'No se han configurado reglas de seudonimización'],
-            ['label' => 'Monitoreo de seguridad activo', 'pass' => $onlineAgents > 0, 'article' => 'Art. 14 quinquies', 'severity' => 'grave', 'detail' => $onlineAgents > 0 ? ($onlineAgents . ' agente(s) en línea · ' . count($hostEvents) . ' eventos de host · ' . count($fileEvents) . ' eventos de archivo · ' . count($dbLogs) . ' logs de BBDD') : 'No hay agentes de monitoreo activos'],
+        ['category' => 'Medidas de Seguridad (Art. 25)', 'items' => [
+            ['label' => 'Seudonimización / cifrado implementado', 'pass' => $hasPseudo, 'article' => 'Art. 30', 'severity' => 'grave', 'detail' => $executedPseudo . '/' . count($pseudoRules) . ' reglas ejecutadas'],
+            ['label' => 'Monitoreo activo de endpoints', 'pass' => $onlineAgents > 0, 'article' => 'Art. 25', 'severity' => 'grave', 'detail' => $onlineAgents . '/' . count($agents) . ' agentes en línea'],
+            ['label' => 'Registro de eventos de seguridad', 'pass' => (count($hostEvents) + count($fileEvents) + count($dbLogs)) > 0, 'article' => 'Art. 25', 'severity' => 'leve', 'detail' => 'Host: ' . count($hostEvents) . ' · Archivos: ' . count($fileEvents) . ' · BD: ' . count($dbLogs)],
         ]],
-        ['category' => 'Brechas de Seguridad', 'items' => [
-            ['label' => 'Protocolo de notificación de brechas', 'pass' => !$hasBreaches || $resolvedBreaches > 0, 'article' => 'Art. 14 sexies', 'severity' => 'gravísima', 'detail' => $hasBreaches ? ($resolvedBreaches . ' brecha(s) resuelta(s) de ' . count($breaches) . ' total') : 'Sin incidentes registrados'],
-            ['label' => 'Notificación a APDP dentro de plazo', 'pass' => count(array_filter($breaches, fn($b) => ($b['status'] ?? '') !== 'resolved' && empty($b['notifiedAPDP']))) === 0, 'article' => 'Art. 14 sexies', 'severity' => 'gravísima', 'detail' => count(array_filter($breaches, fn($b) => ($b['status'] ?? '') !== 'resolved' && empty($b['notifiedAPDP']))) > 0 ? (count(array_filter($breaches, fn($b) => ($b['status'] ?? '') !== 'resolved' && empty($b['notifiedAPDP']))) . ' brecha(s) abierta(s) sin notificar a APDP') : 'Todas las brechas notificadas'],
+        ['category' => 'Brechas de Seguridad (Art. 26)', 'items' => [
+            ['label' => 'Protocolo de notificación de brechas documentado', 'pass' => $hasBreachProtocol, 'article' => 'Art. 26', 'severity' => 'gravísima', 'detail' => $hasBreachProtocol ? $breachProtocol['protocolName'] : 'Sin protocolo documentado'],
+            ['label' => 'Brechas registradas y gestionadas', 'pass' => !$hasBreaches || $resolvedBreaches > 0, 'article' => 'Art. 26', 'severity' => 'gravísima', 'detail' => $openBreaches . ' abiertas / ' . $resolvedBreaches . ' resueltas'],
+            ['label' => 'Notificación a APDP sin dilaciones', 'pass' => count(array_filter($breaches, fn($b) => ($b['status'] ?? '') !== 'resolved' && empty($b['notifiedAPDP']))) === 0, 'article' => 'Art. 26', 'severity' => 'gravísima', 'detail' => 'Revisar notificaciones pendientes'],
         ]],
-        ['category' => 'Evaluación de Impacto (DPIA)', 'items' => [
-            ['label' => 'DPIA realizadas para tratamientos de alto riesgo', 'pass' => $hasHighRiskDpias, 'article' => 'Art. 14 quater', 'severity' => 'grave', 'detail' => $hasDpias ? ($approvedDpias . ' DPIA aprobada(s) de ' . count($dpias) . ' total') : (count($highRiskItems) > 0 ? 'Existen items de alto riesgo sin DPIA' : 'No se requiere DPIA actualmente')],
-            ['label' => 'DPIA aprobadas para datos sensibles', 'pass' => count($sensitiveItems) === 0 || count(array_filter($dpias, fn($d) => !empty($d['sensitiveData']) && ($d['status'] ?? '') === 'approved')) > 0, 'article' => 'Art. 14 quater', 'severity' => 'grave', 'detail' => 'Evaluación de impacto para tratamientos con datos sensibles'],
+        ['category' => 'Evaluación de Impacto - DPIA (Art. 14 quater)', 'items' => [
+            ['label' => 'DPIA realizadas para alto riesgo', 'pass' => count($highRiskItems) === 0 || $hasDpias, 'article' => 'Art. 14 quater', 'severity' => 'grave', 'detail' => $hasDpias ? ($approvedDpias . ' aprobadas de ' . count($dpias)) : 'Sin DPIA'],
+            ['label' => 'DPIA aprobadas para datos sensibles', 'pass' => count($sensitiveItems) === 0 || count(array_filter($dpias, fn($d) => ($d['status'] ?? '') === 'approved')) > 0, 'article' => 'Art. 14 quater', 'severity' => 'grave', 'detail' => 'Verificar cobertura'],
         ]],
-        ['category' => 'Acuerdos con Encargados (DPA)', 'items' => [
-            ['label' => 'Acuerdos con encargados vigentes', 'pass' => !$hasDpas || $activeDpas > 0, 'article' => 'Art. 29', 'severity' => 'grave', 'detail' => $hasDpas ? ($activeDpas . ' DPA activo(s) de ' . count($dpas) . ' total') : 'No hay acuerdos con encargados registrados'],
-            ['label' => 'Sin transferencias internacionales sin garantías', 'pass' => $hasIntlTransferOk, 'article' => 'Art. 27', 'severity' => 'gravísima', 'detail' => $hasIntlTransferOk ? 'Transferencias internacionales con garantías adecuadas' : 'Existe transferencia internacional sin garantías documentadas'],
+        ['category' => 'Encargados del Tratamiento (Art. 15 bis)', 'items' => [
+            ['label' => 'Registro de encargados', 'pass' => $hasProcessors, 'article' => 'Art. 15 bis', 'severity' => 'grave', 'detail' => count($processors) . ' encargados'],
+            ['label' => 'Contratos DPA firmados', 'pass' => count(array_filter($processors, fn($p) => ($p['hasContract'] ?? '') === 'si')) > 0 || !$hasProcessors, 'article' => 'Art. 15 bis', 'severity' => 'grave', 'detail' => 'Verificar contratos'],
         ]],
-        ['category' => 'Capacitación', 'items' => [
-            ['label' => 'Programa de capacitación implementado', 'pass' => $hasTrainings, 'article' => 'Art. 28 letra c)', 'severity' => 'leve', 'detail' => $hasTrainings ? (count($trainings) . ' capacitación(es) registrada(s)') : 'No se ha implementado programa de capacitación'],
-            ['label' => 'Personal capacitado con firma', 'pass' => $allTrained, 'article' => 'Art. 28 letra c)', 'severity' => 'leve', 'detail' => $hasTrainings ? ($trainedCount . '/' . count($trainings) . ' colaborador(es) con firma') : 'Sin registros de capacitación'],
+        ['category' => 'Transferencias Internacionales (Art. 21, 27)', 'items' => [
+            ['label' => 'Transferencias registradas con garantías', 'pass' => !$hasTransfers || count(array_filter($transfers, fn($t) => !empty($t['mechanism']))) > 0, 'article' => 'Art. 21', 'severity' => 'gravísima', 'detail' => count($transfers) . ' transferencias registradas'],
         ]],
-        ['category' => 'Derechos ARCO', 'items' => [
-            ['label' => 'Mecanismo para ejercer derechos ARCO', 'pass' => $hasPrivacyPolicy, 'article' => 'Art. 4-9', 'severity' => 'leve', 'detail' => $hasPrivacyPolicy ? 'Política de privacidad publicada (debe incluir mecanismo ARCO)' : 'Sin mecanismo documentado para derechos ARCO'],
-            ['label' => 'Registro de solicitudes ARCO', 'pass' => $arcoResponses > 0, 'article' => 'Art. 11', 'severity' => 'leve', 'detail' => $arcoResponses > 0 ? ($arcoResponses . ' respuesta(s) ARCO registrada(s)') : 'Sin solicitudes ARCO registradas'],
+        ['category' => 'Derechos ARCO (Art. 8-13)', 'items' => [
+            ['label' => 'Canal operativo para derechos ARCO', 'pass' => $hasArco, 'article' => 'Art. 8-13', 'severity' => 'leve', 'detail' => $hasArco ? 'Canal activo' : 'Sin canal configurado'],
+            ['label' => 'Solicitudes ARCO respondidas en plazo', 'pass' => count($arcoRequests) === 0 || $resolvedArco > 0, 'article' => 'Art. 11', 'severity' => 'leve', 'detail' => $resolvedArco . '/' . count($arcoRequests) . ' respondidas'],
+        ]],
+        ['category' => 'Capacitación (Art. 28 c)', 'items' => [
+            ['label' => 'Programa de capacitación implementado', 'pass' => $hasTrainings, 'article' => 'Art. 28 c', 'severity' => 'leve', 'detail' => count($trainings) . ' capacitaciones'],
+            ['label' => 'Personal capacitado con firma digital', 'pass' => $allTrained, 'article' => 'Art. 28 c', 'severity' => 'leve', 'detail' => $trainedCount . '/' . count($trainings) . ' firmas'],
+        ]],
+        ['category' => 'Plan de Respuesta a Incidentes (Art. 25)', 'items' => [
+            ['label' => 'Plan documentado', 'pass' => $hasIncidentResponse, 'article' => 'Art. 25', 'severity' => 'grave', 'detail' => $hasIncidentResponse ? $incidentResponse['planName'] : 'Sin plan documentado'],
         ]],
     ];
 
     $totalChecks = 0; $passedChecks = 0;
-    foreach ($checks as $cat) {
-        foreach ($cat['items'] as $it) { $totalChecks++; if ($it['pass']) $passedChecks++; }
-    }
+    foreach ($checks as $cat) foreach ($cat['items'] as $it) { $totalChecks++; if ($it['pass']) $passedChecks++; }
     $failedBySev = ['gravísima' => 0, 'grave' => 0, 'leve' => 0];
     foreach ($checks as $cat) foreach ($cat['items'] as $it) if (!$it['pass']) $failedBySev[$it['severity']]++;
     $passRate = $totalChecks > 0 ? (int)round($passedChecks / $totalChecks * 100) : 0;
 
-    // ====== BUILD HTML (diseño portado de backend-node PDFKit) ======
+    // Etiquetas legibles
+    $labelMap = [
+        'identificacion' => 'Identificación', 'contacto' => 'Contacto', 'financieros' => 'Financieros',
+        'laborales' => 'Laborales', 'salud' => 'Salud', 'biometricos' => 'Biométricos',
+        'geneticos' => 'Genéticos', 'ninos' => 'Niños/Adolescentes', 'navegacion' => 'Navegación',
+        'ubicacion' => 'Ubicación geográfica', 'comportamiento' => 'Perfilado', 'antecedentes' => 'Antecedentes penales',
+        'clientes' => 'Clientes', 'empleados' => 'Empleados', 'proveedores' => 'Proveedores',
+        'postulantes' => 'Postulantes', 'pacientes' => 'Pacientes', 'visitantes' => 'Visitantes',
+        'ex_empleados' => 'Ex-empleados', 'publico_general' => 'Público general',
+        'consentimiento' => 'Consentimiento (Art. 12)', 'ejecucion_contrato' => 'Contrato (Art. 13.1.a)',
+        'obligacion_legal' => 'Obligación legal (Art. 13.1.b)', 'interes_vital' => 'Interés vital (Art. 13.1.c)',
+        'interes_publico' => 'Interés público (Art. 13.1.d)', 'interes_legitimo' => 'Interés legítimo (Art. 13.1.e)',
+        'low' => 'Bajo', 'medium' => 'Medio', 'high' => 'Alto', 'critical' => 'Crítico',
+        'continua' => 'Continua (24/7)', 'diaria' => 'Diaria', 'semanal' => 'Semanal',
+        'mensual' => 'Mensual', 'ocasional' => 'Ocasional', 'unica' => 'Única',
+        'interno_solo' => 'Solo personal interno', 'interno_externo' => 'Interno y proveedores',
+        'publico' => 'Acceso público', 'terceros' => 'Terceros autorizados',
+        'cifrado_reposo' => 'Cifrado AES-256', 'cifrado_transito' => 'TLS',
+        'pseudonimizacion' => 'Seudonimización', 'acceso_controlado' => 'RBAC',
+        'mfa' => 'MFA', 'auditoria_accesos' => 'Logs de auditoría', 'backup_cifrado' => 'Backups cifrados',
+        'acceso' => 'Acceso', 'rectificacion' => 'Rectificación', 'cancelacion' => 'Cancelación',
+        'oposicion' => 'Oposición', 'portabilidad' => 'Portabilidad', 'supresion' => 'Supresión', 'bloqueo' => 'Bloqueo',
+        'pending' => 'Pendiente', 'in_progress' => 'En proceso', 'completed' => 'Completada',
+        'resolved' => 'Resuelta', 'rejected' => 'Rechazada',
+        'approved' => 'Aprobada', 'active' => 'Activo', 'si' => 'Sí', 'no' => 'No',
+        'adequacy' => 'Decisión de adecuación', 'scc' => 'Cláusulas contractuales tipo',
+        'bcr' => 'Normas corporativas vinculantes', 'codes' => 'Códigos de conducta',
+        'certification' => 'Certificación', 'consent' => 'Consentimiento explícito',
+        'contract' => 'Ejecución de contrato', 'public_interest' => 'Interés público',
+        'legal_claim' => 'Reclamaciones legales', 'vital_interest' => 'Interés vital',
+        'tokenizacion' => 'Tokenización', 'hashing' => 'Hashing', 'cifrado_reversible' => 'Cifrado reversible',
+        'masking' => 'Enmascaramiento', 'format_preserving' => 'Cifrado FPE',
+        'differential_privacy' => 'Privacidad diferencial',
+        'todos_identificadores' => 'Todos los identificadores', 'solo_rut' => 'Solo RUT',
+        'solo_email' => 'Solo emails', 'solo_nombres' => 'Solo nombres',
+    ];
+    $L = fn($v) => $labelMap[strtolower((string)$v)] ?? ucfirst((string)$v);
+
+    // URL validation
+    $privacyOk = url_accessible($config['privacyPolicyUrl'] ?? '');
+    $cookiesOk = url_accessible($config['cookiesPolicyUrl'] ?? '');
+
+    // ═══════════════════════════════════════════════════════════════
+    // CSS
+    // ═══════════════════════════════════════════════════════════════
     $css = "
-        @page{margin:0}
-        body{font-family:'DejaVu Sans',Helvetica,Arial,sans-serif;margin:0;padding:0;color:#1a1a1a;font-size:9px}
-        .footer-fixed{position:fixed;bottom:0;left:0;right:0;height:22px;background:#f5f5f5;border-top:0.5px solid #cccccc;color:#999999;font-size:7px;padding:6px 45px 0 45px}
-        .cover{page-break-after:always;padding:0}
-        .cover-topline{height:2px;background:#000000;width:100%}
-        .cover-body{padding:0 45px;text-align:center}
-        .cover-label{color:#777777;font-size:9px;margin-top:118px}
-        .cover-law{color:#777777;font-size:8px;margin-top:6px}
-        .cover-sep{border-top:0.5px solid #000000;margin:26px 60px 0 60px}
-        .cover-company{color:#1a1a1a;font-size:14px;font-weight:bold;margin-top:28px;text-transform:uppercase}
-        .cover-title{color:#1a1a1a;font-size:20px;font-weight:bold;margin-top:14px}
-        .cover-sub{color:#555555;font-size:10px;margin-top:24px}
-        .cover-sep2{border-top:0.5px solid #000000;margin:24px 60px 0 60px}
-        .cover-box{background:#f5f5f5;border:0.5px solid #bbbbbb;margin:28px 60px 0 60px;padding:8px 10px;text-align:center}
-        .cover-box .lbl{color:#555555;font-size:8px}
-        .cover-box .val{color:#1a1a1a;font-size:10px;font-weight:bold;margin-top:3px}
-        .cover-box2{background:#f5f5f5;border:0.5px solid #bbbbbb;margin:14px 60px 0 60px;padding:8px 10px;text-align:center;color:#1a1a1a;font-size:8px;font-weight:bold}
-        .page{page-break-before:always}
-        .page-band{background:#000000;padding:9px 45px 10px 45px}
-        .band-sub{color:#ffffff;font-size:8px}
-        .band-title{color:#ffffff;font-size:10px;font-weight:bold;margin-top:2px}
-        .content{padding:20px 45px 40px 45px}
-        .sec-title{border-collapse:collapse;margin-top:14px;width:100%}
-        .sec-bar{width:4px;background:#000000;padding:0}
-        .sec-num{width:26px;color:#000000;font-size:9px;font-weight:bold;padding:2px 0 2px 10px;vertical-align:top}
-        .sec-text{color:#1a1a1a;font-size:14px;font-weight:bold;padding:0 0 0 4px}
-        .sec-rule{border-bottom:0.5px solid #bbbbbb;margin:6px 0 10px 0}
-        .fields{border-collapse:collapse;margin-top:4px}
-        .f-label{color:#555555;font-size:8px;width:125px;padding:4px 0}
-        .f-value{color:#1a1a1a;font-size:9px;font-weight:bold;padding:4px 0}
-        .warn{color:#4a4a4a;font-size:9px;font-weight:bold;margin-top:6px}
-        .note{color:#1a1a1a;font-size:8px;margin-top:4px;line-height:1.5}
-        .body-text{color:#1a1a1a;font-size:9px;line-height:1.6;margin-top:6px}
-        .kpi{color:#1a1a1a;font-size:9px;line-height:1.9}
-        .cat-header{background:#f0f0f0;border:0.3px solid #bbbbbb;color:#1a1a1a;font-size:9px;font-weight:bold;padding:5px 8px;margin-top:12px}
-        .chk{margin:8px 0 0 4px;border-bottom:0.3px solid #e0e0e0;padding-bottom:6px}
-        .chk-row{width:100%;border-collapse:collapse}
-        .chk-mark{width:16px;font-size:10px;font-weight:bold;vertical-align:top}
-        .chk-pass{color:#166534}
-        .chk-fail{color:#4a4a4a}
-        .chk-label{color:#1a1a1a;font-size:8px}
-        .chk-art{color:#555555;font-size:7px;text-align:right;width:60px;vertical-align:top}
-        .chk-detail{color:#555555;font-size:7px;padding-left:16px;margin-top:2px}
-        .chk-sev{color:#4a4a4a;font-size:7px;font-weight:bold;padding-left:16px;margin-top:2px}
-        .data{width:100%;border-collapse:collapse;margin-top:8px}
-        .data th{background:#1a1a1a;color:#777777;font-size:7.5px;font-weight:bold;text-align:left;padding:7px 8px}
-        .data td{color:#1a1a1a;font-size:7.5px;padding:5px 8px}
-        .data tr.alt td{background:#f1f5f9}
-        .art-note{color:#555555;font-size:8px;line-height:1.5;margin-top:2px}
-        .rec{margin-top:10px}
-        .rec-prio{color:#4a4a4a;font-size:8px;font-weight:bold}
-        .rec-prio.media{color:#555555}
-        .rec-text{color:#1a1a1a;font-size:8.5px;line-height:1.5}
-        .rec-art{color:#555555;font-size:7px}
-        .close-rule{border-top:0.5px solid #bbbbbb;margin-top:24px}
-        .close-center{color:#555555;font-size:8px;text-align:center;margin-top:12px}
-        .close-muted{color:#777777;font-size:7.5px;text-align:center;margin-top:4px}
+        @page { margin: 0; }
+        body { font-family: 'DejaVu Sans', Helvetica, Arial, sans-serif; margin: 0; padding: 0; color: #1a1a1a; font-size: 9px; line-height: 1.5; }
+        .footer-fixed { position: fixed; bottom: 0; left: 0; right: 0; height: 22px; background: #f5f5f5; border-top: 0.5px solid #cccccc; color: #999999; font-size: 7px; padding: 6px 45px 0 45px; }
+        .cover { page-break-after: always; padding: 0; }
+        .cover-topline { height: 2px; background: #000000; width: 100%; }
+        .cover-body { padding: 0 45px; text-align: center; }
+        .cover-label { color: #777777; font-size: 9px; margin-top: 118px; }
+        .cover-law { color: #777777; font-size: 8px; margin-top: 6px; }
+        .cover-sep { border-top: 0.5px solid #000000; margin: 26px 60px 0 60px; }
+        .cover-company { color: #1a1a1a; font-size: 14px; font-weight: bold; margin-top: 28px; text-transform: uppercase; }
+        .cover-title { color: #1a1a1a; font-size: 20px; font-weight: bold; margin-top: 14px; }
+        .cover-sub { color: #555555; font-size: 10px; margin-top: 24px; }
+        .cover-sep2 { border-top: 0.5px solid #000000; margin: 24px 60px 0 60px; }
+        .cover-box { background: #f5f5f5; border: 0.5px solid #bbbbbb; margin: 28px 60px 0 60px; padding: 8px 10px; text-align: center; }
+        .cover-box .lbl { color: #555555; font-size: 8px; }
+        .cover-box .val { color: #1a1a1a; font-size: 10px; font-weight: bold; margin-top: 3px; }
+        .cover-box2 { background: #f5f5f5; border: 0.5px solid #bbbbbb; margin: 14px 60px 0 60px; padding: 8px 10px; text-align: center; color: #1a1a1a; font-size: 8px; font-weight: bold; }
+        .page { page-break-before: always; }
+        .page-band { background: #000000; padding: 9px 45px 10px 45px; }
+        .band-sub { color: #ffffff; font-size: 8px; }
+        .band-title { color: #ffffff; font-size: 10px; font-weight: bold; margin-top: 2px; }
+        .content { padding: 20px 45px 40px 45px; }
+        .toc-item { padding: 4px 0; border-bottom: 0.3px dotted #cccccc; }
+        .toc-num { color: #555555; font-size: 9px; width: 40px; display: inline-block; }
+        .toc-text { color: #1a1a1a; font-size: 10px; }
+        .sec-title { border-collapse: collapse; margin-top: 14px; width: 100%; }
+        .sec-bar { width: 4px; background: #000000; padding: 0; }
+        .sec-num { width: 26px; color: #000000; font-size: 9px; font-weight: bold; padding: 2px 0 2px 10px; vertical-align: top; }
+        .sec-text { color: #1a1a1a; font-size: 14px; font-weight: bold; padding: 0 0 0 4px; }
+        .sec-rule { border-bottom: 0.5px solid #bbbbbb; margin: 6px 0 10px 0; }
+        .fields { border-collapse: collapse; margin-top: 4px; width: 100%; }
+        .f-label { color: #555555; font-size: 8px; width: 145px; padding: 4px 0; vertical-align: top; }
+        .f-value { color: #1a1a1a; font-size: 9px; padding: 4px 0; }
+        .warn { color: #4a4a4a; font-size: 9px; font-weight: bold; margin-top: 6px; }
+        .note { color: #1a1a1a; font-size: 8px; margin-top: 4px; line-height: 1.5; }
+        .body-text { color: #1a1a1a; font-size: 9px; line-height: 1.6; margin-top: 6px; }
+        .kpi-box { width: 100%; border-collapse: collapse; margin-top: 8px; }
+        .kpi-box td { padding: 6px 8px; border: 0.3px solid #e0e0e0; vertical-align: top; }
+        .kpi-label { color: #555555; font-size: 8px; }
+        .kpi-value { color: #1a1a1a; font-size: 14px; font-weight: bold; }
+        .cat-header { background: #f0f0f0; border: 0.3px solid #bbbbbb; color: #1a1a1a; font-size: 10px; font-weight: bold; padding: 6px 10px; margin-top: 14px; }
+        .chk { margin: 6px 0 0 4px; border-bottom: 0.3px solid #e0e0e0; padding-bottom: 5px; }
+        .chk-row { width: 100%; border-collapse: collapse; }
+        .chk-mark { width: 16px; font-size: 10px; font-weight: bold; vertical-align: top; }
+        .chk-pass { color: #166534; }
+        .chk-fail { color: #991b1b; }
+        .chk-label { color: #1a1a1a; font-size: 9px; }
+        .chk-art { color: #555555; font-size: 7px; text-align: right; width: 80px; vertical-align: top; }
+        .chk-detail { color: #555555; font-size: 7.5px; padding-left: 16px; margin-top: 2px; }
+        .chk-sev { color: #991b1b; font-size: 7px; font-weight: bold; padding-left: 16px; margin-top: 2px; }
+        .data { width: 100%; border-collapse: collapse; margin-top: 8px; }
+        .data th { background: #1a1a1a; color: #cccccc; font-size: 7.5px; font-weight: bold; text-align: left; padding: 6px 8px; }
+        .data td { color: #1a1a1a; font-size: 7.5px; padding: 5px 8px; border-bottom: 0.3px solid #e0e0e0; vertical-align: top; }
+        .data tr.alt td { background: #f1f5f9; }
+        .art-note { color: #555555; font-size: 8px; line-height: 1.5; margin-top: 4px; margin-bottom: 6px; padding: 6px 8px; background: #fafafa; border-left: 3px solid #bbbbbb; }
+        .badge { display: inline-block; padding: 1px 6px; font-size: 7px; font-weight: bold; border: 0.3px solid #000; }
+        .badge-success { color: #166534; background: #f0fdf4; }
+        .badge-warning { color: #4a4a4a; background: #fefce8; }
+        .badge-danger { color: #991b1b; background: #fef2f2; }
+        .ficha-header { background: #f5f5f5; padding: 8px 12px; border: 0.5px solid #bbbbbb; margin-bottom: 10px; }
+        .ficha-title { color: #1a1a1a; font-size: 11px; font-weight: bold; }
+        .ficha-sub { color: #555555; font-size: 8px; margin-top: 2px; }
+        .rec { margin-top: 10px; }
+        .rec-prio { color: #991b1b; font-size: 8px; font-weight: bold; }
+        .rec-prio.media { color: #555555; }
+        .rec-text { color: #1a1a1a; font-size: 9px; line-height: 1.5; }
+        .rec-art { color: #555555; font-size: 7px; }
+        .close-rule { border-top: 0.5px solid #bbbbbb; margin-top: 24px; }
+        .close-center { color: #555555; font-size: 8px; text-align: center; margin-top: 12px; }
+        .signature-box { width: 45%; border-top: 1px solid #000; padding-top: 6px; font-size: 8px; text-align: center; vertical-align: bottom; height: 80px; }
+        .score-box { text-align: center; padding: 12px; margin: 12px 0; border: 1px solid #000; }
+        .score-value { font-size: 36px; font-weight: bold; line-height: 1; }
+        .score-label { font-size: 10px; color: #555555; margin-top: 4px; }
     ";
 
     $html = "<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'><title>" . h_($reportTitle) . "</title><style>$css</style></head><body>";
-    $html .= '<div class="footer-fixed">Ley 21.719 · Reporte de Cumplimiento</div>';
+    $html .= '<div class="footer-fixed">Ley 21.719 · Informe Oficial de Cumplimiento · ' . h_($companyName) . '</div>';
 
-    // ====== PORTADA ======
+    // ═══════════════════════════════════════════════════════════════
+    // PORTADA
+    // ═══════════════════════════════════════════════════════════════
     $html .= '<div class="cover"><div class="cover-topline"></div><div class="cover-body">';
     $html .= '<div class="cover-label">REPÚBLICA DE CHILE</div>';
     $html .= '<div class="cover-law">Ley 21.719 - Protección de Datos Personales</div>';
     $html .= '<div class="cover-sep"></div>';
     $html .= '<div class="cover-company">' . h_($companyName) . '</div>';
     $html .= '<div class="cover-title">' . h_($reportTitle) . '</div>';
-    $html .= '<div class="cover-sub">Reporte de Cumplimiento</div>';
+    $html .= '<div class="cover-sub">Documento oficial de cumplimiento normativo</div>';
     $html .= '<div class="cover-sep2"></div>';
     $html .= '<div class="cover-box"><div class="lbl">FECHA DE EMISIÓN</div><div class="val">' . h_($dateStr) . '</div></div>';
-    $html .= '<div class="cover-box2">CLASIFICACIÓN: CONFIDENCIAL</div>';
+    $html .= '<div class="cover-box2">CLASIFICACIÓN: CONFIDENCIAL · DOCUMENTO AUDITABLE</div>';
     $html .= '</div></div>';
 
-    // ====== IDENTIFICACIÓN DEL RESPONSABLE ======
-    $levelLabel = $complianceLevel !== '' ? ucfirst($complianceLevel) : 'No evaluado';
-    $html .= pdf_page_band('Identificación del Responsable del Tratamiento') . '<div class="content">';
-    $html .= pdf_section_title(1, 'Datos de la Organización');
-    $html .= pdf_fields([
-        ['Razón Social', $config['companyName'] ?? '—'],
-        ['RUT', $config['companyRut'] ?? '—'],
-        ['Giro / Actividad', $config['companyActivity'] ?? '—'],
-        ['Domicilio', $config['companyAddress'] ?? '—'],
-        ['Email de Contacto', $user['email'] ?? '—'],
-        ['Nivel de Cumplimiento', $levelLabel],
-    ]);
-    $html .= pdf_section_title(2, 'Delegado de Protección de Datos (DPD)');
+    // ═══════════════════════════════════════════════════════════════
+    // ÍNDICE
+    // ═══════════════════════════════════════════════════════════════
+    $html .= '<div class="page"></div>' . pdf_page_band('Índice del Documento') . '<div class="content">';
+    $html .= pdf_section_title(1, 'Contenido');
+    $toc = [
+        ['2', 'Identificación del Responsable del Tratamiento'],
+        ['3', 'Resumen Ejecutivo de Cumplimiento'],
+        ['4', 'Checklist Detallado por Obligación Legal'],
+        ['5', 'Registro de Actividades de Tratamiento (RAT)'],
+        ['6', 'Base de Licitud y Consentimiento'],
+        ['7', 'Evaluación de Impacto (DPIA)'],
+        ['8', 'Encargados del Tratamiento'],
+        ['9', 'Transferencias Internacionales'],
+        ['10', 'Medidas de Seguridad y Seudonimización'],
+        ['11', 'Gestión de Brechas de Seguridad'],
+        ['12', 'Plan de Respuesta a Incidentes'],
+        ['13', 'Derechos ARCO'],
+        ['14', 'Programa de Capacitación'],
+        ['15', 'Evidencia Técnica de Monitoreo'],
+        ['16', 'Validaciones Externas'],
+        ['17', 'Recomendaciones y Plan de Acción'],
+        ['18', 'Marco Legal Aplicable'],
+        ['19', 'Declaración y Firma'],
+    ];
+    foreach ($toc as [$n, $t]) {
+        $html .= '<div class="toc-item"><span class="toc-num">' . h_($n) . '.</span><span class="toc-text">' . h_($t) . '</span></div>';
+    }
+    $html .= '</div>';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 2. IDENTIFICACIÓN DEL RESPONSABLE
+    // ═══════════════════════════════════════════════════════════════
+    $html .= '<div class="page"></div>' . pdf_page_band('Identificación del Responsable del Tratamiento') . '<div class="content">';
+    $html .= pdf_section_title(2, 'Datos de la Organización');
+
+    $html .= '<table class="kpi-box"><tr>';
+    $html .= '<td width="50%"><div class="kpi-label">Razón Social</div><div style="font-size:10px;font-weight:bold;margin-top:4px">' . h_($config['companyName'] ?? '—') . '</div></td>';
+    $html .= '<td width="50%"><div class="kpi-label">RUT Empresa</div><div style="font-size:10px;font-weight:bold;margin-top:4px">' . h_($config['companyRut'] ?? 'No especificado') . '</div></td>';
+    $html .= '</tr><tr>';
+    $html .= '<td><div class="kpi-label">Email de contacto</div><div style="font-size:9px;margin-top:4px">' . h_($user['email'] ?? '—') . '</div></td>';
+    $html .= '<td><div class="kpi-label">Nivel de Cumplimiento declarado</div><div style="font-size:10px;font-weight:bold;margin-top:4px">' . h_(ucfirst($config['complianceLevel'] ?? 'No evaluado')) . '</div></td>';
+    $html .= '</tr></table>';
+
+    $html .= pdf_section_title(3, 'Delegado de Protección de Datos (DPD)');
     if ($hasDpd) {
         $html .= pdf_fields([
-            ['Nombre', $config['dpdName'] ?? '—'],
-            ['Email', $config['dpdEmail'] ?? '—'],
+            ['Nombre completo', $config['dpdName']],
+            ['Email', $config['dpdEmail']],
             ['Teléfono', $config['dpdPhone'] ?? '—'],
+            ['RUT', $config['dpdRut'] ?? '—'],
+            ['Cargo', $config['dpdTitle'] ?? 'Delegado de Protección de Datos'],
         ]);
+        $html .= '<div class="art-note">Designación conforme al Art. 28 de la Ley 21.719. El DPD actúa como punto de contacto con la APDP y los titulares.</div>';
     } else {
         $html .= '<div class="warn">⚠ NO SE HA DESIGNADO UN DELEGADO DE PROTECCIÓN DE DATOS</div>';
         $html .= '<div class="note">Art. 28 Ley 21.719: La designación del DPD es obligatoria para responsables que realizan tratamiento a gran escala de datos sensibles. Su ausencia constituye infracción grave sancionable con multa de hasta 10.000 UTM.</div>';
     }
-    $html .= pdf_section_title(3, 'Registro ante la APDP');
+
+    $html .= pdf_section_title(4, 'Registro ante la APDP');
     if ($hasApdp) {
-        $html .= '<div class="body-text">La organización se encuentra inscrita en el Registro Nacional de Sanciones y Cumplimiento de la Agencia de Protección de Datos Personales (Art. 31).</div>';
+        $html .= pdf_fields([
+            ['Estado', 'Registrado'],
+            ['Número de registro', $config['apdpRegistrationNumber']],
+            ['Fecha de registro', $config['apdpRegistrationDate'] ?? '—'],
+            ['Modelo de prevención certificado', $config['preventionModel'] ?? 'No'],
+        ]);
     } else {
         $html .= '<div class="warn">⚠ NO SE HA REGISTRADO ANTE LA APDP</div>';
-        $html .= '<div class="note">Art. 31 Ley 21.719: Todo responsable del tratamiento debe inscribirse en el Registro Nacional. La omisión constituye infracción grave sancionable con multa de hasta 10.000 UTM.</div>';
+        $html .= '<div class="note">Art. 31 Ley 21.719: Todo responsable debe inscribirse en el Registro Nacional. La omisión constituye infracción grave.</div>';
     }
     $html .= '</div>';
 
-    // ====== RESUMEN EJECUTIVO ======
+    // ═══════════════════════════════════════════════════════════════
+    // 3. RESUMEN EJECUTIVO
+    // ═══════════════════════════════════════════════════════════════
     $html .= '<div class="page"></div>' . pdf_page_band('Resumen Ejecutivo de Cumplimiento') . '<div class="content">';
-    $html .= pdf_section_title(4, 'Indicadores Clave');
-    $kpis = [
-        ['Score de Cumplimiento General', $passRate . '% (' . $passedChecks . '/' . $totalChecks . ' requisitos cumplidos)'],
-        ['Infracciones Gravísimas Pendientes', (string)$failedBySev['gravísima']],
-        ['Infracciones Graves Pendientes', (string)$failedBySev['grave']],
-        ['Infracciones Leves Pendientes', (string)$failedBySev['leve']],
-        ['Bases de Datos Monitoreadas', (string)count($databases)],
-        ['Items de Datos Registrados', (string)count($inventory)],
-        ['Consentimientos Activos', (string)$activeConsents],
-        ['Brechas de Seguridad', $openBreaches . ' abierta(s) / ' . $resolvedBreaches . ' resuelta(s)'],
-        ['Agentes de Monitoreo', $onlineAgents . '/' . count($agents)],
-        ['Capacitaciones Firmadas', $trainedCount . '/' . count($trainings)],
-    ];
-    $html .= '<div class="kpi">';
-    foreach ($kpis as [$k, $v]) $html .= h_($k) . ': ' . h_($v) . '<br>';
-    $html .= '</div>';
-    if ($passRate >= 90) {
-        $levelText = 'Nivel de cumplimiento: EXCELENTE. La organización cumple con la mayoría de los requisitos establecidos en la Ley 21.719. Se recomienda mantener los controles actuales y realizar auditorías periódicas.';
-    } elseif ($passRate >= 70) {
-        $levelText = "Nivel de cumplimiento: ACEPTABLE. Se cumplen $passedChecks de $totalChecks requisitos. Se recomienda atender los " . ($totalChecks - $passedChecks) . ' requisitos pendientes para alcanzar un nivel óptimo de cumplimiento.';
-    } elseif ($passRate >= 50) {
-        $levelText = "Nivel de cumplimiento: DEFICIENTE. Solo se cumplen $passedChecks de $totalChecks requisitos. La organización se expone a sanciones significativas. Se requiere acción inmediata.";
-    } else {
-        $levelText = "Nivel de cumplimiento: CRÍTICO. Solo se cumplen $passedChecks de $totalChecks requisitos. La organización se encuentra en alto riesgo de sanciones de hasta 20.000 UTM. Se requiere plan de acción urgente.";
-    }
-    $html .= '<div class="body-text">' . h_($levelText) . '</div>';
+    $html .= pdf_section_title(5, 'Score Global de Cumplimiento');
+
+    $scoreColor = $passRate >= 90 ? '#166534' : ($passRate >= 70 ? '#4a4a4a' : ($passRate >= 50 ? '#92400e' : '#991b1b'));
+    $html .= '<div class="score-box" style="border-color:' . $scoreColor . '">';
+    $html .= '<div class="score-value" style="color:' . $scoreColor . '">' . $passRate . '%</div>';
+    $html .= '<div class="score-label">' . $passedChecks . ' de ' . $totalChecks . ' requisitos cumplidos</div>';
     $html .= '</div>';
 
-    // ====== CHECKLIST ======
-    $html .= '<div class="page"></div>' . pdf_page_band('Checklist de Cumplimiento - Ley 21.719') . '<div class="content">';
-    $html .= pdf_section_title(5, 'Evaluación Detallada por Obligación Legal');
+    $html .= pdf_section_title(6, 'Indicadores Clave por Categoría');
+    $html .= '<table class="kpi-box"><tr>';
+    $html .= '<td width="33.33%"><div class="kpi-label">Infracciones Gravísimas</div><div class="kpi-value" style="color:#991b1b">' . $failedBySev['gravísima'] . '</div><div class="kpi-label">Hasta 20.000 UTM</div></td>';
+    $html .= '<td width="33.33%"><div class="kpi-label">Infracciones Graves</div><div class="kpi-value" style="color:#92400e">' . $failedBySev['grave'] . '</div><div class="kpi-label">Hasta 10.000 UTM</div></td>';
+    $html .= '<td width="33.33%"><div class="kpi-label">Infracciones Leves</div><div class="kpi-value" style="color:#4a4a4a">' . $failedBySev['leve'] . '</div><div class="kpi-label">Hasta 5.000 UTM</div></td>';
+    $html .= '</tr></table>';
+
+    $html .= pdf_section_title(7, 'Datos Gestionados en la Plataforma');
+    $html .= '<table class="data"><thead><tr><th>Recurso</th><th>Cantidad</th><th>Observación</th></tr></thead><tbody>';
+    $kpisData = [
+        ['Actividades de Tratamiento (RAT)', $inventory, count($sensitiveItems) . ' con datos sensibles'],
+        ['Consentimientos registrados', count($consents), $activeConsents . ' activos'],
+        ['Evaluaciones de Impacto (DPIA)', count($dpias), $approvedDpias . ' aprobadas'],
+        ['Encargados del Tratamiento', count($processors), 'Registrados con contratos'],
+        ['Transferencias Internacionales', count($transfers), 'Con mecanismo de garantía'],
+        ['Brechas de Seguridad', count($breaches), $openBreaches . ' abiertas'],
+        ['Solicitudes ARCO', count($arcoRequests), $resolvedArco . ' resueltas'],
+        ['Capacitaciones', count($trainings), $trainedCount . ' con firma'],
+        ['Reglas de Seudonimización', count($pseudoRules), $executedPseudo . ' ejecutadas'],
+        ['Agentes de monitoreo', count($agents), $onlineAgents . ' en línea'],
+        ['Bases de datos monitoreadas', count($databases), 'Activas'],
+        ['Firmas electrónicas', count($invites), $signedInvitesCount . ' firmadas'],
+    ];
+    $i = 0;
+    foreach ($kpisData as $row) {
+        $html .= '<tr' . ($i % 2 === 1 ? ' class="alt"' : '') . '><td>' . h_($row[0]) . '</td><td style="font-weight:bold">' . $row[1] . '</td><td>' . h_($row[2]) . '</td></tr>';
+        $i++;
+    }
+    $html .= '</tbody></table>';
+
+    // Estado general
+    if ($passRate >= 90) {
+        $verdict = 'Nivel de cumplimiento EXCELENTE. La organización cumple con la gran mayoría de los requisitos de la Ley 21.719 y se encuentra apta para certificación. Se recomienda mantener los controles actuales y someterse a auditorías periódicas.';
+    } elseif ($passRate >= 70) {
+        $verdict = "Nivel de cumplimiento ACEPTABLE con " . $passedChecks . "/" . $totalChecks . " requisitos cumplidos. Existen " . ($totalChecks - $passedChecks) . " requisitos pendientes que deben resolverse para alcanzar la certificación plena.";
+    } elseif ($passRate >= 50) {
+        $verdict = "Nivel de cumplimiento DEFICIENTE. Solo " . $passedChecks . " de " . $totalChecks . " requisitos cumplidos. Exposición significativa a sanciones. Se requiere plan de acción inmediato.";
+    } else {
+        $verdict = "Nivel de cumplimiento CRÍTICO. Solo " . $passedChecks . " de " . $totalChecks . " requisitos cumplidos. Alto riesgo de sanciones de hasta 20.000 UTM. Requiere intervención urgente.";
+    }
+    $html .= '<div class="body-text" style="margin-top:14px;padding:10px;background:#f5f5f5;border-left:3px solid ' . $scoreColor . '">' . h_($verdict) . '</div>';
+    $html .= '</div>';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 4. CHECKLIST DETALLADO
+    // ═══════════════════════════════════════════════════════════════
+    $html .= '<div class="page"></div>' . pdf_page_band('Checklist Detallado por Obligación Legal') . '<div class="content">';
+    $html .= pdf_section_title(8, 'Evaluación Artículo por Artículo');
     $sevLabels = ['gravísima' => 'GRAVÍSIMA', 'grave' => 'GRAVE', 'leve' => 'LEVE'];
     $sevMax = ['gravísima' => 'hasta 20.000 UTM', 'grave' => 'hasta 10.000 UTM', 'leve' => 'hasta 5.000 UTM'];
     foreach ($checks as $cat) {
@@ -438,201 +615,484 @@ function download() {
     }
     $html .= '</div>';
 
-    // ====== INVENTARIO ======
+    // ═══════════════════════════════════════════════════════════════
+    // 5. RAT COMPLETO
+    // ═══════════════════════════════════════════════════════════════
     if ($hasInventory) {
         $html .= '<div class="page"></div>' . pdf_page_band('Registro de Actividades de Tratamiento (RAT)') . '<div class="content">';
-        $html .= pdf_section_title(6, 'Inventario de Datos Personales (' . count($inventory) . ' items)');
-        $html .= '<div class="art-note">Art. 14 Ley 21.719: El responsable debe mantener un registro documentado de las actividades de tratamiento, incluyendo finalidades, categorías de datos, destinatarios y plazos de conservación.</div>';
-        $html .= pdf_data_table(
-            ['Tipo de Dato', 'Categoría', 'Sensibles', 'Propósito'],
-            array_map(fn($i) => [$i['dataType'] ?? '-', $i['category'] ?? '-', !empty($i['sensitive']) ? 'SÍ' : 'No', $i['purpose'] ?? '-'], array_slice($inventory, 0, 25))
-        );
+        $html .= pdf_section_title(9, 'Inventario de Datos Personales (' . count($inventory) . ' actividades)');
+        $html .= '<div class="art-note">Art. 14 Ley 21.719: El responsable debe mantener un registro documentado de las actividades de tratamiento. Cada ficha detalla la información exigida por el Art. 14.1.</div>';
+
+        // Tabla resumen
+        $html .= '<h3 style="font-size:10px;font-weight:bold;margin-top:10px">Resumen consolidado</h3>';
+        $html .= '<table class="data"><thead><tr><th>#</th><th>Nombre</th><th>Finalidad</th><th>Base legal</th><th>Riesgo</th><th>Sens.</th></tr></thead><tbody>';
+        foreach ($inventory as $idx => $it) {
+            $html .= '<tr' . ($idx % 2 === 1 ? ' class="alt"' : '') . '>';
+            $html .= '<td>' . ($idx + 1) . '</td>';
+            $html .= '<td>' . h_($it['name'] ?? '—') . '</td>';
+            $html .= '<td>' . h_(mb_strimwidth((string)($it['purpose'] ?? '—'), 0, 50, '…')) . '</td>';
+            $html .= '<td>' . h_($L($it['legalBasis'] ?? '—')) . '</td>';
+            $html .= '<td>' . h_($L($it['risk'] ?? 'low')) . '</td>';
+            $html .= '<td>' . (!empty($it['sensitive']) ? 'Sí' : 'No') . '</td>';
+            $html .= '</tr>';
+        }
+        $html .= '</tbody></table>';
+
+        // Fichas detalladas
+        $html .= '<div style="page-break-before:always"></div>';
+        $html .= pdf_section_title(10, 'Fichas Individuales Detalladas');
+        foreach ($inventory as $idx => $it) {
+            if ($idx > 0) $html .= '<div style="page-break-before:always"></div>';
+            $dataCats = is_array($it['dataCategories'] ?? null) ? $it['dataCategories'] : (is_string($it['dataCategories'] ?? '') ? array_filter(explode(',', $it['dataCategories'])) : []);
+            $subCats = is_array($it['subjectCategories'] ?? null) ? $it['subjectCategories'] : (is_string($it['subjectCategories'] ?? '') ? array_filter(explode(',', $it['subjectCategories'])) : []);
+            $techM = is_array($it['technicalMeasures'] ?? null) ? $it['technicalMeasures'] : (is_string($it['technicalMeasures'] ?? '') ? array_filter(explode(',', $it['technicalMeasures'])) : []);
+            $dataCats = array_map('trim', $dataCats);
+            $subCats = array_map('trim', $subCats);
+            $techM = array_map('trim', $techM);
+
+            $html .= '<div class="ficha-header"><div class="ficha-title">Ficha #' . ($idx + 1) . ': ' . h_($it['name'] ?? 'Sin nombre') . '</div>';
+            $html .= '<div class="ficha-sub">Identificador: ' . h_((string)($it['_id'] ?? '—')) . ' · Registrado: ' . h_(substr($it['createdAt'] ?? '—', 0, 10)) . '</div></div>';
+
+            // 1. Identificación
+            $html .= '<h3 style="font-size:10px;font-weight:bold;margin-top:10px">1. Identificación (Art. 14.1.a)</h3>';
+            $html .= pdf_fields([
+                ['Nombre de la actividad', $it['name'] ?? '—'],
+                ['Código interno', $it['code'] ?? '—'],
+                ['Responsable del tratamiento', $it['controllerName'] ?? $companyName],
+                ['Encargado del tratamiento', $it['processorName'] ?? 'No aplica'],
+            ]);
+
+            // 2. Finalidad y base legal
+            $html .= '<h3 style="font-size:10px;font-weight:bold;margin-top:10px">2. Finalidad y Base Legal (Art. 14.1.b)</h3>';
+            $html .= pdf_fields([
+                ['Finalidad', $it['purpose'] ?? '—'],
+                ['Base de licitud', $L($it['legalBasis'] ?? '—')],
+                ['Justificación interés legítimo', $it['legitimateInterest'] ?? 'No aplica'],
+            ]);
+
+            // 3. Categorías de datos
+            $html .= '<h3 style="font-size:10px;font-weight:bold;margin-top:10px">3. Categorías de Datos (Art. 14.1.c)</h3>';
+            $html .= '<table class="fields"><tr><td class="f-label">Categorías tratadas:</td><td class="f-value">';
+            $html .= empty($dataCats) ? '—' : h_(implode(', ', array_map($L, $dataCats)));
+            $html .= '</td></tr>';
+            $html .= '<tr><td class="f-label">Datos sensibles:</td><td class="f-value">' . (!empty($it['sensitive']) ? '<span class="badge badge-danger">SÍ — Requiere consentimiento explícito (Art. 16)</span>' : 'No') . '</td></tr>';
+            $html .= '<tr><td class="f-label">Datos de menores:</td><td class="f-value">' . (!empty($it['childrenData']) ? '<span class="badge badge-danger">SÍ — Requiere consentimiento parental (Art. 17)</span>' : 'No') . '</td></tr>';
+            $html .= '</table>';
+
+            // 4. Titulares
+            $html .= '<h3 style="font-size:10px;font-weight:bold;margin-top:10px">4. Categorías de Titulares</h3>';
+            $html .= '<table class="fields"><tr><td class="f-label">Titulares:</td><td class="f-value">';
+            $html .= empty($subCats) ? '—' : h_(implode(', ', array_map($L, $subCats)));
+            $html .= '</td></tr></table>';
+
+            // 5. Frecuencia y acceso
+            $html .= '<h3 style="font-size:10px;font-weight:bold;margin-top:10px">5. Frecuencia y Control de Acceso</h3>';
+            $html .= pdf_fields([
+                ['Frecuencia', $L($it['treatmentFrequency'] ?? '—')],
+                ['Control de acceso', $L($it['accessControl'] ?? '—')],
+                ['Almacenamiento', $it['storage'] ?? '—'],
+            ]);
+
+            // 6. Medidas de seguridad
+            $html .= '<h3 style="font-size:10px;font-weight:bold;margin-top:10px">6. Medidas de Seguridad (Art. 25)</h3>';
+            $html .= '<table class="fields"><tr><td class="f-label">Medidas implementadas:</td><td class="f-value">';
+            $html .= empty($techM) ? '—' : h_(implode(', ', array_map($L, $techM)));
+            $html .= '</td></tr></table>';
+
+            // 7. Retención y riesgo
+            $html .= '<h3 style="font-size:10px;font-weight:bold;margin-top:10px">7. Retención y Riesgo (Art. 14.1.e)</h3>';
+            $html .= pdf_fields([
+                ['Plazo de retención', !empty($it['retentionDays']) ? ((int)$it['retentionDays'] . ' días') : 'No especificado'],
+                ['Nivel de riesgo', $L($it['risk'] ?? 'low')],
+            ]);
+
+            // 8. Observaciones
+            $html .= '<h3 style="font-size:10px;font-weight:bold;margin-top:10px">8. Observaciones y Evidencia</h3>';
+            $html .= pdf_fields([
+                ['Observaciones', $it['notes'] ?? '—'],
+                ['URL de evidencia', $it['evidenceUrl'] ?? '—'],
+            ]);
+        }
         $html .= '</div>';
     }
 
-    // ====== CONSENTIMIENTOS ======
+    // ═══════════════════════════════════════════════════════════════
+    // 6. CONSENTIMIENTOS
+    // ═══════════════════════════════════════════════════════════════
     if ($hasConsents) {
-        $html .= '<div class="page"></div>' . pdf_page_band('Gestión de Consentimientos') . '<div class="content">';
-        $html .= pdf_section_title(7, 'Consentimientos Registrados (' . count($consents) . ')');
-        $html .= '<div class="art-note">Art. 12 Ley 21.719: El consentimiento debe ser libre, informado, específico, previo e inequívoco. Corresponde al responsable probar que contó con el consentimiento del titular.</div>';
-        $html .= pdf_data_table(
-            ['Propósito', 'Usuario', 'Estado', 'Otorgado'],
-            array_map(fn($c) => [$c['purpose'] ?? '-', $c['userEmail'] ?? ($c['grantedBy'] ?? '-'), empty($c['revokedAt']) ? 'Activo' : 'Revocado', !empty($c['grantedAt']) ? substr($c['grantedAt'], 0, 10) : '-'], array_slice($consents, 0, 25))
-        );
+        $html .= '<div class="page"></div>' . pdf_page_band('Base de Licitud y Consentimiento') . '<div class="content">';
+        $html .= pdf_section_title(11, 'Consentimientos Registrados (' . count($consents) . ')');
+        $html .= '<div class="art-note">Art. 12 Ley 21.719: El consentimiento debe ser libre, informado, específico, previo e inequívoco. Puede ser revocado en cualquier momento sin efectos retroactivos.</div>';
+        $html .= '<table class="data"><thead><tr><th>Titular</th><th>RUT</th><th>Finalidad</th><th>Base legal</th><th>Fecha</th><th>Estado</th></tr></thead><tbody>';
+        $i = 0;
+        foreach (array_slice($consents, 0, 30) as $c) {
+            $isRevoked = !empty($c['revokedAt']);
+            $html .= '<tr' . ($i % 2 === 1 ? ' class="alt"' : '') . '>';
+            $html .= '<td>' . h_($c['name'] ?? '—') . '</td>';
+            $html .= '<td>' . h_($c['rut'] ?? '—') . '</td>';
+            $html .= '<td>' . h_(mb_strimwidth((string)($c['purpose'] ?? '—'), 0, 40, '…')) . '</td>';
+            $html .= '<td>' . h_($L($c['legalBasis'] ?? '—')) . '</td>';
+            $html .= '<td>' . h_(substr($c['createdAt'] ?? '—', 0, 10)) . '</td>';
+            $html .= '<td>' . ($isRevoked ? '<span class="badge badge-danger">Revocado</span>' : '<span class="badge badge-success">Activo</span>') . '</td>';
+            $html .= '</tr>';
+            $i++;
+        }
+        $html .= '</tbody></table>';
         $html .= '</div>';
     }
 
-    // ====== BRECHAS ======
-    if ($hasBreaches) {
-        $html .= '<div class="page"></div>' . pdf_page_band('Registro de Brechas de Seguridad') . '<div class="content">';
-        $html .= pdf_section_title(8, 'Brechas Reportadas (' . count($breaches) . ')');
-        $html .= '<div class="art-note">Art. 14 sexies: El responsable debe reportar a la APDP, sin dilaciones indebidas, las vulneraciones que generen riesgo para los derechos de los titulares. Cuando afecten datos sensibles, niños o datos económicos, debe también comunicar a los titulares.</div>';
-        $html .= '<div class="art-note">Total: ' . count($breaches) . ' · Abiertas: ' . $openBreaches . ' · Resueltas: ' . $resolvedBreaches . '</div>';
-        $html .= pdf_data_table(
-            ['Tipo', 'Severidad', 'Estado', 'Detectado'],
-            array_map(fn($b) => [$b['type'] ?? '-', $b['severity'] ?? '-', ($b['status'] ?? '') === 'resolved' ? 'Resuelta' : 'Abierta', !empty($b['detectedAt']) ? substr($b['detectedAt'], 0, 10) : '-'], array_slice($breaches, 0, 20))
-        );
+    // ═══════════════════════════════════════════════════════════════
+    // 7. DPIA
+    // ═══════════════════════════════════════════════════════════════
+    if ($hasDpias) {
+        $html .= '<div class="page"></div>' . pdf_page_band('Evaluación de Impacto (DPIA)') . '<div class="content">';
+        $html .= pdf_section_title(12, 'DPIA Registradas (' . count($dpias) . ')');
+        $html .= '<div class="art-note">Art. 14 quater Ley 21.719: La Evaluación de Impacto es obligatoria para tratamientos de alto riesgo. Debe documentar el análisis de riesgos y medidas de mitigación.</div>';
+        foreach ($dpias as $idx => $d) {
+            if ($idx > 0) $html .= '<div style="margin-top:16px;border-top:0.5px solid #bbbbbb;padding-top:12px"></div>';
+            $status = strtolower($d['status'] ?? 'pending');
+            $stLabel = ['approved' => 'APROBADA', 'rejected' => 'RECHAZADA', 'pending' => 'PENDIENTE'][$status] ?? 'PENDIENTE';
+            $stClass = ['approved' => 'badge-success', 'rejected' => 'badge-danger', 'pending' => 'badge-warning'][$status] ?? 'badge-warning';
+            $html .= '<div class="ficha-header"><div class="ficha-title">DPIA #' . ($idx + 1) . ': ' . h_($d['name'] ?? 'Sin nombre') . '</div>';
+            $html .= '<div class="ficha-sub">Estado: <span class="badge ' . $stClass . '">' . $stLabel . '</span> · Riesgo: ' . h_($L($d['riskLevel'] ?? 'medium')) . '</div></div>';
+            if (!empty($d['purpose'])) $html .= '<p><strong>Finalidad:</strong> ' . h_($d['purpose']) . '</p>';
+            if (!empty($d['description'])) $html .= '<p><strong>Descripción:</strong> ' . h_(mb_strimwidth($d['description'], 0, 300, '…')) . '</p>';
+            if (!empty($d['approvedByName'])) $html .= '<p><strong>Aprobada por:</strong> ' . h_($d['approvedByName']) . ' (' . h_($d['approvedByRole'] ?? 'dpo') . ')</p>';
+            if (!empty($d['approvedAt'])) $html .= '<p><strong>Fecha aprobación:</strong> ' . h_(substr($d['approvedAt'], 0, 10)) . '</p>';
+        }
         $html .= '</div>';
     }
 
-    // ====== CAPACITACIÓN ======
-    if ($hasTrainings) {
-        $topicLabels = ['proteccion_datos' => 'Protección de Datos Personales', 'ciberseguridad' => 'Ciberseguridad', 'brechas' => 'Protocolo de Brechas', 'arco' => 'Derechos ARCO', 'consentimientos' => 'Gestión de Consentimientos', 'general' => 'General'];
-        $html .= '<div class="page"></div>' . pdf_page_band('Programa de Capacitación') . '<div class="content">';
-        $html .= pdf_section_title(9, 'Capacitaciones Registradas (' . count($trainings) . ')');
-        $html .= '<div class="art-note">Art. 28 letra c): El responsable debe implementar programas de capacitación periódica en protección de datos personales para todo el personal que participe en operaciones de tratamiento.</div>';
-        $html .= pdf_data_table(
-            ['Colaborador', 'Tema', 'Estado', 'Fecha'],
-            array_map(fn($t) => [
-                $t['employeeName'] ?? '-',
-                $topicLabels[$t['topic'] ?? ''] ?? ($t['topic'] ?? '-'),
-                !empty($t['signatureData']) ? 'Firmado' : (!empty($t['completed']) ? 'Completado' : 'Pendiente'),
-                !empty($t['date']) ? substr($t['date'], 0, 10) : '-',
-            ], array_slice($trainings, 0, 20))
-        );
+    // ═══════════════════════════════════════════════════════════════
+    // 8. ENCARGADOS
+    // ═══════════════════════════════════════════════════════════════
+    if ($hasProcessors) {
+        $html .= '<div class="page"></div>' . pdf_page_band('Encargados del Tratamiento') . '<div class="content">';
+        $html .= pdf_section_title(13, 'Encargados Registrados (' . count($processors) . ')');
+        $html .= '<div class="art-note">Art. 15 bis Ley 21.719: Todo responsable debe suscribir contratos con sus encargados que incluyan cláusulas de confidencialidad, seguridad y subcontratación.</div>';
+        $html .= '<table class="data"><thead><tr><th>Nombre</th><th>Servicio</th><th>País</th><th>Contrato DPA</th><th>Transferencia intl.</th></tr></thead><tbody>';
+        $i = 0;
+        foreach ($processors as $p) {
+            $html .= '<tr' . ($i % 2 === 1 ? ' class="alt"' : '') . '>';
+            $html .= '<td>' . h_($p['name'] ?? '—') . '</td>';
+            $html .= '<td>' . h_($p['serviceType'] ?? '—') . '</td>';
+            $html .= '<td>' . h_($p['country'] ?? '—') . '</td>';
+            $html .= '<td>' . ($p['hasContract'] === 'si' ? '<span class="badge badge-success">Sí</span>' : '<span class="badge badge-danger">No</span>') . '</td>';
+            $html .= '<td>' . ($p['internationalTransfer'] !== 'no' ? 'Sí: ' . h_($L($p['internationalTransfer'] ?? '')) : 'No') . '</td>';
+            $html .= '</tr>';
+            $i++;
+        }
+        $html .= '</tbody></table>';
         $html .= '</div>';
     }
 
-    // ====== EVIDENCIA DE AGENTES ======
-    $html .= '<div class="page"></div>' . pdf_page_band('Evidencia de Agentes de Seguridad') . '<div class="content">';
-    $html .= pdf_section_title(10, 'Indicadores de Seguridad');
-    $html .= pdf_fields([
-        ['Agentes en línea', (string)$onlineAgents],
-        ['Eventos de host', (string)count($hostEvents)],
-        ['Eventos de archivo', (string)count($fileEvents)],
-        ['Logs de BBDD', (string)count($dbLogs)],
-        ['Auditorías de archivos', (string)count($fileAudits)],
-    ]);
-    $html .= '<p class="body-text">Los datos siguientes provienen del monitoreo continuo de agentes instalados en los endpoints y bases de datos. Esta evidencia permite verificar el cumplimiento de las medidas de seguridad del Art. 14 quinquies de la Ley 21.719.</p>';
-
-    if (count($fileEvents) > 0) {
-        $html .= pdf_section_title(11, 'Eventos de Archivo Recientes (' . count($fileEvents) . ')');
-        $html .= pdf_data_table(
-            ['Fecha', 'Ruta', 'Evento'],
-            array_map(fn($e) => [
-                substr(($e['timestamp'] ?? $e['createdAt'] ?? ''), 0, 16),
-                $e['path'] ?? '-',
-                $e['eventType'] ?? '-',
-            ], array_slice($fileEvents, 0, 10))
-        );
+    // ═══════════════════════════════════════════════════════════════
+    // 9. TRANSFERENCIAS INTERNACIONALES
+    // ═══════════════════════════════════════════════════════════════
+    if ($hasTransfers) {
+        $html .= '<div class="page"></div>' . pdf_page_band('Transferencias Internacionales') . '<div class="content">';
+        $html .= pdf_section_title(14, 'Transferencias Registradas (' . count($transfers) . ')');
+        $html .= '<div class="art-note">Art. 21 Ley 21.719: Las transferencias internacionales solo se permiten si el país destino cuenta con nivel adecuado de protección, o si existen garantías (SCC, BCR) o excepciones válidas (Art. 27).</div>';
+        $html .= '<table class="data"><thead><tr><th>País destino</th><th>Destinatario</th><th>Mecanismo</th><th>Datos sensibles</th><th>Menores</th></tr></thead><tbody>';
+        $i = 0;
+        foreach ($transfers as $t) {
+            $html .= '<tr' . ($i % 2 === 1 ? ' class="alt"' : '') . '>';
+            $html .= '<td>' . h_($t['destinationCountry'] ?? '—') . '</td>';
+            $html .= '<td>' . h_($t['recipient'] ?? '—') . '</td>';
+            $html .= '<td>' . h_($L($t['mechanism'] ?? '—')) . '</td>';
+            $html .= '<td>' . (($t['sensitiveData'] ?? 'no') === 'si' ? '<span class="badge badge-danger">Sí</span>' : 'No') . '</td>';
+            $html .= '<td>' . (($t['childrenData'] ?? 'no') === 'si' ? '<span class="badge badge-danger">Sí</span>' : 'No') . '</td>';
+            $html .= '</tr>';
+            $i++;
+        }
+        $html .= '</tbody></table>';
+        $html .= '</div>';
     }
 
-    if (count($dbLogs) > 0) {
-        $html .= pdf_section_title(12, 'Logs de Base de Datos Recientes (' . count($dbLogs) . ')');
-        $html .= pdf_data_table(
-            ['Fecha', 'Base de Datos', 'Operación'],
-            array_map(fn($l) => [
-                substr(($l['timestamp'] ?? $l['createdAt'] ?? ''), 0, 16),
-                $l['database'] ?? '-',
-                $l['operation'] ?? ($l['query'] ?? '-'),
-            ], array_slice($dbLogs, 0, 10))
-        );
-    }
+    // ═══════════════════════════════════════════════════════════════
+    // 10. MEDIDAS DE SEGURIDAD Y SEUDONIMIZACIÓN
+    // ═══════════════════════════════════════════════════════════════
+    $html .= '<div class="page"></div>' . pdf_page_band('Medidas de Seguridad y Seudonimización') . '<div class="content">';
+    $html .= pdf_section_title(15, 'Medidas Técnicas y Organizativas (Art. 25)');
+    $html .= '<table class="kpi-box"><tr>';
+    $html .= '<td width="33.33%"><div class="kpi-label">Agentes en línea</div><div class="kpi-value">' . $onlineAgents . '</div><div class="kpi-label">de ' . count($agents) . ' desplegados</div></td>';
+    $html .= '<td width="33.33%"><div class="kpi-label">Bases de datos monitoreadas</div><div class="kpi-value">' . count($databases) . '</div><div class="kpi-label">Activas</div></td>';
+    $html .= '<td width="33.33%"><div class="kpi-label">Reglas de seudonimización</div><div class="kpi-value">' . $executedPseudo . '</div><div class="kpi-label">de ' . count($pseudoRules) . ' ejecutadas</div></td>';
+    $html .= '</tr></table>';
 
-    if (count($hostEvents) > 0) {
-        $html .= pdf_section_title(13, 'Eventos de Sistema Recientes (' . count($hostEvents) . ')');
-        $html .= pdf_data_table(
-            ['Fecha', 'Título', 'Severidad'],
-            array_map(fn($e) => [
-                substr(($e['timestamp'] ?? $e['createdAt'] ?? ''), 0, 16),
-                $e['title'] ?? ($e['event'] ?? '-'),
-                $e['severity'] ?? '-',
-            ], array_slice($hostEvents, 0, 10))
-        );
-    }
-
-    if (count($fileAudits) > 0) {
-        $html .= pdf_section_title(14, 'Auditoría de Archivos Reciente (' . count($fileAudits) . ')');
-        $html .= pdf_data_table(
-            ['Fecha', 'Archivo', 'Acción'],
-            array_map(fn($a) => [
-                substr(($a['createdAt'] ?? $a['timestamp'] ?? ''), 0, 16),
-                $a['fileName'] ?? ($a['path'] ?? '-'),
-                $a['action'] ?? '-',
-            ], array_slice($fileAudits, 0, 10))
-        );
+    if ($hasPseudo) {
+        $html .= pdf_section_title(16, 'Reglas de Seudonimización (Art. 30)');
+        $html .= '<table class="data"><thead><tr><th>Nombre</th><th>Técnica</th><th>Alcance</th><th>Estado</th></tr></thead><tbody>';
+        $i = 0;
+        foreach ($pseudoRules as $r) {
+            $html .= '<tr' . ($i % 2 === 1 ? ' class="alt"' : '') . '>';
+            $html .= '<td>' . h_($r['name'] ?? '—') . '</td>';
+            $html .= '<td>' . h_($L($r['technique'] ?? '—')) . '</td>';
+            $html .= '<td>' . h_(mb_strimwidth((string)($r['scope'] ?? '—'), 0, 40, '…')) . '</td>';
+            $html .= '<td>' . (($r['status'] ?? '') === 'executed' ? '<span class="badge badge-success">Ejecutada</span>' : '<span class="badge badge-warning">Pendiente</span>') . '</td>';
+            $html .= '</tr>';
+            $i++;
+        }
+        $html .= '</tbody></table>';
     }
     $html .= '</div>';
 
-    // ====== RECOMENDACIONES ======
-    $sectionNum = 15;
+    // ═══════════════════════════════════════════════════════════════
+    // 11. GESTIÓN DE BRECHAS
+    // ═══════════════════════════════════════════════════════════════
+    $html .= '<div class="page"></div>' . pdf_page_band('Gestión de Brechas de Seguridad') . '<div class="content">';
+    $html .= pdf_section_title(17, 'Registro de Brechas (Art. 26)');
+    if ($hasBreachProtocol) {
+        $html .= '<div class="art-note">Protocolo documentado: <strong>' . h_($breachProtocol['protocolName'] ?? '—') . '</strong> (v' . h_($breachProtocol['protocolVersion'] ?? '—') . ')';
+        if (!empty($breachProtocol['protocolOwner'])) $html .= ' · Responsable: ' . h_($breachProtocol['protocolOwner']);
+        $html .= '</div>';
+    } else {
+        $html .= '<div class="warn">⚠ No se ha documentado un protocolo de gestión de brechas</div>';
+    }
+
+    if ($hasBreaches) {
+        $html .= '<table class="data" style="margin-top:10px"><thead><tr><th>Título</th><th>Fecha</th><th>Severidad</th><th>Estado</th><th>Notificada APDP</th></tr></thead><tbody>';
+        $i = 0;
+        foreach ($breaches as $b) {
+            $html .= '<tr' . ($i % 2 === 1 ? ' class="alt"' : '') . '>';
+            $html .= '<td>' . h_(mb_strimwidth((string)($b['title'] ?? '—'), 0, 50, '…')) . '</td>';
+            $html .= '<td>' . h_(substr($b['createdAt'] ?? '—', 0, 10)) . '</td>';
+            $html .= '<td>' . h_($L($b['severity'] ?? '—')) . '</td>';
+            $html .= '<td>' . h_($L($b['status'] ?? '—')) . '</td>';
+            $html .= '<td>' . (!empty($b['notifiedAPDP']) ? '<span class="badge badge-success">Sí</span>' : '<span class="badge badge-danger">No</span>') . '</td>';
+            $html .= '</tr>';
+            $i++;
+        }
+        $html .= '</tbody></table>';
+    } else {
+        $html .= '<p style="margin-top:10px">Sin brechas registradas. Registro limpio.</p>';
+    }
+    $html .= '</div>';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 12. PLAN DE RESPUESTA A INCIDENTES
+    // ═══════════════════════════════════════════════════════════════
+    $html .= '<div class="page"></div>' . pdf_page_band('Plan de Respuesta a Incidentes') . '<div class="content">';
+    $html .= pdf_section_title(18, 'Plan Documentado (Art. 25)');
+    if ($hasIncidentResponse) {
+        $html .= '<div class="art-note">Plan: <strong>' . h_($incidentResponse['planName'] ?? '—') . '</strong> (v' . h_($incidentResponse['planVersion'] ?? '—') . ')';
+        $html .= ' · Responsable: ' . h_($incidentResponse['planOwner'] ?? '—');
+        $html .= '</div>';
+        $html .= pdf_fields([
+            ['Fecha de aprobación', $incidentResponse['approvalDate'] ?? '—'],
+            ['Próxima revisión', $incidentResponse['nextReviewDate'] ?? '—'],
+            ['Alcance', mb_strimwidth((string)($incidentResponse['scope'] ?? '—'), 0, 200, '…')],
+            ['Roles CSIRT', mb_strimwidth((string)($incidentResponse['csirtRoles'] ?? '—'), 0, 200, '…')],
+            ['Canales de detección', mb_strimwidth((string)($incidentResponse['detectionChannels'] ?? '—'), 0, 200, '…')],
+        ]);
+    } else {
+        $html .= '<div class="warn">⚠ No se ha documentado un plan de respuesta a incidentes</div>';
+        $html .= '<div class="note">Art. 25 Ley 21.719: El responsable debe implementar un plan de respuesta que permita detectar, contener y mitigar incidentes de seguridad que afecten datos personales.</div>';
+    }
+    $html .= '</div>';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 13. DERECHOS ARCO
+    // ═══════════════════════════════════════════════════════════════
+    $html .= '<div class="page"></div>' . pdf_page_band('Derechos ARCO') . '<div class="content">';
+    $html .= pdf_section_title(19, 'Canal y Solicitudes (Art. 8-13)');
+    $html .= '<table class="kpi-box"><tr>';
+    $html .= '<td width="50%"><div class="kpi-label">Total solicitudes</div><div class="kpi-value">' . count($arcoRequests) . '</div></td>';
+    $html .= '<td width="50%"><div class="kpi-label">Resueltas</div><div class="kpi-value" style="color:#166534">' . $resolvedArco . '</div></td>';
+    $html .= '</tr></table>';
+
+    if (count($arcoRequests) > 0) {
+        $html .= '<table class="data" style="margin-top:10px"><thead><tr><th>Titular</th><th>Tipo</th><th>Estado</th><th>Fecha</th></tr></thead><tbody>';
+        $i = 0;
+        foreach (array_slice($arcoRequests, 0, 30) as $r) {
+            $sol = is_array($r['solicitante'] ?? null) ? $r['solicitante'] : (json_decode($r['solicitante'] ?? '{}', true) ?: []);
+            $html .= '<tr' . ($i % 2 === 1 ? ' class="alt"' : '') . '>';
+            $html .= '<td>' . h_($sol['nombre'] ?? '—') . '</td>';
+            $html .= '<td>' . h_($L($r['tipo'] ?? $r['type'] ?? '—')) . '</td>';
+            $html .= '<td>' . h_($L($r['status'] ?? '—')) . '</td>';
+            $html .= '<td>' . h_(substr($r['createdAt'] ?? '—', 0, 10)) . '</td>';
+            $html .= '</tr>';
+            $i++;
+        }
+        $html .= '</tbody></table>';
+    } else {
+        $html .= '<p style="margin-top:10px">Sin solicitudes ARCO registradas.</p>';
+    }
+    $html .= '</div>';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 14. CAPACITACIÓN
+    // ═══════════════════════════════════════════════════════════════
+    if ($hasTrainings) {
+        $html .= '<div class="page"></div>' . pdf_page_band('Programa de Capacitación') . '<div class="content">';
+        $html .= pdf_section_title(20, 'Capacitaciones (' . count($trainings) . ')');
+        $html .= '<div class="art-note">Art. 28 c) Ley 21.719: El responsable debe implementar programas de capacitación periódica para todo el personal que participe en tratamiento de datos.</div>';
+        $html .= '<table class="data"><thead><tr><th>Colaborador</th><th>Título</th><th>Estado</th><th>Firma</th><th>Fecha</th></tr></thead><tbody>';
+        $i = 0;
+        foreach (array_slice($trainings, 0, 30) as $t) {
+            $html .= '<tr' . ($i % 2 === 1 ? ' class="alt"' : '') . '>';
+            $html .= '<td>' . h_($t['employeeName'] ?? $t['attendee'] ?? '—') . '</td>';
+            $html .= '<td>' . h_(mb_strimwidth((string)($t['title'] ?? '—'), 0, 50, '…')) . '</td>';
+            $html .= '<td>' . (!empty($t['completed']) ? 'Completada' : 'Pendiente') . '</td>';
+            $html .= '<td>' . (!empty($t['signatureData']) || !empty($t['signerName']) ? '<span class="badge badge-success">Sí</span>' : '<span class="badge badge-warning">No</span>') . '</td>';
+            $html .= '<td>' . h_(substr($t['date'] ?? $t['createdAt'] ?? '—', 0, 10)) . '</td>';
+            $html .= '</tr>';
+            $i++;
+        }
+        $html .= '</tbody></table>';
+        $html .= '</div>';
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // 15. EVIDENCIA TÉCNICA
+    // ═══════════════════════════════════════════════════════════════
+    $html .= '<div class="page"></div>' . pdf_page_band('Evidencia Técnica de Monitoreo') . '<div class="content">';
+    $html .= pdf_section_title(21, 'Registros de Seguridad Continuos');
+    $html .= '<table class="kpi-box"><tr>';
+    $html .= '<td width="25%"><div class="kpi-label">Eventos de host</div><div class="kpi-value">' . count($hostEvents) . '</div></td>';
+    $html .= '<td width="25%"><div class="kpi-label">Eventos de archivo</div><div class="kpi-value">' . count($fileEvents) . '</div></td>';
+    $html .= '<td width="25%"><div class="kpi-label">Logs de BD</div><div class="kpi-value">' . count($dbLogs) . '</div></td>';
+    $html .= '<td width="25%"><div class="kpi-label">Auditoría archivos</div><div class="kpi-value">' . count($fileAudits) . '</div></td>';
+    $html .= '</tr></table>';
+
+    if (count($hostEvents) > 0) {
+        $html .= '<h3 style="font-size:10px;font-weight:bold;margin-top:12px">Últimos eventos de host</h3>';
+        $html .= '<table class="data"><thead><tr><th>Fecha</th><th>Evento</th><th>Severidad</th></tr></thead><tbody>';
+        $i = 0;
+        foreach (array_slice($hostEvents, 0, 10) as $e) {
+            $html .= '<tr' . ($i % 2 === 1 ? ' class="alt"' : '') . '>';
+            $html .= '<td>' . h_(substr($e['timestamp'] ?? $e['createdAt'] ?? '—', 0, 16)) . '</td>';
+            $html .= '<td>' . h_(mb_strimwidth((string)($e['title'] ?? $e['event'] ?? '—'), 0, 60, '…')) . '</td>';
+            $html .= '<td>' . h_($e['severity'] ?? '—') . '</td>';
+            $html .= '</tr>';
+            $i++;
+        }
+        $html .= '</tbody></table>';
+    }
+
+    if (count($dbLogs) > 0) {
+        $html .= '<h3 style="font-size:10px;font-weight:bold;margin-top:12px">Últimos logs de base de datos</h3>';
+        $html .= '<table class="data"><thead><tr><th>Fecha</th><th>Base de datos</th><th>Operación</th></tr></thead><tbody>';
+        $i = 0;
+        foreach (array_slice($dbLogs, 0, 10) as $l) {
+            $html .= '<tr' . ($i % 2 === 1 ? ' class="alt"' : '') . '>';
+            $html .= '<td>' . h_(substr($l['timestamp'] ?? $l['createdAt'] ?? '—', 0, 16)) . '</td>';
+            $html .= '<td>' . h_($l['database'] ?? '—') . '</td>';
+            $html .= '<td>' . h_(mb_strimwidth((string)($l['operation'] ?? $l['query'] ?? '—'), 0, 60, '…')) . '</td>';
+            $html .= '</tr>';
+            $i++;
+        }
+        $html .= '</tbody></table>';
+    }
+    $html .= '</div>';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 16. VALIDACIONES EXTERNAS
+    // ═══════════════════════════════════════════════════════════════
+    $html .= '<div class="page"></div>' . pdf_page_band('Validaciones Externas') . '<div class="content">';
+    $html .= pdf_section_title(22, 'Verificación de Recursos Públicos');
+    $html .= '<div class="art-note">Esta sección verifica la accesibilidad de los recursos públicos declarados. La validación real ante la APDP requiere mecanismos oficiales.</div>';
+    $html .= '<table class="data"><thead><tr><th>Recurso</th><th>Estado</th><th>HTTP</th><th>Observación</th></tr></thead><tbody>';
+    $html .= '<tr><td>Política de privacidad</td><td>' . h_($privacyOk['status']) . '</td><td>' . h_($privacyOk['http']) . '</td><td>' . ($hasPrivacyPolicy ? 'URL configurada' : 'No configurada') . '</td></tr>';
+    $html .= '<tr class="alt"><td>Política de cookies</td><td>' . h_($cookiesOk['status']) . '</td><td>' . h_($cookiesOk['http']) . '</td><td>' . ($hasCookiesPolicy ? 'URL configurada' : 'No configurada') . '</td></tr>';
+    $html .= '<tr><td>Registro APDP</td><td>' . ($hasApdp ? 'Declarado' : 'Sin registro declarado') . '</td><td>—</td><td>Requiere verificación manual</td></tr>';
+    $html .= '</tbody></table>';
+    $html .= '</div>';
+
+    // ═══════════════════════════════════════════════════════════════
+    // 17. RECOMENDACIONES
+    // ═══════════════════════════════════════════════════════════════
     $recs = [];
-    if (!$hasDpd) $recs[] = ['ALTA', 'Designar un Delegado de Protección de Datos (DPD) según Art. 28. Este será el responsable de supervisar el cumplimiento continuo de la ley.', 'Art. 28'];
-    if (!$hasApdp) $recs[] = ['ALTA', 'Inscribirse en el Registro Nacional de Sanciones y Cumplimiento de la APDP antes del 1 de diciembre de 2026.', 'Art. 31'];
-    if (!$hasPrivacyPolicy) $recs[] = ['ALTA', 'Publicar una política de privacidad clara y accesible que incluya: identidad del responsable, finalidades, base de licitud, derechos del titular y mecanismo para ejercerlos.', 'Art. 14 ter'];
-    if (!$allConsentsActive) $recs[] = ['ALTA', 'Implementar un sistema de gestión de consentimientos que registre el consentimiento libre, informado, específico, previo e inequívoco de cada titular.', 'Art. 12'];
-    if (!$hasInventory) $recs[] = ['ALTA', 'Crear un Registro de Actividades de Tratamiento (RAT) documentando cada actividad: qué datos, para qué, base legal, destinatarios y plazos.', 'Art. 14'];
-    if (!$hasPseudo) $recs[] = ['MEDIA', 'Implementar medidas de seudonimización o cifrado para datos personales según el nivel de riesgo.', 'Art. 14 quinquies'];
-    if (!$hasDpias && count($highRiskItems) > 0) $recs[] = ['ALTA', 'Realizar Evaluaciones de Impacto (DPIA) para tratamientos de alto riesgo, especialmente los que involucren datos sensibles.', 'Art. 14 quater'];
-    if (!$hasTrainings) $recs[] = ['MEDIA', 'Implementar un programa de capacitación periódica en protección de datos para todo el personal que manipule datos personales.', 'Art. 28 c)'];
-    if (!$hasCookiesPolicy) $recs[] = ['MEDIA', 'Publicar una política de cookies que informe claramente sobre el uso de tecnologías de rastreo.', 'Art. 14 ter'];
-    if (!$hasRetentionPolicy) $recs[] = ['MEDIA', 'Definir y documentar una política de retención de datos que establezca plazos máximos de conservación para cada categoría.', 'Art. 14'];
-    if (!$hasIntlTransferOk) $recs[] = ['ALTA', 'Regularizar las transferencias internacionales de datos con cláusulas contractuales o verificación de nivel adecuado del país receptor.', 'Art. 27'];
-    if (empty($recs)) $recs[] = ['MEDIA', 'Mantener los controles actuales y realizar auditorías periódicas de cumplimiento al menos una vez al año.', 'Buenas prácticas'];
+    if (!$hasDpd)             $recs[] = ['ALTA', 'Designar un Delegado de Protección de Datos (DPD) según Art. 28.', 'Art. 28'];
+    if (!$hasApdp)            $recs[] = ['ALTA', 'Inscribirse en el Registro Nacional de la APDP antes del 1 de diciembre de 2026.', 'Art. 31'];
+    if (!$hasPrivacyPolicy)   $recs[] = ['ALTA', 'Publicar política de privacidad accesible conforme al Art. 14 ter.', 'Art. 14 ter'];
+    if (!$hasConsents)        $recs[] = ['ALTA', 'Implementar sistema de gestión de consentimientos trazables.', 'Art. 12'];
+    if (!$hasInventory)       $recs[] = ['ALTA', 'Crear el Registro de Actividades de Tratamiento (RAT).', 'Art. 14'];
+    if (!$hasBreachProtocol)  $recs[] = ['ALTA', 'Documentar protocolo de gestión de brechas de seguridad.', 'Art. 26'];
+    if (!$hasIncidentResponse)$recs[] = ['ALTA', 'Documentar plan de respuesta a incidentes.', 'Art. 25'];
+    if (!$hasPseudo)          $recs[] = ['MEDIA', 'Implementar medidas de seudonimización o cifrado según el riesgo.', 'Art. 30'];
+    if (!$hasDpias && count($highRiskItems) > 0) $recs[] = ['ALTA', 'Realizar DPIA para tratamientos de alto riesgo.', 'Art. 14 quater'];
+    if (!$hasProcessors && count($dbLogs) > 0)   $recs[] = ['ALTA', 'Registrar encargados del tratamiento y firmar contratos DPA.', 'Art. 15 bis'];
+    if (!$hasTrainings)       $recs[] = ['MEDIA', 'Implementar programa de capacitación periódica.', 'Art. 28 c'];
+    if (!$hasCookiesPolicy)   $recs[] = ['MEDIA', 'Publicar política de cookies.', 'Art. 14 ter'];
+    if (!$hasRetentionPolicy) $recs[] = ['MEDIA', 'Definir y documentar política de retención de datos.', 'Art. 14'];
+    if (!$hasArco)            $recs[] = ['MEDIA', 'Habilitar canal operativo para ejercer derechos ARCO.', 'Art. 8-13'];
+    if (empty($recs))         $recs[] = ['BAJA', 'Mantener controles actuales y auditar periódicamente.', 'Buenas prácticas'];
 
     $html .= '<div class="page"></div>' . pdf_page_band('Recomendaciones y Plan de Acción') . '<div class="content">';
-    $html .= pdf_section_title($sectionNum++, 'Acciones Correctivas');
+    $html .= pdf_section_title(23, 'Acciones Correctivas Priorizadas');
     foreach ($recs as [$prio, $text, $art]) {
         $html .= '<div class="rec"><table class="chk-row"><tr>';
-        $html .= '<td style="width:42px;vertical-align:top"><span class="rec-prio' . ($prio === 'MEDIA' ? ' media' : '') . '">[' . $prio . ']</span></td>';
+        $html .= '<td style="width:55px;vertical-align:top"><span class="rec-prio' . ($prio === 'MEDIA' ? ' media' : '') . '">[' . $prio . ']</span></td>';
         $html .= '<td><div class="rec-text">' . h_($text) . '</div><div class="rec-art">' . h_($art) . '</div></td>';
         $html .= '</tr></table></div>';
     }
     $html .= '</div>';
 
-    // ====== VALIDACIONES EXTERNAS ======
-    $html .= '<div class="page"></div>' . pdf_page_band('Validaciones Externas') . '<div class="content">';
-    $html .= pdf_section_title($sectionNum++, 'Verificación de Recursos Públicos');
-    $html .= '<div class="art-note">Esta sección intenta verificar la accesibilidad pública de políticas documentadas. La validación real ante la APDP depende de mecanismos oficiales (no disponibles en API pública al cierre de esta versión).</div>';
-    $privacyOk = url_accessible($config['privacyPolicyUrl'] ?? '');
-    $cookiesOk = url_accessible($config['cookiesPolicyUrl'] ?? '');
-    $retentionOk = url_accessible($config['dataRetentionPolicy'] ?? '');
-    $apdpOk = $hasApdp ? ['status' => 'Registrado declarado', 'http' => '—'] : ['status' => 'Sin registro declarado', 'http' => '—'];
-    $html .= pdf_data_table(
-        ['Recurso', 'Estado', 'HTTP', 'Observación'],
-        [
-            ['Política de privacidad', $privacyOk['status'], $privacyOk['http'], $hasPrivacyPolicy ? 'URL configurada' : 'No configurada'],
-            ['Política de cookies', $cookiesOk['status'], $cookiesOk['http'], $hasCookiesPolicy ? 'URL configurada' : 'No configurada'],
-            ['Política de retención', $retentionOk['status'], $retentionOk['http'], $hasRetentionPolicy ? 'URL configurada' : 'No configurada'],
-            ['Registro APDP', $apdpOk['status'], $apdpOk['http'], 'Requiere verificación manual o API de la APDP'],
-        ]
-    );
-    $html .= '</div>';
-
-    // ====== MARCO LEGAL ======
+    // ═══════════════════════════════════════════════════════════════
+    // 18. MARCO LEGAL
+    // ═══════════════════════════════════════════════════════════════
     $lawLines = [
         'La Ley 21.719, publicada el 13 de diciembre de 2024, regula la protección y el tratamiento de los datos personales en Chile, creando la Agencia de Protección de Datos Personales (APDP). Vigente desde el 1 de diciembre de 2026.',
         'Principios rectores (Art. 3): Licitud y lealtad, finalidad, proporcionalidad, calidad, responsabilidad, seguridad, transparencia e información, y confidencialidad.',
-        'Derechos del titular (Art. 4-9): Acceso, Rectificación, Supresión, Oposición, Portabilidad y Bloqueo temporal. Plazo de respuesta: 30 días corridos.',
-        'Consentimiento (Art. 12): Libre, informado, específico, previo e inequívoco. Otras bases: obligación legal, ejecución de contrato, interés legítimo.',
-        'Medidas de seguridad (Art. 14 quinquies): Cifrado, seudonimización, confidencialidad, integridad, disponibilidad y resiliencia.',
-        'Brechas (Art. 14 sexies): Notificación a APDP sin dilaciones indebidas. A titulares cuando afecten datos sensibles, niños o económicos.',
+        'Derechos del titular (Art. 4-13): Acceso, Rectificación, Supresión, Oposición, Portabilidad y Bloqueo temporal. Plazo de respuesta: 10 días hábiles.',
+        'Consentimiento (Art. 12): Libre, informado, específico, previo e inequívoco. Otras bases: obligación legal, ejecución de contrato, interés legítimo (Art. 13).',
+        'Datos sensibles (Art. 16): Tratamiento con consentimiento explícito reforzado y medidas de seguridad elevadas.',
+        'Datos de menores (Art. 17): Consentimiento del representante legal y salvaguardas especiales.',
+        'Medidas de seguridad (Art. 25): Cifrado, seudonimización, confidencialidad, integridad, disponibilidad y resiliencia.',
+        'Brechas (Art. 26): Notificación a APDP sin dilaciones indebidas. A titulares cuando afecten datos sensibles, niños o económicos.',
         'DPD (Art. 28): Obligatorio para tratamiento a gran escala de datos sensibles.',
-        'Sanciones: Leves hasta 5.000 UTM, graves hasta 10.000 UTM, gravísimas hasta 20.000 UTM (Art. 34 bis-34 quáter).',
+        'DPIA (Art. 14 quater): Obligatoria para tratamientos de alto riesgo.',
+        'Encargados (Art. 15 bis): Contratos que incluyan cláusulas de confidencialidad y seguridad.',
+        'Transferencias internacionales (Art. 21, 27): Solo con garantías adecuadas o excepciones válidas.',
+        'Sanciones (Arts. 32-36): Leves hasta 5.000 UTM, graves hasta 10.000 UTM, gravísimas hasta 20.000 UTM.',
     ];
-    $html .= '<div class="page"></div>' . pdf_page_band('Ley 21.719 - Protección de Datos Personales') . '<div class="content">';
-    $html .= pdf_section_title($sectionNum++, 'Marco Legal - Ley 21.719');
+    $html .= '<div class="page"></div>' . pdf_page_band('Marco Legal Aplicable') . '<div class="content">';
+    $html .= pdf_section_title(24, 'Ley 21.719 - Protección de Datos Personales');
     foreach ($lawLines as $line) $html .= '<div class="body-text">' . h_($line) . '</div>';
     $html .= '</div>';
 
-    // ====== CIERRE ======
-    $html .= '<div class="page"></div>' . pdf_page_band('Cierre del Reporte') . '<div class="content">';
-    $html .= pdf_section_title($sectionNum++, 'Declaración');
-    $html .= '<div class="body-text">El presente reporte ha sido generado electrónicamente por la plataforma de cumplimiento de la Ley 21.719 de Protección de Datos Personales. Refleja el estado de cumplimiento de ' . h_($companyName) . ' al momento de su emisión.</div>';
-    $html .= '<div class="body-text">Este documento tiene carácter de declaración de cumplimiento y debe ser revisado por el Delegado de Protección de Datos (DPD) o encargado designado. No sustituye una auditoría externa independiente.</div>';
-    $html .= '<div class="body-text">Fecha de emisión: ' . h_($dateStr) . '</div>';
-    $html .= '<div class="body-text">Score de cumplimiento: ' . $passRate . '%</div>';
-    $html .= '<div class="body-text">Requisitos evaluados: ' . $totalChecks . ' · Cumplidos: ' . $passedChecks . ' · Pendientes: ' . ($totalChecks - $passedChecks) . '</div>';
-    $html .= pdf_section_title($sectionNum++, 'Trazabilidad del Documento');
+    // ═══════════════════════════════════════════════════════════════
+    // 19. DECLARACIÓN Y FIRMA
+    // ═══════════════════════════════════════════════════════════════
+    $html .= '<div class="page"></div>' . pdf_page_band('Declaración y Firma') . '<div class="content">';
+    $html .= pdf_section_title(25, 'Declaración de Veracidad');
+    $html .= '<div class="body-text">El presente informe constituye una declaración formal de cumplimiento de la Ley 21.719 de Protección de Datos Personales de la República de Chile, elaborado a partir de los registros y evidencias mantenidos en la plataforma de cumplimiento.</div>';
+    $html .= '<div class="body-text">El responsable del tratamiento declara que la información contenida en este informe refleja el estado de cumplimiento a la fecha de emisión. Este documento sirve como evidencia documental para efectos de certificación ante la Agencia de Protección de Datos Personales (APDP), sin perjuicio de auditorías externas independientes.</div>';
+
+    $html .= pdf_section_title(26, 'Trazabilidad del Documento');
     $html .= pdf_fields([
-        ['ID del reporte', $report['_id'] ?? ('all-' . date('Ymd-His'))],
+        ['ID del informe', $report['_id'] ?? ('all-' . date('Ymd-His'))],
         ['Generado por', $user['email'] ?? '—'],
-        ['Fecha/hora UTC', date('c')],
-        ['Plataforma', 'SecureLab / Ley 21.719'],
+        ['Rol del generador', $user['role'] ?? 'user'],
+        ['Fecha y hora', date('c')],
+        ['Score final', $passRate . '%'],
+        ['Plataforma', 'SecureLab · Ley 21.719'],
     ]);
+
+    $html .= '<div style="margin-top:60px">';
+    $html .= '<table style="width:100%;border-collapse:collapse">';
+    $html .= '<tr>';
+    $html .= '<td class="signature-box" style="width:45%">';
+    $html .= '<strong>' . h_($config['dpdName'] ?? 'Delegado de Protección de Datos') . '</strong><br>';
+    $html .= 'Delegado de Protección de Datos (DPD)<br>';
+    $html .= h_($config['dpdEmail'] ?? '') . '<br>';
+    $html .= '<span style="font-size:7px;color:#777;margin-top:20px;display:block">Firma y timbre</span>';
+    $html .= '</td>';
+    $html .= '<td style="width:10%"></td>';
+    $html .= '<td class="signature-box" style="width:45%">';
+    $html .= '<strong>' . h_($config['companyName'] ?? 'Representante Legal') . '</strong><br>';
+    $html .= 'Representante Legal<br>';
+    $html .= 'RUT: ' . h_($config['companyRut'] ?? '—') . '<br>';
+    $html .= '<span style="font-size:7px;color:#777;margin-top:20px;display:block">Firma y timbre</span>';
+    $html .= '</td>';
+    $html .= '</tr>';
+    $html .= '</table>';
+    $html .= '</div>';
+
     $html .= '<div class="close-rule"></div>';
     $html .= '<div class="close-center">Documento generado electrónicamente · Ley 21.719 · Protección de Datos Personales · Chile</div>';
-    $html .= '<div class="close-muted">Fecha de emisión: ' . h_($dateStr) . ' · Confidencial</div>';
+    $html .= '<div class="close-muted">Fecha de emisión: ' . h_($dateStr) . ' · Confidencial · Documento auditable</div>';
     $html .= '</div>';
 
     $html .= '</body></html>';
