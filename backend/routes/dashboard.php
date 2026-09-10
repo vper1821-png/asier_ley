@@ -41,14 +41,21 @@ function stats() {
 
     $agents = $db->find('agents', $filter);
     $databases = $db->find('databases', $filter);
-    $alerts = $db->find('alerts', $filter);
+    // ❌ ELIMINAR: $alerts = $db->find('alerts', $filter);
     $breaches = $db->find('compliance_breaches', $filter);
     $scans = $db->find('scans', $filter);
     $reports = $db->find('reports', $filter);
     $userMonitor = $db->find('user_monitor', $filter);
 
     $onlineAgents = count(array_filter($agents, fn($a) => ($a['status'] ?? '') === 'online'));
-    $activeAlerts = count(array_filter($alerts, fn($a) => empty($a['resolved']) && empty($a['dismissed'])));
+
+    // ✅ USAR count para alertas activas (sin límite de paginación)
+    $activeFilter = array_merge($filter, [
+        'resolved' => ['$ne' => true],
+        'dismissed' => ['$ne' => true],
+    ]);
+    $activeAlerts = $db->count('alerts', $activeFilter);
+
     $openBreaches = count(array_filter($breaches, fn($b) => ($b['status'] ?? 'open') !== 'resolved'));
     $completedScans = count(array_filter($scans, fn($s) => ($s['status'] ?? '') === 'completed'));
     $monthStart = date('Y-m-01');
@@ -148,7 +155,7 @@ function stats() {
             'openBreaches' => $openBreaches,
             'totalBreaches' => count($breaches),
             'vulnerableUsersCount' => $vulnerableUsersCount,
-            'activeAlerts' => $activeAlerts,
+            'activeAlerts' => $activeAlerts, // ✅ valor corregido
             'completedScans' => $completedScans,
             'totalScans' => count($scans),
             'generatedReports' => $generatedReports,
