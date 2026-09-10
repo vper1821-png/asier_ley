@@ -259,6 +259,7 @@ function generateResponse() {
 }
 
 // ─── Descargar respuesta en PDF ───
+// ─── Descargar respuesta en PDF ───
 function downloadResponse() {
     $user = Auth::requireAuth();
     $requestId = $_GET['requestId'] ?? $_GET['id'] ?? '';
@@ -268,7 +269,7 @@ function downloadResponse() {
     $req = $db->findOne('arco_requests', ['requestId' => $requestId]);
     if (!$req) json_error('solicitud no encontrada', 404);
 
-    // Verificación de acceso (admin, superadmin o cualquier usuario de la empresa)
+    // Verificación de acceso
     if (!arcoCanAccess($user, $db, $req)) {
         if (empty($req['companyId'])) {
             json_error('solicitud pública - solo administradores pueden acceder', 403);
@@ -278,18 +279,18 @@ function downloadResponse() {
 
     $config = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
     $companyName = $config['companyName'] ?? ($user['companyName'] ?? ($user['email'] ?? 'Empresa'));
-    $dpdName = $config['dpdName'] ?? '—';
+    $dpdName  = $config['dpdName']  ?? '—';
     $dpdEmail = $config['dpdEmail'] ?? '—';
 
     $type = $req['tipo'] ?? $req['type'] ?? 'acceso';
     $typeLabels = [
-        'acceso' => 'Acceso',
+        'acceso'        => 'Acceso',
         'rectificacion' => 'Rectificación',
-        'cancelacion' => 'Cancelación',
-        'oposicion' => 'Oposición',
-        'portabilidad' => 'Portabilidad',
-        'supresion' => 'Supresión',
-        'bloqueo' => 'Bloqueo',
+        'cancelacion'   => 'Cancelación',
+        'oposicion'     => 'Oposición',
+        'portabilidad'  => 'Portabilidad',
+        'supresion'     => 'Supresión',
+        'bloqueo'       => 'Bloqueo',
     ];
     $typeLabel = $typeLabels[$type] ?? ucfirst($type);
 
@@ -297,27 +298,33 @@ function downloadResponse() {
     if (is_string($solicitante)) $solicitante = json_decode($solicitante, true) ?: [];
     if (!is_array($solicitante)) $solicitante = [];
 
-    $name = $solicitante['nombre'] ?? ($req['name'] ?? 'Titular');
-    $rut = $solicitante['rut'] ?? ($req['rut'] ?? '—');
-    $email = $solicitante['email'] ?? ($req['email'] ?? '—');
-    $requestDate = substr(($req['createdAt'] ?? date('c')), 0, 10);
-    $responseDate = $req['respondedAt'] ?? $req['resolvedAt'] ?? $req['updatedAt'] ?? date('c');
-    $responseDate = date('d/m/Y', strtotime($responseDate));
+    $name  = $solicitante['nombre'] ?? ($req['name']  ?? 'Titular');
+    $rut   = $solicitante['rut']    ?? ($req['rut']   ?? '—');
+    $email = $solicitante['email']  ?? ($req['email'] ?? '—');
 
+    $requestDate  = substr(($req['createdAt'] ?? date('c')), 0, 10);
+    $responseRaw  = $req['respondedAt'] ?? $req['resolvedAt'] ?? $req['finishedAt'] ?? $req['updatedAt'] ?? date('c');
+    $responseDate = date('d/m/Y', strtotime($responseRaw));
+    $generatedAt  = date('d/m/Y H:i');
+
+    // ─── Etiquetas de estado (con finished) ───
     $statusLabels = [
-    'pending'     => 'Pendiente',
-    'in_progress' => 'En proceso',
-    'completed'   => 'Completada',
-    'resolved'    => 'Completada',
-    'finished'    => 'Terminada',
-    'rejected'    => 'Rechazada',
+        'pending'     => 'Pendiente',
+        'in_progress' => 'En proceso',
+        'completed'   => 'Completada',
+        'resolved'    => 'Completada',
+        'finished'    => 'Terminada',
+        'rejected'    => 'Rechazada',
     ];
     $statusLabel = $statusLabels[$req['status'] ?? 'pending'] ?? ucfirst($req['status'] ?? 'pendiente');
-    $respondedBy = $req['respondedBy'] ?? $dpdName;
+
+    $respondedBy = $req['respondedBy'] ?? ($dpdName !== '—' ? $dpdName : 'Responsable');
+
     $statusHistory = is_array($req['statusHistory'] ?? null) ? $req['statusHistory'] : [];
 
     $h = fn($s) => htmlspecialchars((string)($s ?? ''), ENT_QUOTES, 'UTF-8');
 
+    // ─── Párrafos legales por tipo ───
     $paragraphs = [
         'acceso' => [
             'De conformidad con el artículo 8 de la Ley 21.719, usted tiene derecho a acceder a los datos personales que el responsable del tratamiento mantiene bajo su nombre.',
@@ -357,35 +364,65 @@ function downloadResponse() {
     ];
     $bodyText = $paragraphs[$type] ?? $paragraphs['acceso'];
 
+    // ─── Hash de verificación (integridad del documento) ───
+    $verifyHash = strtoupper(substr(hash('sha256', $requestId . '|' . $responseRaw . '|' . ($req['status'] ?? '')), 0, 16));
+
+    // ─── Tipo de cambio en historial ───
+    $kindLabels = [
+        'status'          => 'Cambio de estado',
+        'response'        => 'Respuesta agregada',
+        'status+response' => 'Estado + respuesta',
+    ];
+
+    // ═══════════════════════════════════════════════════════════
+    //  CONSTRUCCIÓN DEL HTML
+    // ═══════════════════════════════════════════════════════════
     $html = "<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'><title>Respuesta ARCO - {$h($typeLabel)}</title>";
     $html .= "<style>
-        @page{margin:0}
-        body{font-family:'DejaVu Sans',Arial,sans-serif;font-size:10px;line-height:1.6;color:#1a1a1a;margin:0}
-        .footer-fixed{position:fixed;bottom:0;left:0;right:0;height:22px;background:#f5f5f5;border-top:0.5px solid #cccccc;color:#999999;font-size:7px;padding:6px 45px 0 45px}
-        .topline{height:2px;background:#000000}
-        .band{background:#000000;padding:9px 45px 10px 45px}
-        .band .sub{color:#ffffff;font-size:8px}
-        .band .ttl{color:#ffffff;font-size:10px;font-weight:bold;margin-top:2px}
-        .head-wrap{padding:30px 60px 0 60px;text-align:center}
-        .head-label{color:#777777;font-size:9px}
-        .head-law{color:#777777;font-size:8px;margin-top:4px}
-        .head-sep{border-top:0.5px solid #000000;margin:18px 40px 0 40px}
-        .head-company{color:#1a1a1a;font-size:14px;font-weight:bold;margin-top:16px;text-transform:uppercase}
-        .head-title{color:#1a1a1a;font-size:15px;font-weight:bold;margin-top:8px}
-        .head-box{background:#f5f5f5;border:0.5px solid #bbbbbb;margin:16px 40px 0 40px;padding:7px 10px;color:#1a1a1a;font-size:8px;font-weight:bold}
-        .content{padding:20px 60px 50px 60px}
-        .meta{margin-bottom:18px;background:#f5f5f5;border:0.5px solid #bbbbbb;padding:12px 14px}
-        .meta div{margin-bottom:4px;font-size:9px}
-        .label{font-weight:bold;color:#555555;font-size:8px;text-transform:uppercase}
-        .subject{font-size:12px;font-weight:bold;margin:20px 0 12px;border-left:4px solid #000000;padding:2px 0 2px 10px}
-        .body p{margin-bottom:10px;text-align:justify;font-size:10px}
-        .data-table{width:100%;border-collapse:collapse;margin:12px 0}
-        .data-table th{background:#1a1a1a;color:#cccccc;font-size:8px;font-weight:bold;text-align:left;padding:6px 8px}
-        .data-table td{border-bottom:0.3px solid #e0e0e0;padding:6px 8px;font-size:9px}
-        .signature{margin-top:45px}
-        .signature p{margin:4px 0;font-size:10px}
+        @page { margin: 0; }
+        body { font-family: 'DejaVu Sans', Arial, sans-serif; font-size: 10px; line-height: 1.6; color: #1a1a1a; margin: 0; }
+        .footer-fixed { position: fixed; bottom: 0; left: 0; right: 0; height: 22px; background: #f5f5f5; border-top: 0.5px solid #cccccc; color: #999999; font-size: 7px; padding: 6px 45px 0 45px; }
+        .footer-page { float: right; color: #666; }
+        .topline { height: 2px; background: #000000; }
+        .band { background: #000000; padding: 9px 45px 10px 45px; }
+        .band .sub { color: #ffffff; font-size: 8px; }
+        .band .ttl { color: #ffffff; font-size: 10px; font-weight: bold; margin-top: 2px; }
+        .head-wrap { padding: 30px 60px 0 60px; text-align: center; }
+        .head-label { color: #777777; font-size: 9px; }
+        .head-law { color: #777777; font-size: 8px; margin-top: 4px; }
+        .head-sep { border-top: 0.5px solid #000000; margin: 18px 40px 0 40px; }
+        .head-company { color: #1a1a1a; font-size: 14px; font-weight: bold; margin-top: 16px; text-transform: uppercase; }
+        .head-title { color: #1a1a1a; font-size: 15px; font-weight: bold; margin-top: 8px; }
+        .head-box { background: #f5f5f5; border: 0.5px solid #bbbbbb; margin: 16px 40px 0 40px; padding: 7px 10px; color: #1a1a1a; font-size: 8px; font-weight: bold; }
+        .content { padding: 20px 60px 50px 60px; }
+        .meta { margin-bottom: 18px; background: #f5f5f5; border: 0.5px solid #bbbbbb; padding: 12px 14px; }
+        .meta div { margin-bottom: 4px; font-size: 9px; }
+        .label { font-weight: bold; color: #555555; font-size: 8px; text-transform: uppercase; }
+        .subject { font-size: 12px; font-weight: bold; margin: 20px 0 12px; border-left: 4px solid #000000; padding: 2px 0 2px 10px; }
+        .body p { margin-bottom: 10px; text-align: justify; font-size: 10px; }
+        .data-table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+        .data-table th { background: #1a1a1a; color: #cccccc; font-size: 8px; font-weight: bold; text-align: left; padding: 6px 8px; }
+        .data-table td { border-bottom: 0.3px solid #e0e0e0; padding: 6px 8px; font-size: 9px; vertical-align: top; }
+        .signature { margin-top: 45px; }
+        .signature p { margin: 4px 0; font-size: 10px; }
+        .entry { border-left: 3px solid #000000; padding: 6px 0 6px 10px; margin: 10px 0 14px; page-break-inside: avoid; }
+        .entry-head { font-size: 9px; color: #555555; margin: 0 0 6px; }
+        .entry-head strong { color: #1a1a1a; }
+        .entry-body p { font-size: 10px; text-align: justify; margin: 0 0 6px; }
+        .badge { display: inline-block; padding: 1px 6px; border: 0.5px solid #888; border-radius: 8px; font-size: 7px; color: #333; background: #fafafa; }
+        .status-pending { background: #fef3c7; border-color: #d97706; color: #92400e; }
+        .status-progress { background: #dbeafe; border-color: #2563eb; color: #1e40af; }
+        .status-completed { background: #d1fae5; border-color: #059669; color: #065f46; }
+        .status-finished { background: #ccfbf1; border-color: #0d9488; color: #115e59; }
+        .status-rejected { background: #fee2e2; border-color: #dc2626; color: #991b1b; }
+        .empty-note { font-size: 10px; color: #555555; font-style: italic; }
+        .verify { margin-top: 30px; padding: 8px 12px; background: #f8f8f8; border: 0.5px dashed #999; font-size: 8px; color: #555; font-family: 'DejaVu Sans Mono', monospace; }
     </style></head><body>";
-    $html .= "<div class='footer-fixed'>Ley 21.719 - Respuesta a Derecho ARCO · {$h($companyName)}</div>";
+
+    // Footer con numeración
+    $html .= "<div class='footer-fixed'>Ley 21.719 - Respuesta a Derecho ARCO · {$h($companyName)} <span class='footer-page'>Generado el {$h($generatedAt)}</span></div>";
+
+    // Header
     $html .= "<div class='topline'></div>";
     $html .= "<div class='head-wrap'>";
     $html .= "<div class='head-label'>REPÚBLICA DE CHILE</div>";
@@ -395,7 +432,10 @@ function downloadResponse() {
     $html .= "<div class='head-title'>Respuesta a Solicitud de {$h($typeLabel)}</div>";
     $html .= "<div class='head-box'>CLASIFICACIÓN: CONFIDENCIAL · DPD: {$h($dpdName)} ({$h($dpdEmail)})</div>";
     $html .= "</div>";
+
     $html .= "<div class='content'>";
+
+    // Meta de la solicitud
     $html .= "<div class='meta'>";
     $html .= "<div><span class='label'>Número de solicitud:</span> {$h($requestId)}</div>";
     $html .= "<div><span class='label'>Tipo de derecho:</span> {$h($typeLabel)}</div>";
@@ -405,6 +445,7 @@ function downloadResponse() {
     $html .= "<div><span class='label'>Gestionada por:</span> {$h($respondedBy)}</div>";
     $html .= "</div>";
 
+    // Subject + datos del titular
     $html .= "<div class='subject'>Respuesta a solicitud de {$h($typeLabel)} - Ley 21.719</div>";
 
     $html .= "<div class='meta'>";
@@ -413,38 +454,38 @@ function downloadResponse() {
     $html .= "<div><span class='label'>Email:</span> {$h($email)}</div>";
     $html .= "</div>";
 
+    // Fundamentos legales
     $html .= "<div class='body'>";
     foreach ($bodyText as $p) {
         $html .= "<p>{$h($p)}</p>";
     }
     $html .= "</div>";
 
-    // Respuesta entregada al titular (contenido guardado al cambiar el estado)
+    // ─── Respuesta entregada al titular (última versión) ───
     $responseText = trim((string)($req['response'] ?? ''));
     $html .= "<div class='subject'>Respuesta del responsable</div>";
     if ($responseText !== '') {
-        foreach (preg_split('/\r?\n/', $responseText) as $line) {
-            if (trim($line) !== '') $html .= "<p style='text-align:justify;font-size:10px;margin-bottom:8px'>{$h(trim($line))}</p>";
+        // Dividir por saltos de línea (simples o dobles)
+        $lines = preg_split('/\r?\n/', $responseText);
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line !== '') {
+                $html .= "<p style='text-align:justify;font-size:10px;margin-bottom:8px'>{$h($line)}</p>";
+            }
         }
-        $html .= "<p style='font-size:8px;color:#555555;margin-top:4px'>Registrada por {$h($respondedBy)} el {$h($responseDate)}</p>";
+        $html .= "<p style='font-size:8px;color:#555555;margin-top:6px'>Registrada por {$h($respondedBy)} el {$h($responseDate)}</p>";
     } else {
-        $html .= "<p style='font-size:10px;color:#555555;font-style:italic'>Aún no se ha registrado una respuesta específica para esta solicitud.</p>";
+        $html .= "<p class='empty-note'>Aún no se ha registrado una respuesta específica para esta solicitud.</p>";
     }
 
-        // ─── Historial de gestión: timeline + respuestas completas ───
+    // ─── Historial de gestión: tabla resumen + cuerpo completo ───
     if (!empty($statusHistory)) {
-        $kindLabels = [
-            'status'          => 'Cambio de estado',
-            'response'        => 'Respuesta agregada',
-            'status+response' => 'Estado + respuesta',
-        ];
-
-        $html .= "<div class='subject' style='font-size:10px;margin-top:18px'>Historial de gestión</div>";
+        $html .= "<div class='subject' style='font-size:11px;margin-top:20px'>Historial de gestión</div>";
 
         // Tabla resumen del timeline
         $html .= "<table class='data-table'>";
-        $html .= "<tr><th style='width:110px'>Fecha</th><th style='width:90px'>Estado</th>"
-               . "<th style='width:130px'>Responsable</th><th>Tipo de cambio</th></tr>";
+        $html .= "<tr><th style='width:100px'>Fecha</th><th style='width:80px'>Estado</th>"
+               . "<th style='width:120px'>Responsable</th><th>Tipo de cambio</th></tr>";
 
         foreach ($statusHistory as $ev) {
             $evDate   = !empty($ev['at']) ? date('d/m/Y H:i', strtotime($ev['at'])) : '—';
@@ -452,40 +493,70 @@ function downloadResponse() {
             $evBy     = $ev['by'] ?? '—';
             $evKind   = $kindLabels[$ev['kind'] ?? ''] ?? '—';
 
-            $html .= "<tr><td>{$h($evDate)}</td><td>{$h($evStatus)}</td>"
-                   . "<td>{$h($evBy)}</td><td>{$h($evKind)}</td></tr>";
+            // Badge de color por estado
+            $statusCls = 'badge';
+            switch ($ev['status'] ?? '') {
+                case 'pending':     $statusCls .= ' status-pending';   break;
+                case 'in_progress': $statusCls .= ' status-progress';  break;
+                case 'completed':
+                case 'resolved':    $statusCls .= ' status-completed'; break;
+                case 'finished':    $statusCls .= ' status-finished';  break;
+                case 'rejected':    $statusCls .= ' status-rejected';  break;
+            }
+
+            $html .= "<tr><td>{$h($evDate)}</td>"
+                   . "<td><span class='{$statusCls}'>{$h($evStatus)}</span></td>"
+                   . "<td>{$h($evBy)}</td>"
+                   . "<td>{$h($evKind)}</td></tr>";
         }
         $html .= "</table>";
 
         // Cuerpo completo de cada respuesta registrada
         $html .= "<div style='margin-top:14px'>";
-        foreach ($statusHistory as $idx => $ev) {
+        $entryNum = 0;
+        foreach ($statusHistory as $ev) {
             $fullResponse = trim((string)($ev['response'] ?? ''));
             if ($fullResponse === '') continue;
 
+            $entryNum++;
             $evDate   = !empty($ev['at']) ? date('d/m/Y H:i', strtotime($ev['at'])) : '—';
             $evStatus = $statusLabels[$ev['status'] ?? ''] ?? ucfirst($ev['status'] ?? '—');
             $evBy     = $ev['by'] ?? '—';
 
-            $html .= "<div style='border-left:3px solid #000;padding:6px 0 6px 10px;margin:10px 0 14px'>";
-            $html .= "<p style='font-size:9px;color:#555;margin:0 0 4px'>"
-                   . "<strong>Entrada #" . ($idx + 1) . "</strong> · {$h($evDate)} · "
-                   . "Estado: {$h($evStatus)} · Responsable: {$h($evBy)}</p>";
+            $html .= "<div class='entry'>";
+            $html .= "<p class='entry-head'><strong>Entrada #{$entryNum}</strong> · {$h($evDate)} · "
+                   . "Estado: <strong>{$h($evStatus)}</strong> · Responsable: {$h($evBy)}</p>";
+            $html .= "<div class='entry-body'>";
+            // Cada línea no vacía = párrafo
             foreach (preg_split('/\r?\n/', $fullResponse) as $line) {
-                if (trim($line) !== '') {
-                    $html .= "<p style='font-size:10px;text-align:justify;margin:0 0 6px'>{$h(trim($line))}</p>";
+                $line = trim($line);
+                if ($line !== '') {
+                    $html .= "<p>{$h($line)}</p>";
                 }
             }
-            $html .= "</div>";
+            $html .= "</div></div>";
+        }
+
+        if ($entryNum === 0) {
+            $html .= "<p class='empty-note'>Sin respuestas registradas aún.</p>";
         }
         $html .= "</div>";
     }
 
+    // Firma
     $html .= "<div class='signature'><p>Atentamente,</p>";
     $html .= "<p><strong>{$h($dpdName)}</strong><br>Delegado de Protección de Datos</p></div>";
 
+    // Hash de verificación
+    $html .= "<div class='verify'>";
+    $html .= "<strong>Verificación de integridad:</strong> {$h($verifyHash)}<br>";
+    $html .= "Documento emitido conforme al procedimiento de derechos ARCO establecido por la Ley 21.719. ";
+    $html .= "Cualquier alteración posterior invalida esta verificación.";
+    $html .= "</div>";
+
     $html .= "</div></body></html>";
 
+    // ─── Render PDF ───
     $dompdf = new Dompdf\Dompdf();
     $dompdf->setPaper('A4', 'portrait');
     $dompdf->loadHtml($html);
