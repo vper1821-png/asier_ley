@@ -3419,139 +3419,204 @@ main.compliance-workspace { position: relative; }
             <?php endif; ?>
 
             <?php elseif ($tab === 'dpia'): ?>
-            <?php
-            $dApproved = count(array_filter($items, fn($it) => ($it['status'] ?? '') === 'approved'));
-            $dPending = count($items) - $dApproved;
-            $dHighRisk = count(array_filter($items, fn($it) => in_array($it['riskLevel'] ?? '', ['high', 'critical']) && ($it['status'] ?? '') !== 'approved'));
-            $riskBadge = ['high' => 'bg-orange-500/15 text-orange-400 border-orange-500/30', 'medium' => 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30', 'low' => 'bg-green-500/15 text-green-400 border-green-500/30', 'critical' => 'bg-red-500/15 text-red-400 border-red-500/30'];
-            $riskLabel = ['high' => 'Alto', 'medium' => 'Medio', 'low' => 'Bajo', 'critical' => 'Crítico'];
-            ?>
-            <?php renderSectionHeader('Evaluación de Impacto — DPIA', 'Evaluación de riesgos para tratamientos de alto riesgo — Art. 14 quater / Art. 16'); ?>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <?php renderComplianceStat('Total DPIA', count($items), 'text-white', cIcon('shield')); ?>
-                <?php renderComplianceStat('Aprobadas', $dApproved, 'text-emerald-400', cIcon('check')); ?>
-                <?php renderComplianceStat('Pendientes', $dPending, $dPending ? 'text-amber-400' : 'text-emerald-400', cIcon('pen')); ?>
-                <?php renderComplianceStat('Alto riesgo', $dHighRisk, $dHighRisk ? 'text-red-400' : 'text-text-subtle', cIcon('alert')); ?>
+<?php
+$dApproved = count(array_filter($items, fn($it) => ($it['status'] ?? '') === 'approved'));
+$dPending = count($items) - $dApproved;
+$dRejected = count(array_filter($items, fn($it) => ($it['status'] ?? '') === 'rejected'));
+$dHighRisk = count(array_filter($items, fn($it) => in_array($it['riskLevel'] ?? '', ['high', 'critical']) && ($it['status'] ?? '') !== 'approved'));
+$riskBadge = ['high' => 'bg-orange-500/15 text-orange-400 border-orange-500/30', 'medium' => 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30', 'low' => 'bg-green-500/15 text-green-400 border-green-500/30', 'critical' => 'bg-red-500/15 text-red-400 border-red-500/30'];
+$riskLabel = ['high' => 'Alto', 'medium' => 'Medio', 'low' => 'Bajo', 'critical' => 'Crítico'];
+
+// ✅ NUEVO: verificar si el usuario actual puede aprobar/rechazar DPIA
+$currentRole = strtolower($user['role'] ?? '');
+$isDpoOrDpd = in_array($currentRole, ['dpo', 'dpd', 'superadmin'], true) || !empty($user['isAdmin']);
+?>
+<?php renderSectionHeader('Evaluación de Impacto — DPIA', 'Evaluación de riesgos para tratamientos de alto riesgo — Art. 14 quater / Art. 16', 'dpia'); ?>
+<div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+    <?php renderComplianceStat('Total DPIA', count($items), 'text-white', cIcon('shield')); ?>
+    <?php renderComplianceStat('Aprobadas', $dApproved, 'text-emerald-400', cIcon('check')); ?>
+    <?php renderComplianceStat('Pendientes', $dPending, $dPending ? 'text-amber-400' : 'text-emerald-400', cIcon('pen')); ?>
+    <?php renderComplianceStat('Alto riesgo', $dHighRisk, $dHighRisk ? 'text-red-400' : 'text-text-subtle', cIcon('alert')); ?>
+</div>
+
+<?php if (!$isDpoOrDpd): ?>
+<div class="rounded-xl border border-amber-500/25 bg-amber-500/[0.06] px-4 py-3 flex items-start gap-3">
+    <span class="text-amber-400 mt-0.5">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+    </span>
+    <p class="text-[10px] md:text-[11px] text-text-muted leading-relaxed">
+        <strong class="text-amber-300">Aprobación restringida:</strong>
+        solo el <strong>DPO/DPD</strong> (o un superadministrador) puede aprobar o rechazar evaluaciones de impacto. Puedes crear y editar DPIAs, pero la aprobación final requiere un DPO.
+    </p>
+</div>
+<?php endif; ?>
+
+<div id="dpia-create-form" class="hidden rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5">
+    <div class="flex items-center justify-between mb-4">
+        <p class="text-[12px] font-semibold text-white">Nueva evaluación de impacto (DPIA)</p>
+        <?php renderImportBtn('dpia'); ?>
+    </div>
+
+    <form method="POST" id="dpia-wizard-form" novalidate>
+        <input type="hidden" name="collection" value="dpia">
+
+        <div class="dpia-wizard-progress mb-6">
+            <div class="flex items-center justify-between mb-2">
+                <span class="dpia-wizard-step-text text-[11px] font-semibold text-text-subtle">Paso 1 de 2</span>
+                <span class="dpia-wizard-percentage text-[11px] font-semibold text-accent">50%</span>
             </div>
-            <div id="dpia-create-form" class="hidden rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5">
-                <div class="flex items-center justify-between mb-4">
-                    <p class="text-[12px] font-semibold text-white">Nueva evaluación de impacto (DPIA)</p>
-                    <?php renderImportBtn('dpia'); ?>
+            <div class="dpia-wizard-progress-bar bg-bg-elevated/50 rounded-full h-2 overflow-hidden">
+                <div class="dpia-wizard-progress-fill h-full rounded-full transition-all duration-500" style="width: 50%"></div>
+            </div>
+            <div class="flex items-center justify-between mt-3">
+                <div class="dpia-wizard-step-indicator dpia-step-1 flex items-center gap-2">
+                    <div class="dpia-step-number w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold bg-accent text-white">1</div>
+                    <span class="dpia-step-label text-[11px] font-medium text-text-heading">Información del Proyecto</span>
                 </div>
-                
-                <!-- DPIA Wizard Form -->
-                <form method="POST" id="dpia-wizard-form" novalidate>
-                    <input type="hidden" name="collection" value="dpia">
-                    
-                    <!-- Wizard Progress Indicator -->
-                    <div class="dpia-wizard-progress mb-6">
-                        <div class="flex items-center justify-between mb-2">
-                            <span class="dpia-wizard-step-text text-[11px] font-semibold text-text-subtle">Paso 1 de 2</span>
-                            <span class="dpia-wizard-percentage text-[11px] font-semibold text-accent">50%</span>
-                        </div>
-                        <div class="dpia-wizard-progress-bar bg-bg-elevated/50 rounded-full h-2 overflow-hidden">
-                            <div class="dpia-wizard-progress-fill h-full rounded-full transition-all duration-500" style="width: 50%"></div>
-                        </div>
-                        <div class="flex items-center justify-between mt-3">
-                            <div class="dpia-wizard-step-indicator dpia-step-1 flex items-center gap-2">
-                                <div class="dpia-step-number w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold bg-accent text-white">1</div>
-                                <span class="dpia-step-label text-[11px] font-medium text-text-heading">Información del Proyecto</span>
-                            </div>
-                            <div class="dpia-wizard-step-indicator dpia-step-2 flex items-center gap-2">
-                                <div class="dpia-step-number w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold bg-bg-elevated text-text-subtle border border-border-color">2</div>
-                                <span class="dpia-step-label text-[11px] font-medium text-text-subtle">Evaluación de Riesgo</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Step 1: Project Information -->
-                    <div class="dpia-wizard-step dpia-step-1-content" data-step="1">
-                        <div class="compliance-form-row">
-                            <div class="compliance-form-cell">
-                                <label for="dpia-name" class="compliance-form-label">Nombre del proyecto <span class="required">*</span></label>
-                                <input type="text" id="dpia-name" name="fields[name]" required placeholder="Ej: Sistema de gestión de clientes" class="compliance-input">
-                            </div>
-                            <div class="compliance-form-cell">
-                                <label for="dpia-description" class="compliance-form-label">Descripción del tratamiento</label>
-                                <input type="text" id="dpia-description" name="fields[description]" placeholder="Descripción breve del tratamiento de datos" class="compliance-input">
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Step 2: Risk Assessment -->
-                    <div class="dpia-wizard-step dpia-step-2-content hidden" data-step="2">
-                        <div class="compliance-form-row">
-                            <div class="compliance-form-cell">
-                                <label for="dpia-riskLevel" class="compliance-form-label">Nivel de riesgo <span class="required">*</span></label>
-                                <select id="dpia-riskLevel" name="fields[riskLevel]" required class="compliance-select">
-                                    <option value="">Seleccionar nivel de riesgo</option>
-                                    <option value="low">Riesgo bajo</option>
-                                    <option value="medium">Riesgo medio</option>
-                                    <option value="high">Riesgo alto</option>
-                                </select>
-                            </div>
-                            <div class="compliance-form-cell">
-                                <label for="dpia-treatmentDescription" class="compliance-form-label">Descripción del tratamiento</label>
-                                <textarea id="dpia-treatmentDescription" name="fields[treatmentDescription]" rows="4" placeholder="Describe detalladamente el tratamiento de datos y medidas de seguridad" class="compliance-input min-h-[100px] resize-none"></textarea>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Wizard Navigation -->
-                    <div class="compliance-form-actions">
-                        <button type="button" id="dpia-prev-btn" class="compliance-btn-secondary hidden">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
-                            Anterior
-                        </button>
-                        <button type="button" id="dpia-next-btn" class="compliance-btn-primary">
-                            Siguiente
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-                        </button>
-                        <button type="submit" id="dpia-submit-btn" name="create_item" value="1" class="compliance-btn-primary hidden">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                            Crear DPIA
-                        </button>
-                    </div>
-                </form>
-            </div>
-            <?php if (empty($items)): ?>
-            <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-10 text-center">
-                <p class="text-[11px] text-text-subtle">Sin evaluaciones de impacto todavía. Crea una o usa «Importar masivo».</p>
-            </div>
-            <?php else: ?>
-            <div class="space-y-2">
-                <?php foreach ($items as $it):
-                    $approved = ($it['status'] ?? '') === 'approved';
-                    $rl = $it['riskLevel'] ?? 'medium';
-                    $rb = $riskBadge[$rl] ?? $riskBadge['medium'];
-                ?>
-                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm hover:border-border-theme/60 transition-colors p-4 flex flex-col md:flex-row md:items-center gap-3">
-                    <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 <?= $approved ? 'bg-emerald-500/10 text-emerald-400' : 'bg-blue-500/10 text-blue-400' ?>">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
-                    </div>
-                    <div class="flex-1 min-w-0">
-                        <div class="flex items-center gap-2 flex-wrap">
-                            <p class="text-[12px] font-medium text-text-heading truncate"><?= h($it['name'] ?? 'DPIA') ?></p>
-                            <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border <?= $rb ?>">Riesgo <?= h($riskLabel[$rl] ?? $rl) ?></span>
-                            <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border <?= $approved ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' ?>"><?= $approved ? 'Aprobada' : 'Pendiente' ?></span>
-                        </div>
-                        <p class="text-[10px] text-text-subtle mt-0.5"><?= h($it['description'] ?? '') ?> · <?= h(substr($it['createdAt'] ?? '', 0, 10)) ?></p>
-                    </div>
-                    <div class="flex items-center gap-2 flex-shrink-0">
-                        <?php if (!$approved) renderActionBtn('dpia', $it['_id'] ?? '', 'approve', 'Aprobar'); ?>
-                        <?php renderEditBtn('dpia', $it['_id'] ?? ''); ?>
-                        <form method="POST" class="inline">
-                            <input type="hidden" name="collection" value="dpia">
-                            <input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>">
-                            <button type="submit" name="delete_item" value="1" onclick="return confirm('¿Eliminar esta evaluación?')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all">Eliminar</button>
-                        </form>
-                    </div>
+                <div class="dpia-wizard-step-indicator dpia-step-2 flex items-center gap-2">
+                    <div class="dpia-step-number w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold bg-bg-elevated text-text-subtle border border-border-color">2</div>
+                    <span class="dpia-step-label text-[11px] font-medium text-text-subtle">Evaluación de Riesgo</span>
                 </div>
-                <?php endforeach; ?>
             </div>
+        </div>
+
+        <div class="dpia-wizard-step dpia-step-1-content" data-step="1">
+            <div class="compliance-form-row">
+                <div class="compliance-form-cell">
+                    <label for="dpia-name" class="compliance-form-label">Nombre del proyecto <span class="required">*</span></label>
+                    <input type="text" id="dpia-name" name="fields[name]" required placeholder="Ej: Sistema de gestión de clientes" class="compliance-input">
+                </div>
+                <div class="compliance-form-cell">
+                    <label for="dpia-description" class="compliance-form-label">Descripción del tratamiento</label>
+                    <input type="text" id="dpia-description" name="fields[description]" placeholder="Descripción breve del tratamiento de datos" class="compliance-input">
+                </div>
+            </div>
+        </div>
+
+        <div class="dpia-wizard-step dpia-step-2-content hidden" data-step="2">
+            <div class="compliance-form-row">
+                <div class="compliance-form-cell">
+                    <label for="dpia-riskLevel" class="compliance-form-label">Nivel de riesgo <span class="required">*</span></label>
+                    <select id="dpia-riskLevel" name="fields[riskLevel]" required class="compliance-select">
+                        <option value="">Seleccionar nivel de riesgo</option>
+                        <option value="low">Riesgo bajo</option>
+                        <option value="medium">Riesgo medio</option>
+                        <option value="high">Riesgo alto</option>
+                    </select>
+                </div>
+                <div class="compliance-form-cell">
+                    <label for="dpia-treatmentDescription" class="compliance-form-label">Descripción del tratamiento</label>
+                    <textarea id="dpia-treatmentDescription" name="fields[treatmentDescription]" rows="4" placeholder="Describe detalladamente el tratamiento de datos y medidas de seguridad" class="compliance-input min-h-[100px] resize-none"></textarea>
+                </div>
+            </div>
+        </div>
+
+        <div class="compliance-form-actions">
+            <button type="button" id="dpia-prev-btn" class="compliance-btn-secondary hidden">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                Anterior
+            </button>
+            <button type="button" id="dpia-next-btn" class="compliance-btn-primary">
+                Siguiente
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            </button>
+            <button type="submit" id="dpia-submit-btn" name="create_item" value="1" class="compliance-btn-primary hidden">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                Crear DPIA
+            </button>
+        </div>
+    </form>
+</div>
+
+<?php if (empty($items)): ?>
+<div class="rounded-xl border border-border-theme bg-bg-panel/60 p-10 text-center">
+    <p class="text-[11px] text-text-subtle">Sin evaluaciones de impacto todavía. Crea una o usa «Importar masivo».</p>
+</div>
+<?php else: ?>
+<div class="space-y-2">
+    <?php foreach ($items as $it):
+        $status = $it['status'] ?? 'pending';
+        $approved = $status === 'approved';
+        $rejected = $status === 'rejected';
+        $rl = $it['riskLevel'] ?? 'medium';
+        $rb = $riskBadge[$rl] ?? $riskBadge['medium'];
+        $statusBadge = $approved
+            ? ['label' => 'Aprobada',  'cls' => 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20']
+            : ($rejected
+                ? ['label' => 'Rechazada', 'cls' => 'bg-red-500/10 text-red-400 border-red-500/20']
+                : ['label' => 'Pendiente', 'cls' => 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20']);
+    ?>
+    <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm hover:border-border-theme/60 transition-colors p-4 flex flex-col md:flex-row md:items-center gap-3">
+        <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 <?= $approved ? 'bg-emerald-500/10 text-emerald-400' : ($rejected ? 'bg-red-500/10 text-red-400' : 'bg-blue-500/10 text-blue-400') ?>">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+        </div>
+        <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+                <p class="text-[12px] font-medium text-text-heading truncate"><?= h($it['name'] ?? 'DPIA') ?></p>
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border <?= $rb ?>">Riesgo <?= h($riskLabel[$rl] ?? $rl) ?></span>
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-md border <?= $statusBadge['cls'] ?>"><?= h($statusBadge['label']) ?></span>
+                <?php if ($approved && !empty($it['approvedByName'])): ?>
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-medium rounded-md border bg-indigo-500/10 text-indigo-300 border-indigo-500/20">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                    Por <?= h($it['approvedByName']) ?><?= !empty($it['approvedByRole']) ? ' (' . h($it['approvedByRole']) . ')' : '' ?>
+                </span>
+                <?php endif; ?>
+                <?php if ($rejected && !empty($it['rejectionReason'])): ?>
+                <span class="text-[9px] text-red-300 italic truncate max-w-[180px]" title="<?= h($it['rejectionReason']) ?>">
+                    Motivo: <?= h($it['rejectionReason']) ?>
+                </span>
+                <?php endif; ?>
+            </div>
+            <p class="text-[10px] text-text-subtle mt-0.5">
+                <?= h($it['description'] ?? '') ?>
+                · <?= h(substr($it['createdAt'] ?? '', 0, 10)) ?>
+                <?php if ($approved && !empty($it['approvedAt'])): ?>
+                    · Aprobada: <?= h(substr($it['approvedAt'], 0, 10)) ?>
+                <?php endif; ?>
+            </p>
+        </div>
+        <div class="flex items-center gap-2 flex-shrink-0">
+            <?php if (!$approved && !$rejected): ?>
+                <?php if ($isDpoOrDpd): ?>
+                    <button type="button" onclick="approveDpia('<?= h($it['_id'] ?? '') ?>')"
+                            class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/25 transition-all">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                        Aprobar
+                    </button>
+                    <button type="button" onclick="rejectDpia('<?= h($it['_id'] ?? '') ?>')"
+                            class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/25 transition-all">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        Rechazar
+                    </button>
+                <?php else: ?>
+                    <span class="text-[9px] text-text-subtle italic px-2 py-1 rounded-md border border-white/[0.06] bg-white/[0.02]"
+                          title="Solo el DPO/DPD puede aprobar evaluaciones de impacto">
+                        Requiere DPO/DPD
+                    </span>
+                <?php endif; ?>
             <?php endif; ?>
 
-            <?php elseif ($tab === 'processors'): ?>
+            <button type="button" onclick="downloadDpiaPDF('<?= h($it['_id'] ?? '') ?>')"
+                    class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/25 transition-all"
+                    title="Descargar PDF de esta evaluación">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                PDF
+            </button>
+
+            <?php renderEditBtn('dpia', $it['_id'] ?? ''); ?>
+
+            <form method="POST" class="inline">
+                <input type="hidden" name="collection" value="dpia">
+                <input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>">
+                <button type="submit" name="delete_item" value="1" onclick="return confirm('¿Eliminar esta evaluación?')" class="px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all">Eliminar</button>
+            </form>
+        </div>
+    </div>
+    <?php endforeach; ?>
+</div>
+<?php endif; ?>
+
+            <?php elseif ($tab === 'processors'): ?> ///////////////////////////////////////////////////////////
             <?php
             $procItems = $fetchList('processors');
             if (!is_array($procItems)) $procItems = [];
@@ -8110,6 +8175,58 @@ document.getElementById('generic-edit-form')?.addEventListener('submit', async f
         errorEl.classList.remove('hidden');
     }
 });
+
+// ═══ DPIA: Aprobar / Rechazar (solo DPO/DPD/superadmin) ═══
+async function approveDpia(id) {
+    if (!confirm('¿Aprobar esta evaluación de impacto? Esta acción quedará registrada con tu usuario y rol.')) return;
+    try {
+        const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/compliance/dpia/' + id + '/approve'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: '<?= h($token) ?>' })
+        });
+        const data = await res.json();
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'no se pudo aprobar la DPIA'));
+        }
+    } catch (e) {
+        alert('Error de conexión: ' + e.message);
+    }
+}
+
+async function rejectDpia(id) {
+    const motivo = prompt('Indica el motivo del rechazo (quedará registrado en la DPIA):', '');
+    if (motivo === null) return;
+    if (!motivo.trim()) {
+        alert('El motivo del rechazo es obligatorio.');
+        return;
+    }
+    try {
+        const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/compliance/dpia/' + id + '/reject'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: '<?= h($token) ?>', response: motivo.trim() })
+        });
+        const data = await res.json();
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'no se pudo rechazar la DPIA'));
+        }
+    } catch (e) {
+        alert('Error de conexión: ' + e.message);
+    }
+}
+
+function downloadDpiaPDF(id) {
+    const url = '/api-proxy.php?path=' + encodeURIComponent('/api/compliance/dpia/pdf' + (id ? '?id=' + id : '')) + '&token=<?= h($token) ?>';
+    window.open(url, '_blank');
+}
+
+
+
 
 </script>
 

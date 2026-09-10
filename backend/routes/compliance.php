@@ -10,7 +10,7 @@ require_once __DIR__ . '/../Auth.php';
 function getCompanyUserIds($user, $db) {
     $isSuperAdmin = !empty($user['isAdmin']) || ($user['role'] ?? '') === 'superadmin';
     if ($isSuperAdmin) {
-        return null; // null significa "sin filtro" (todas las empresas)
+        return null;
     }
     $userRecord = $db->findOne('users', ['_id' => $user['_id']]);
     if (!$userRecord) {
@@ -23,6 +23,19 @@ function getCompanyUserIds($user, $db) {
         $userIds = [(string)$user['_id']];
     }
     return $userIds;
+}
+
+// ✅ NUEVO: Helper para verificar si el usuario es DPO/DPD
+function isDpoOrDpd($user, $db) {
+    // Superadmin siempre puede
+    if (!empty($user['isAdmin']) || ($user['role'] ?? '') === 'superadmin') {
+        return true;
+    }
+    // Refrescar desde BD (por si el JWT está desactualizado)
+    $record = $db->findOne('users', ['_id' => $user['_id']]) ?? [];
+    $role = strtolower($record['role'] ?? ($user['role'] ?? ''));
+    // Roles válidos para aprobar DPIA
+    return in_array($role, ['dpo', 'dpd'], true);
 }
 
 // ─── Score ──────────────────────────────────────────────────────────
@@ -118,13 +131,13 @@ function autoSignTraining() {
     $user = Auth::requireAuth();
     $db = Database::getInstance();
     $body = get_body();
-    
+
     $trainingId = $body['trainingId'] ?? '';
     if (!$trainingId) json_error('trainingId requerido');
-    
+
     $training = $db->findOne('compliance_trainings', ['_id' => $trainingId, 'userId' => $user['_id']]);
     if (!$training) json_error('Capacitación no encontrada', 404);
-    
+
     $inviteToken = bin2hex(random_bytes(16));
     $invite = [
         'userId' => $user['_id'],
@@ -134,14 +147,14 @@ function autoSignTraining() {
         'companyName' => $user['companyName'] ?? ($user['email'] ?? ''),
         'signed' => false,
     ];
-    
+
     $inviteId = $db->insertOne('compliance_invites', $invite);
-    
+
     $db->updateOne('compliance_trainings', ['_id' => $trainingId], [
         'inviteId' => $inviteId,
         'inviteAssignedAt' => date('c'),
     ]);
-    
+
     json_response(['success' => true, 'message' => 'Invitación de firma creada exitosamente', 'token' => $inviteToken]);
 }
 
@@ -150,15 +163,14 @@ function updateConfig() {
     $user = Auth::requireAuth();
     $db = Database::getInstance();
     $body = get_body();
-    
+
     $userIds = getCompanyUserIds($user, $db);
     $isSuperAdmin = ($userIds === null);
     $filter = $isSuperAdmin ? [] : ['userId' => ['$in' => $userIds]];
-    
+
     $existing = $db->findOne('compliance_config', $filter);
-    
     $config = $existing ?: ['userId' => $user['_id']];
-    
+
     $policiesRaw = null;
     if (isset($body['policies'])) {
         $policiesRaw = is_string($body['policies']) ? json_decode($body['policies'], true) : $body['policies'];
@@ -205,7 +217,7 @@ function updateConfig() {
         'preventionModelDate' => $body['preventionModelDate'] ?? $config['preventionModelDate'] ?? '',
         'measureOverrides' => $body['measureOverrides'] ?? $config['measureOverrides'] ?? '',
     ];
-    
+
     if ($existing) {
         $updates['updatedAt'] = date('c');
         $db->updateOne('compliance_config', ['_id' => $existing['_id']], $updates);
@@ -214,7 +226,7 @@ function updateConfig() {
         $updates['createdAt'] = date('c');
         $db->insertOne('compliance_config', $updates);
     }
-    
+
     json_response(['success' => true, 'message' => 'Configuración actualizada']);
 }
 
@@ -224,7 +236,7 @@ function getConfig() {
     $userIds = getCompanyUserIds($user, $db);
     $isSuperAdmin = ($userIds === null);
     $filter = $isSuperAdmin ? [] : ['userId' => ['$in' => $userIds]];
-    
+
     $config = $db->findOne('compliance_config', $filter) ?? [];
     json_response($config);
 }
@@ -439,12 +451,12 @@ function crud() {
     $resource = $segments[0];
     $id = $segments[1] ?? '';
     $action = $segments[2] ?? '';
-    
+
     if ($id === 'pdf' && empty($action)) {
         $action = 'pdf';
         $id = '';
     }
-    
+
     $db = Database::getInstance();
 
     // ── Public endpoints ──
@@ -469,12 +481,13 @@ function crud() {
     $userIds = getCompanyUserIds($user, $db);
     $isSuperAdmin = ($userIds === null);
 
-    // ─── NUEVO: Manejo de PDFs para cualquier recurso soportado ────
-    $pdfResources = ['consents', 'inventory', 'breaches', 'trainings', 'pseudonymization', 
-                      'arco-requests', 'arco', 'incident_response', 'breach_protocol', 
-                      'apdp', 'privacy', 'dpd', 'incident-response', 'breach-protocol'];
+    // ─── Manejo de PDFs para cualquier recurso soportado ────
+    // ✅ NUEVO: 'dpia' agregado
+    $pdfResources = ['consents', 'inventory', 'breaches', 'trainings', 'pseudonymization',
+                      'arco-requests', 'arco', 'incident_response', 'breach_protocol',
+                      'apdp', 'privacy', 'dpd', 'incident-response', 'breach-protocol',
+                      'dpia'];
 
-    // Normalizar: reemplazar guion bajo por guion (para que coincida con los casos)
     $normalizedResource = str_replace('_', '-', $resource);
 
     if ($action === 'pdf' && in_array($normalizedResource, $pdfResources)) {
@@ -789,9 +802,37 @@ function crud() {
         switch ($action) {
             case 'revoke': $actionUpdates = ['active' => false, 'revokedAt' => date('c')] + $actionUpdates; break;
             case 'resolve': $actionUpdates = ['status' => 'resolved', 'resolvedAt' => date('c'), 'resolution' => $extra] + $actionUpdates; break;
-            case 'approve': $actionUpdates = ['status' => 'approved', 'approvedAt' => date('c')] + $actionUpdates; break;
+
+            // ✅ NUEVO: aprobación de DPIA solo por DPO/DPD/superadmin
+            case 'approve':
+                if ($resource === 'dpia' && !isDpoOrDpd($user, $db)) {
+                    json_error('Solo el DPO/DPD puede aprobar evaluaciones de impacto', 403);
+                }
+                $actionUpdates = [
+                    'status'         => 'approved',
+                    'approvedAt'     => date('c'),
+                    'approvedBy'     => (string)$user['_id'],
+                    'approvedByRole' => $user['role'] ?? 'dpo',
+                    'approvedByName' => $user['name'] ?? ($user['email'] ?? ''),
+                ] + $actionUpdates;
+                break;
+
+            // ✅ NUEVO: rechazo de DPIA solo por DPO/DPD/superadmin
+            case 'reject':
+                if ($resource === 'dpia' && !isDpoOrDpd($user, $db)) {
+                    json_error('Solo el DPO/DPD puede rechazar evaluaciones de impacto', 403);
+                }
+                $actionUpdates = [
+                    'status'          => 'rejected',
+                    'rejectedAt'      => date('c'),
+                    'rejectedBy'      => (string)$user['_id'],
+                    'rejectedByRole'  => $user['role'] ?? 'dpo',
+                    'rejectionReason' => $extra,
+                ] + $actionUpdates;
+                break;
+
             case 'complete': $actionUpdates = ['completed' => true, 'completedAt' => date('c')] + $actionUpdates; break;
-            case 'unsign': 
+            case 'unsign':
                 $actionUpdates = ['signed' => false, 'unsignedAt' => date('c')] + $actionUpdates;
                 if ($resource === 'invites') {
                     $db->updateOne('compliance_trainings', ['inviteId' => $id], [
@@ -1015,9 +1056,9 @@ function generateCompliancePDF($resource) {
 
         require_once __DIR__ . '/../PDFGenerator.php';
         $pdfGenerator = new PDFGenerator($db, $user);
-        
+
         $itemId = $_GET['id'] ?? null;
-        
+
         switch ($resource) {
             case 'consents':
                 $html = $pdfGenerator->generateConsentPDF($itemId);
@@ -1043,10 +1084,16 @@ function generateCompliancePDF($resource) {
                 $html = $pdfGenerator->generateARCORequestsPDF($itemId);
                 $result = $pdfGenerator->generatePDFFile($html, 'solicitudes-arco');
                 break;
+
+            // ✅ NUEVO: case para generar PDF de DPIA
+            case 'dpia':
+                $html = $pdfGenerator->generateDPIAPDF($itemId);
+                $result = $pdfGenerator->generatePDFFile($html, 'dpia');
+                break;
+
             case 'arco':
                 $arcoDoc = $db->findOne('compliance_checklist', ['userId' => $user['_id'], 'section' => 'arco']);
                 $arcoData = (array)($arcoDoc['data'] ?? []);
-                // Convertir cualquier array/objeto a string JSON para evitar errores de BSONArray
                 array_walk_recursive($arcoData, function(&$item) {
                     if (is_array($item) || is_object($item)) {
                         $item = json_encode($item, JSON_UNESCAPED_UNICODE);
@@ -1059,7 +1106,6 @@ function generateCompliancePDF($resource) {
             case 'incident_response':
                 $irDoc = $db->findOne('compliance_incident_response', ['userId' => $user['_id']]) ?? $db->findOne('compliance_checklist', ['userId' => $user['_id'], 'section' => 'incident_response']);
                 $irData = (array)(!empty($irDoc['data']) ? $irDoc['data'] : $irDoc);
-                // Convertir arrays a string para evitar errores
                 array_walk_recursive($irData, function(&$item) {
                     if (is_array($item) || is_object($item)) {
                         $item = json_encode($item, JSON_UNESCAPED_UNICODE);
@@ -1076,7 +1122,6 @@ function generateCompliancePDF($resource) {
                     'URL del protocolo' => $bpCfg['breachProtocolUrl'] ?? null,
                     'Contenido del protocolo' => $bpCfg['breachProtocolContent'] ?? null,
                 ]));
-                // Convertir arrays a string
                 array_walk_recursive($bpData, function(&$item) {
                     if (is_array($item) || is_object($item)) {
                         $item = json_encode($item, JSON_UNESCAPED_UNICODE);
@@ -1094,7 +1139,6 @@ function generateCompliancePDF($resource) {
                     'Entidad certificadora' => $aCfg['apdpEntity'] ?? null,
                     'Observaciones' => $aCfg['apdpNotes'] ?? null,
                 ]);
-                // Convertir arrays a string
                 array_walk_recursive($aData, function(&$item) {
                     if (is_array($item) || is_object($item)) {
                         $item = json_encode($item, JSON_UNESCAPED_UNICODE);
@@ -1111,7 +1155,6 @@ function generateCompliancePDF($resource) {
                     'URL política de cookies' => $pCfg['cookiesPolicyUrl'] ?? null,
                     'Última actualización' => $pCfg['privacyPolicyUpdatedAt'] ?? ($pCfg['updatedAt'] ?? null),
                 ]);
-                // Convertir arrays a string
                 array_walk_recursive($pData, function(&$item) {
                     if (is_array($item) || is_object($item)) {
                         $item = json_encode($item, JSON_UNESCAPED_UNICODE);
@@ -1129,7 +1172,6 @@ function generateCompliancePDF($resource) {
                     'Fecha de designación' => $dCfg['dpdAppointmentDate'] ?? null,
                     'Registro ante APDP' => $dCfg['dpdApdpRecord'] ?? null,
                 ]);
-                // Convertir arrays a string
                 array_walk_recursive($dData, function(&$item) {
                     if (is_array($item) || is_object($item)) {
                         $item = json_encode($item, JSON_UNESCAPED_UNICODE);
@@ -1212,7 +1254,6 @@ function generatePublicPolicy() {
     </style></head><body>";
 
     $html .= "<div class='header'><h1>Política de Privacidad</h1><p>{$companyName} · Ley 21.719 · Protección de Datos Personales</p></div>";
-
     $html .= "<div class='meta'><strong>Versión:</strong> 1.0 | <strong>Fecha:</strong> " . date('d/m/Y') . " | <strong>Responsable:</strong> {$companyName}</div>";
 
     $html .= "<section><h2>1. Identidad del Responsable</h2>";
@@ -1305,4 +1346,3 @@ function generatePublicPolicy() {
     echo $html;
     exit;
 }
-?>
