@@ -1,6 +1,49 @@
 <?php
 // ARCO routes
 
+// ─── Helper: resolver IDs de empresa del usuario ───
+function arcoCompanyIds($user, $db) {
+    // Admin / superadmin → sin filtro (null = todas las empresas)
+    if (!empty($user['isAdmin'])
+        || ($user['role'] ?? '') === 'admin'
+        || ($user['role'] ?? '') === 'superadmin') {
+        return null;
+    }
+
+    $userRecord = $db->findOne('users', ['_id' => $user['_id']]);
+    $companyId = $userRecord['companyId'] ?? ($user['_id'] ?? null);
+    if (!$companyId) $companyId = $user['_id'] ?? null;
+
+    $ids = [];
+    if ($companyId) {
+        $ids[] = (string)$companyId;
+        // Sub-usuarios que pertenecen a esa empresa
+        $subUsers = $db->find('users', ['companyId' => $companyId]);
+        foreach ($subUsers as $su) {
+            if (!empty($su['_id']))       $ids[] = (string)$su['_id'];
+            if (!empty($su['companyId'])) $ids[] = (string)$su['companyId'];
+        }
+    }
+    if (!empty($user['_id'])) $ids[] = (string)$user['_id'];
+
+    return array_values(array_unique(array_filter($ids)));
+}
+
+// ─── Helper: verificar acceso a una solicitud ARCO ───
+function arcoCanAccess($user, $db, $req) {
+    if (!empty($user['isAdmin'])
+        || ($user['role'] ?? '') === 'admin'
+        || ($user['role'] ?? '') === 'superadmin') {
+        return true;
+    }
+    $companyIds = arcoCompanyIds($user, $db);
+    if ($companyIds === null) return true;
+
+    $reqCompany = (string)($req['companyId'] ?? '');
+    return in_array($reqCompany, $companyIds, true);
+}
+
+// ─── Crear solicitud ARCO ───
 function create() {
     $body = get_body();
     $solicitante = $body['solicitante'] ?? [];
@@ -53,6 +96,7 @@ function create() {
     ]);
 }
 
+// ─── Tracking público por requestId ───
 function track() {
     $body = get_body();
     $trackingId = $body['trackingId'] ?? '';
@@ -67,20 +111,25 @@ function track() {
     json_response($request);
 }
 
+// ─── Listar solicitudes (todos los usuarios de la empresa) ───
 function listRequests() {
     $user = Auth::requireAuth();
     $db = Database::getInstance();
 
-    if (!empty($user['isAdmin']) || ($user['role'] ?? '') === 'admin' || ($user['role'] ?? '') === 'superadmin') {
+    $companyIds = arcoCompanyIds($user, $db);
+
+    if ($companyIds === null) {
+        // Admin / superadmin → todas las solicitudes
         $items = $db->find('arco_requests', []);
     } else {
-        // Non-admins only see requests for their company
-        $items = $db->find('arco_requests', ['companyId' => $user['_id']]);
+        // Todos los usuarios de la empresa
+        $items = $db->find('arco_requests', ['companyId' => ['$in' => $companyIds]]);
     }
 
     json_response($items);
 }
 
+// ─── Actualizar solicitud ───
 function updateRequest() {
     $user = Auth::requireAuth();
     $body = get_body();
@@ -94,7 +143,7 @@ function updateRequest() {
     $req = $db->findOne('arco_requests', ['requestId' => $requestId]);
     if (!$req) json_error('solicitud no encontrada', 404);
 
-    if (empty($user['isAdmin']) && ($user['role'] ?? '') !== 'admin' && ($user['role'] ?? '') !== 'superadmin' && $req['companyId'] !== $user['_id']) {
+    if (!arcoCanAccess($user, $db, $req)) {
         json_error('acceso denegado', 403);
     }
 
@@ -129,6 +178,7 @@ function updateRequest() {
     json_response(['success' => true]);
 }
 
+// ─── Generar respuesta automática ───
 function generateResponse() {
     $user = Auth::requireAuth();
     $body = get_body();
@@ -140,7 +190,7 @@ function generateResponse() {
     $req = $db->findOne('arco_requests', ['requestId' => $requestId]);
     if (!$req) json_error('solicitud no encontrada', 404);
 
-    if (empty($user['isAdmin']) && ($user['role'] ?? '') !== 'admin' && ($user['role'] ?? '') !== 'superadmin' && $req['companyId'] !== $user['_id']) {
+    if (!arcoCanAccess($user, $db, $req)) {
         json_error('acceso denegado', 403);
     }
 
@@ -154,6 +204,7 @@ function generateResponse() {
     json_response(['success' => true, 'response' => $text]);
 }
 
+// ─── Descargar respuesta en PDF ───
 function downloadResponse() {
     $user = Auth::requireAuth();
     $requestId = $_GET['requestId'] ?? $_GET['id'] ?? '';
@@ -163,17 +214,12 @@ function downloadResponse() {
     $req = $db->findOne('arco_requests', ['requestId' => $requestId]);
     if (!$req) json_error('solicitud no encontrada', 404);
 
-    // Allow access if: admin, superadmin, owner of the request, or request has no companyId (public request)
-    $hasAccess = !empty($user['isAdmin']) || ($user['role'] ?? '') === 'admin' || ($user['role'] ?? '') === 'superadmin';
-    if (!$hasAccess) {
-        // If request has no companyId, only admins can access
+    // Verificación de acceso (admin, superadmin o cualquier usuario de la empresa)
+    if (!arcoCanAccess($user, $db, $req)) {
         if (empty($req['companyId'])) {
             json_error('solicitud pública - solo administradores pueden acceder', 403);
         }
-        // Otherwise, check if user owns the company
-        if ($req['companyId'] !== $user['_id']) {
-            json_error('acceso denegado', 403);
-        }
+        json_error('acceso denegado', 403);
     }
 
     $config = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
@@ -194,6 +240,9 @@ function downloadResponse() {
     $typeLabel = $typeLabels[$type] ?? ucfirst($type);
 
     $solicitante = $req['solicitante'] ?? [];
+    if (is_string($solicitante)) $solicitante = json_decode($solicitante, true) ?: [];
+    if (!is_array($solicitante)) $solicitante = [];
+
     $name = $solicitante['nombre'] ?? ($req['name'] ?? 'Titular');
     $rut = $solicitante['rut'] ?? ($req['rut'] ?? '—');
     $email = $solicitante['email'] ?? ($req['email'] ?? '—');
@@ -358,6 +407,7 @@ function downloadResponse() {
     exit;
 }
 
+// ─── Exportar portabilidad ───
 function exportPortabilidad() {
     $user = Auth::requireAuth();
     $requestId = $_GET['requestId'] ?? $_GET['id'] ?? '';
@@ -367,7 +417,7 @@ function exportPortabilidad() {
     $req = $db->findOne('arco_requests', ['requestId' => $requestId]);
     if (!$req) json_error('solicitud no encontrada', 404);
 
-    if (empty($user['isAdmin']) && ($user['role'] ?? '') !== 'admin' && ($user['role'] ?? '') !== 'superadmin' && $req['companyId'] !== $user['_id']) {
+    if (!arcoCanAccess($user, $db, $req)) {
         json_error('acceso denegado', 403);
     }
 
@@ -375,9 +425,14 @@ function exportPortabilidad() {
 
     // Recolectar todos los datos del titular en el sistema
     $uid = $req['companyId'] ?? $user['_id'];
-    $email = ($req['solicitante']['email'] ?? $req['email'] ?? '');
-    $rut = ($req['solicitante']['rut'] ?? $req['rut'] ?? '');
-    $name = ($req['solicitante']['nombre'] ?? $req['name'] ?? '');
+
+    $solicitante = $req['solicitante'] ?? [];
+    if (is_string($solicitante)) $solicitante = json_decode($solicitante, true) ?: [];
+    if (!is_array($solicitante)) $solicitante = [];
+
+    $email = ($solicitante['email'] ?? $req['email'] ?? '');
+    $rut = ($solicitante['rut'] ?? $req['rut'] ?? '');
+    $name = ($solicitante['nombre'] ?? $req['name'] ?? '');
 
     $data = [
         'solicitante' => [
@@ -441,6 +496,7 @@ function exportPortabilidad() {
     exit;
 }
 
+// ─── Descargar comprobante de recepción (público) ───
 function downloadReceipt() {
     $requestId = $_GET['requestId'] ?? '';
     $email = $_GET['email'] ?? '';
@@ -452,7 +508,11 @@ function downloadReceipt() {
     if (!$req) json_error('solicitud no encontrada', 404);
 
     // Verificación mínima para evitar acceso a ciegas por ID
-    $solicitanteEmail = $req['solicitante']['email'] ?? ($req['email'] ?? '');
+    $solicitante = $req['solicitante'] ?? [];
+    if (is_string($solicitante)) $solicitante = json_decode($solicitante, true) ?: [];
+    if (!is_array($solicitante)) $solicitante = [];
+
+    $solicitanteEmail = $solicitante['email'] ?? ($req['email'] ?? '');
     if ($email && strtolower($email) !== strtolower($solicitanteEmail)) {
         json_error('verificación de email fallida', 403);
     }
@@ -474,10 +534,9 @@ function downloadReceipt() {
     ];
     $typeLabel = $typeLabels[$type] ?? ucfirst($type);
 
-    $solicitante = $req['solicitante'] ?? [];
     $name = $solicitante['nombre'] ?? ($req['name'] ?? 'Titular');
     $rut = $solicitante['rut'] ?? ($req['rut'] ?? '—');
-    $email = $solicitante['email'] ?? ($req['email'] ?? '—');
+    $emailView = $solicitante['email'] ?? ($req['email'] ?? '—');
     $requestDate = substr(($req['createdAt'] ?? date('c')), 0, 10);
     $receiptDate = date('d/m/Y');
 
@@ -528,7 +587,7 @@ function downloadReceipt() {
     $html .= "<div class='meta'>";
     $html .= "<div><span class='label'>Titular:</span> {$h($name)}</div>";
     $html .= "<div><span class='label'>RUT:</span> {$h($rut)}</div>";
-    $html .= "<div><span class='label'>Email:</span> {$h($email)}</div>";
+    $html .= "<div><span class='label'>Email:</span> {$h($emailView)}</div>";
     $html .= "</div>";
 
     $html .= "<table class='data-table'>";
