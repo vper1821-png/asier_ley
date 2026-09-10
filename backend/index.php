@@ -86,6 +86,16 @@ $routes = [
     'POST /api/dashboard/status' => 'routes/dashboard.php@status',
     'GET /api/dashboard/stats' => 'routes/dashboard.php@stats',
     'POST /api/dashboard/stats' => 'routes/dashboard.php@stats',
+    'GET /api/dashboard/arco-summary'      => 'routes/dashboard.php@arcoSummary',
+    'POST /api/dashboard/arco-summary'     => 'routes/dashboard.php@arcoSummary',
+    'GET /api/dashboard/breach-timers'     => 'routes/dashboard.php@breachTimers',
+    'POST /api/dashboard/breach-timers'    => 'routes/dashboard.php@breachTimers',
+    'GET /api/dashboard/files-summary'     => 'routes/dashboard.php@filesSummary',
+    'POST /api/dashboard/files-summary'    => 'routes/dashboard.php@filesSummary',
+    'GET /api/dashboard/recent-activity'   => 'routes/dashboard.php@recentActivity',
+    'POST /api/dashboard/recent-activity'  => 'routes/dashboard.php@recentActivity',
+    'GET /api/dashboard/documentation'     => 'routes/dashboard.php@documentation',
+    'POST /api/dashboard/documentation'    => 'routes/dashboard.php@documentation',
 
     // Agents
     'POST /api/agents'              => 'routes/agents.php@listAll',
