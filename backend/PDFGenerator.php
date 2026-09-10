@@ -13,16 +13,27 @@ class PDFGenerator {
 
     private function getCompanyInfo() {
         return [
-            'name' => htmlspecialchars($this->config['companyName'] ?? ($this->user['companyName'] ?? ($this->user['email'] ?? 'Empresa'))),
-            'dpdName' => htmlspecialchars($this->config['dpdName'] ?? 'No asignado'),
-            'dpdEmail' => htmlspecialchars($this->config['dpdEmail'] ?? 'No asignado'),
-            'dpdPhone' => htmlspecialchars($this->config['dpdPhone'] ?? 'No asignado'),
-            'dpdRut' => htmlspecialchars($this->config['dpdRut'] ?? ''),
-            'companyRut' => htmlspecialchars($this->config['companyRut'] ?? ''),
+            'name' => htmlspecialchars($this->safeString($this->config['companyName'] ?? ($this->user['companyName'] ?? ($this->user['email'] ?? 'Empresa')))),
+            'dpdName' => htmlspecialchars($this->safeString($this->config['dpdName'] ?? 'No asignado')),
+            'dpdEmail' => htmlspecialchars($this->safeString($this->config['dpdEmail'] ?? 'No asignado')),
+            'dpdPhone' => htmlspecialchars($this->safeString($this->config['dpdPhone'] ?? 'No asignado')),
+            'dpdRut' => htmlspecialchars($this->safeString($this->config['dpdRut'] ?? '')),
+            'companyRut' => htmlspecialchars($this->safeString($this->config['companyRut'] ?? '')),
             'apdpRegistered' => ($this->config['apdpRegistered'] === '1' || $this->config['apdpRegistered'] === true),
-            'apdpRegistrationNumber' => htmlspecialchars($this->config['apdpRegistrationNumber'] ?? ''),
-            'complianceLevel' => htmlspecialchars($this->config['complianceLevel'] ?? 'básico'),
+            'apdpRegistrationNumber' => htmlspecialchars($this->safeString($this->config['apdpRegistrationNumber'] ?? '')),
+            'complianceLevel' => htmlspecialchars($this->safeString($this->config['complianceLevel'] ?? 'básico')),
         ];
+    }
+
+    /**
+     * Convierte cualquier valor a string seguro para htmlspecialchars.
+     * Previene errores con BSONDocument, arrays, etc.
+     */
+    private function safeString($value) {
+        if (is_array($value) || is_object($value)) {
+            return json_encode($value, JSON_UNESCAPED_UNICODE);
+        }
+        return (string)$value;
     }
 
     private function getHeaderHTML($title, $subtitle = '') {
@@ -262,10 +273,10 @@ class PDFGenerator {
                 <tbody>';
 
             foreach ($consents as $consent) {
-                $name = htmlspecialchars($consent['name'] ?? 'No especificado');
-                $rut = htmlspecialchars($consent['rut'] ?? 'No especificado');
-                $purpose = htmlspecialchars($consent['purpose'] ?? $consent['treatmentPurpose'] ?? 'No especificado');
-                $legalBasis = htmlspecialchars($consent['legalBasis'] ?? 'Consentimiento Art. 12');
+                $name = htmlspecialchars($this->safeString($consent['name'] ?? 'No especificado'));
+                $rut = htmlspecialchars($this->safeString($consent['rut'] ?? 'No especificado'));
+                $purpose = htmlspecialchars($this->safeString($consent['purpose'] ?? $consent['treatmentPurpose'] ?? 'No especificado'));
+                $legalBasis = htmlspecialchars($this->safeString($consent['legalBasis'] ?? 'Consentimiento Art. 12'));
                 $date = $consent['createdAt'] ? $this->formatDate($consent['createdAt']) : 'No registrado';
                 $isRevoked = !empty($consent['revokedAt']);
                 $status = $isRevoked ? '<span class="badge badge-error">Revocado</span>' : '<span class="badge badge-success">Activo</span>';
@@ -419,12 +430,12 @@ class PDFGenerator {
                 <tbody>';
 
             foreach ($inventory as $item) {
-                $name = htmlspecialchars($item['name'] ?? 'No especificado');
-                $purpose = htmlspecialchars($item['purpose'] ?? $item['treatmentPurpose'] ?? 'No especificado');
-                $legalBasis = htmlspecialchars($item['legalBasis'] ?? 'No especificado');
-                $categories = is_array($item['dataCategories']) ? implode(', ', array_map('htmlspecialchars', $item['dataCategories'])) : htmlspecialchars($item['dataCategories'] ?? 'No especificado');
+                $name = htmlspecialchars($this->safeString($item['name'] ?? 'No especificado'));
+                $purpose = htmlspecialchars($this->safeString($item['purpose'] ?? $item['treatmentPurpose'] ?? 'No especificado'));
+                $legalBasis = htmlspecialchars($this->safeString($item['legalBasis'] ?? 'No especificado'));
+                $categories = is_array($item['dataCategories']) ? implode(', ', array_map('htmlspecialchars', $item['dataCategories'])) : htmlspecialchars($this->safeString($item['dataCategories'] ?? 'No especificado'));
                 $sensitive = !empty($item['sensitive']) ? '<span class="badge badge-error">Sí</span>' : '<span class="badge badge-success">No</span>';
-                $responsible = htmlspecialchars($item['responsible'] ?? $item['owner'] ?? 'No especificado');
+                $responsible = htmlspecialchars($this->safeString($item['responsible'] ?? $item['owner'] ?? 'No especificado'));
 
                 $html .= '<tr>
                     <td>' . $name . '</td>
@@ -567,10 +578,10 @@ class PDFGenerator {
                 <tbody>';
 
             foreach ($breaches as $breach) {
-                $title = htmlspecialchars($breach['title'] ?? 'Sin título');
+                $title = htmlspecialchars($this->safeString($breach['title'] ?? 'Sin título'));
                 $date = $breach['createdAt'] ? $this->formatDate($breach['createdAt']) : 'No registrado';
-                $severity = htmlspecialchars($breach['severity'] ?? 'No especificado');
-                $status = htmlspecialchars($breach['status'] ?? 'No especificado');
+                $severity = htmlspecialchars($this->safeString($breach['severity'] ?? 'No especificado'));
+                $status = htmlspecialchars($this->safeString($breach['status'] ?? 'No especificado'));
                 $notifiedAPDP = !empty($breach['notifiedAPDP']) ? '<span class="badge badge-success">Sí</span>' : '<span class="badge badge-warning">No</span>';
 
                 $html .= '<tr>
@@ -704,11 +715,11 @@ class PDFGenerator {
                 <tbody>';
 
             foreach ($trainings as $training) {
-                $title = htmlspecialchars($training['title'] ?? 'Sin título');
-                $description = htmlspecialchars($training['description'] ?? 'Sin descripción');
+                $title = htmlspecialchars($this->safeString($training['title'] ?? 'Sin título'));
+                $description = htmlspecialchars($this->safeString($training['description'] ?? 'Sin descripción'));
                 $date = $training['createdAt'] ? $this->formatDate($training['createdAt']) : 'No registrado';
                 $status = !empty($training['completed']) ? '<span class="badge badge-success">Completada</span>' : '<span class="badge badge-warning">Pendiente</span>';
-                $signer = htmlspecialchars($training['signerName'] ?? 'No firmado');
+                $signer = htmlspecialchars($this->safeString($training['signerName'] ?? 'No firmado'));
 
                 $html .= '<tr>
                     <td>' . $title . '</td>
@@ -841,9 +852,9 @@ class PDFGenerator {
                 <tbody>';
 
             foreach ($rules as $rule) {
-                $name = htmlspecialchars($rule['name'] ?? 'Sin nombre');
-                $description = htmlspecialchars($rule['description'] ?? 'Sin descripción');
-                $fields = is_array($rule['fields']) ? implode(', ', array_map('htmlspecialchars', $rule['fields'])) : htmlspecialchars($rule['fields'] ?? 'No especificado');
+                $name = htmlspecialchars($this->safeString($rule['name'] ?? 'Sin nombre'));
+                $description = htmlspecialchars($this->safeString($rule['description'] ?? 'Sin descripción'));
+                $fields = is_array($rule['fields']) ? implode(', ', array_map('htmlspecialchars', $rule['fields'])) : htmlspecialchars($this->safeString($rule['fields'] ?? 'No especificado'));
                 $status = ($rule['status'] ?? '') === 'executed' || !empty($rule['executed']) ? '<span class="badge badge-success">Ejecutada</span>' : '<span class="badge badge-warning">Pendiente</span>';
                 $date = $rule['createdAt'] ? $this->formatDate($rule['createdAt']) : 'No registrado';
 
@@ -978,10 +989,11 @@ class PDFGenerator {
                 <tbody>';
 
             foreach ($requests as $request) {
-                $solicitante = htmlspecialchars($request['solicitante'] ?? $request['name'] ?? 'No especificado');
-                $tipo = htmlspecialchars($request['tipo'] ?? $request['type'] ?? 'No especificado');
+                // ===== CORRECCIÓN: usar safeString para evitar BSONDocument =====
+                $solicitante = htmlspecialchars($this->safeString($request['solicitante'] ?? 'No especificado'));
+                $tipo = htmlspecialchars($this->safeString($request['tipo'] ?? $request['type'] ?? 'No especificado'));
                 $date = $request['createdAt'] ? $this->formatDate($request['createdAt']) : 'No registrado';
-                $status = htmlspecialchars($request['status'] ?? 'No especificado');
+                $status = htmlspecialchars($this->safeString($request['status'] ?? 'No especificado'));
                 $response = !empty($request['response']) ? '<span class="badge badge-success">Respondida</span>' : '<span class="badge badge-warning">Pendiente</span>';
 
                 $html .= '<tr>
@@ -1068,7 +1080,7 @@ class PDFGenerator {
             foreach ($data as $key => $value) {
                 if (is_array($value)) $value = implode(', ', $value);
                 $html .= '<tr><td style="border:1px solid #ccc;padding:8px;width:35%;font-weight:bold;">' . htmlspecialchars($key) . '</td>';
-                $html .= '<td style="border:1px solid #ccc;padding:8px;">' . nl2br(htmlspecialchars((string)$value)) . '</td></tr>';
+                $html .= '<td style="border:1px solid #ccc;padding:8px;">' . nl2br(htmlspecialchars($this->safeString($value))) . '</td></tr>';
             }
             $html .= '</table>';
         }
