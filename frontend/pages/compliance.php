@@ -1682,6 +1682,8 @@ main.compliance-workspace { position: relative; }
             </div>
 
             <!-- ═══ FORMULARIO DE CREACIÓN (colapsable) - RAT Completo Art. 14 Ley 21.719 ═══ -->
+            
+            <!-- ═══ FORMULARIO DE CREACIÓN (colapsable) - RAT Completo Art. 14 Ley 21.719 ═══ -->
             <div id="inventory-create-form" class="hidden rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5 mb-5">
                 <?php renderSectionHeader('Nueva Actividad de Tratamiento', 'Registro de Actividades de Tratamiento (RAT) según Art. 14 de la Ley 21.719'); ?>
 
@@ -1691,22 +1693,19 @@ main.compliance-workspace { position: relative; }
                         <p><span class="text-indigo-300 font-semibold">¿Qué es una actividad de tratamiento?</span></p>
                         <p>Toda operación que realices con datos personales: recopilar, almacenar, usar, modificar, compartir o eliminar.
                            Cada actividad debe registrarse con su finalidad, base legal, categorías de datos, destinatarios y medidas de seguridad.</p>
-                        <p class="mt-1"><span class="text-indigo-300 font-semibold">Art. 14 Ley 21.719:</span> El responsable debe mantener un registro documentado (RAT) de todas las actividades de tratamiento.</p>
+                        <p class="mt-1"><span class="text-indigo-300 font-semibold">Art. 14 Ley 21.719:</span> El responsable debe mantener un registro documentado (RAT).</p>
                     </div>
                 </div>
 
                 <form method="POST" id="inventory-wizard-form">
                     <input type="hidden" name="collection" value="inventory">
 
-                    <!-- Inventory Wizard Container -->
                     <div class="inventory-wizard-container">
-                        <!-- Error Message -->
                         <div class="inventory-wizard-error" id="inventory-wizard-error">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                             <span id="inventory-wizard-error-text">Por favor complete los campos requeridos antes de continuar.</span>
                         </div>
 
-                        <!-- Progress Section -->
                         <div class="inventory-wizard-progress">
                             <div class="inventory-wizard-progress-header">
                                 <div class="inventory-wizard-progress-title">Progreso del formulario</div>
@@ -1716,56 +1715,38 @@ main.compliance-workspace { position: relative; }
                                 <div class="inventory-wizard-progress-fill" id="inventory-wizard-progress-fill" style="width: 16.66%"></div>
                             </div>
                             <div class="inventory-wizard-steps-indicator">
-                                <div class="inventory-wizard-step-dot active" data-step="1">
-                                    <div class="inventory-wizard-step-number">1</div>
-                                    <div class="inventory-wizard-step-label">Identificación</div>
-                                </div>
-                                <div class="inventory-wizard-step-dot" data-step="2">
-                                    <div class="inventory-wizard-step-number">2</div>
-                                    <div class="inventory-wizard-step-label">Finalidad</div>
-                                </div>
-                                <div class="inventory-wizard-step-dot" data-step="3">
-                                    <div class="inventory-wizard-step-number">3</div>
-                                    <div class="inventory-wizard-step-label">Datos</div>
-                                </div>
-                                <div class="inventory-wizard-step-dot" data-step="4">
-                                    <div class="inventory-wizard-step-number">4</div>
-                                    <div class="inventory-wizard-step-label">Titulares</div>
-                                </div>
-                                <div class="inventory-wizard-step-dot" data-step="5">
-                                    <div class="inventory-wizard-step-number">5</div>
-                                    <div class="inventory-wizard-step-label">Acceso</div>
-                                </div>
-                                <div class="inventory-wizard-step-dot" data-step="6">
-                                    <div class="inventory-wizard-step-number">6</div>
-                                    <div class="inventory-wizard-step-label">Obs.</div>
-                                </div>
+                                <div class="inventory-wizard-step-dot active" data-step="1"><div class="inventory-wizard-step-number">1</div><div class="inventory-wizard-step-label">Identificación</div></div>
+                                <div class="inventory-wizard-step-dot" data-step="2"><div class="inventory-wizard-step-number">2</div><div class="inventory-wizard-step-label">Finalidad</div></div>
+                                <div class="inventory-wizard-step-dot" data-step="3"><div class="inventory-wizard-step-number">3</div><div class="inventory-wizard-step-label">Datos</div></div>
+                                <div class="inventory-wizard-step-dot" data-step="4"><div class="inventory-wizard-step-number">4</div><div class="inventory-wizard-step-label">Titulares</div></div>
+                                <div class="inventory-wizard-step-dot" data-step="5"><div class="inventory-wizard-step-number">5</div><div class="inventory-wizard-step-label">Acceso</div></div>
+                                <div class="inventory-wizard-step-dot" data-step="6"><div class="inventory-wizard-step-number">6</div><div class="inventory-wizard-step-label">Obs.</div></div>
                             </div>
                         </div>
 
-                        <!-- Step 1: Identificación de la Actividad -->
+                        <!-- Step 1: Identificación -->
                         <div class="inventory-wizard-step active" data-step="1">
                             <div class="inventory-wizard-step-title">Paso 1: Identificación de la Actividad</div>
                             <div class="inventory-wizard-fieldset">
-                                <div class="inventory-wizard-fieldset-title">Información básica de la actividad (Art. 14.1.a)</div>
+                                <div class="inventory-wizard-fieldset-title">Información básica (Art. 14.1.a)</div>
                                 <div class="compliance-form-row">
                                     <div class="compliance-form-cell">
                                         <label class="compliance-form-label">Nombre de la actividad <span class="required">*</span></label>
-                                        <input type="text" name="name" id="inventory-wizard-name" required class="compliance-input inventory-wizard-field" placeholder="Ej: Gestión de clientes y facturación">
+                                        <input type="text" name="fields[name]" id="inventory-wizard-name" required class="compliance-input inventory-wizard-field" placeholder="Ej: Gestión de clientes y facturación">
                                     </div>
                                     <div class="compliance-form-cell">
                                         <label class="compliance-form-label">Código / Referencia</label>
-                                        <input type="text" name="code" class="compliance-input" placeholder="Ej: RAT-001">
+                                        <input type="text" name="fields[code]" class="compliance-input" placeholder="Ej: RAT-001">
                                     </div>
                                 </div>
                                 <div class="compliance-form-row mt-4">
                                     <div class="compliance-form-cell">
                                         <label class="compliance-form-label">Responsable del tratamiento <span class="required">*</span></label>
-                                        <input type="text" name="controllerName" id="inventory-wizard-controller" required class="compliance-input inventory-wizard-field" value="<?= h($config['companyName'] ?? '') ?>" placeholder="Nombre empresa/organización">
+                                        <input type="text" name="fields[controllerName]" id="inventory-wizard-controller" required class="compliance-input inventory-wizard-field" value="<?= h($config['companyName'] ?? '') ?>" placeholder="Nombre empresa/organización">
                                     </div>
                                     <div class="compliance-form-cell">
                                         <label class="compliance-form-label">Encargado del tratamiento (si aplica)</label>
-                                        <input type="text" name="processorName" class="compliance-input" placeholder="Proveedor cloud, SaaS, etc.">
+                                        <input type="text" name="fields[processorName]" class="compliance-input" placeholder="Proveedor cloud, SaaS, etc.">
                                     </div>
                                 </div>
                             </div>
@@ -1779,7 +1760,7 @@ main.compliance-workspace { position: relative; }
                                 <div class="compliance-form-row">
                                     <div class="compliance-form-cell">
                                         <label class="compliance-form-label">Finalidad específica <span class="required">*</span></label>
-                                        <select name="purpose" id="inventory-wizard-purpose" required class="compliance-select inventory-wizard-field">
+                                        <select name="fields[purpose]" id="inventory-wizard-purpose" required class="compliance-select inventory-wizard-field">
                                             <option value="">Seleccionar finalidad</option>
                                             <optgroup label="Clientes/Comercial">
                                                 <option value="gestion_clientes">Gestión de clientes y facturación</option>
@@ -1793,20 +1774,20 @@ main.compliance-workspace { position: relative; }
                                                 <option value="capacitacion">Capacitación y desarrollo</option>
                                             </optgroup>
                                             <optgroup label="Legales/Regulatorio">
-                                                <option value="cumplimiento_legal">Cumplimiento obligaciones legales/regulatorias</option>
+                                                <option value="cumplimiento_legal">Cumplimiento obligaciones legales</option>
                                                 <option value="auditoria">Auditoría y control interno</option>
                                             </optgroup>
                                             <optgroup label="Otras">
                                                 <option value="investigacion">Investigación y desarrollo</option>
-                                                <option value="seguridad">Seguridad física/lógica de instalaciones</option>
+                                                <option value="seguridad">Seguridad física/lógica</option>
                                                 <option value="videovigilancia">Videovigilancia</option>
-                                                <option value="otro">Otra (especificar en observaciones)</option>
+                                                <option value="otro">Otra</option>
                                             </optgroup>
                                         </select>
                                     </div>
                                     <div class="compliance-form-cell">
                                         <label class="compliance-form-label">Base de licitud <span class="required">*</span></label>
-                                        <select name="legalBasis" id="inventory-wizard-legalBasis" required class="compliance-select inventory-wizard-field">
+                                        <select name="fields[legalBasis]" id="inventory-wizard-legalBasis" required class="compliance-select inventory-wizard-field">
                                             <option value="">Seleccionar base legal</option>
                                             <option value="consentimiento">Art. 12 - Consentimiento del titular</option>
                                             <option value="ejecucion_contrato">Art. 13.1.a - Ejecución de contrato</option>
@@ -1820,7 +1801,7 @@ main.compliance-workspace { position: relative; }
                                 <div class="compliance-form-row mt-4">
                                     <div class="compliance-form-cell">
                                         <label class="compliance-form-label">Descripción del interés legítimo (si aplica Art. 13.1.e)</label>
-                                        <textarea name="legitimateInterest" rows="2" class="compliance-textarea" placeholder="Describe el interés legítimo y la ponderación realizada..."></textarea>
+                                        <textarea name="fields[legitimateInterest]" rows="2" class="compliance-textarea" placeholder="Describe el interés legítimo y la ponderación realizada..."></textarea>
                                     </div>
                                 </div>
                             </div>
@@ -1834,54 +1815,18 @@ main.compliance-workspace { position: relative; }
                                 <div class="compliance-form-cell">
                                     <label class="compliance-form-label">Categorías de datos personales <span class="required">*</span></label>
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
-                                        <div class="compliance-checkbox-group">
-                                            <input type="checkbox" name="dataCategories[]" id="cat-identificacion" value="identificacion" class="inventory-wizard-field-checkbox">
-                                            <label for="cat-identificacion"><strong>Identificación:</strong> nombre, RUT, dirección, nacionalidad</label>
-                                        </div>
-                                        <div class="compliance-checkbox-group">
-                                            <input type="checkbox" name="dataCategories[]" id="cat-contacto" value="contacto" class="inventory-wizard-field-checkbox">
-                                            <label for="cat-contacto"><strong>Contacto:</strong> email, teléfono, redes sociales</label>
-                                        </div>
-                                        <div class="compliance-checkbox-group">
-                                            <input type="checkbox" name="dataCategories[]" id="cat-financieros" value="financieros" class="inventory-wizard-field-checkbox">
-                                            <label for="cat-financieros"><strong>Financieros:</strong> cuentas bancarias, tarjetas, ingresos</label>
-                                        </div>
-                                        <div class="compliance-checkbox-group">
-                                            <input type="checkbox" name="dataCategories[]" id="cat-laborales" value="laborales" class="inventory-wizard-field-checkbox">
-                                            <label for="cat-laborales"><strong>Laborales:</strong> cargo, sueldo, antigüedad, evaluaciones</label>
-                                        </div>
-                                        <div class="compliance-checkbox-group">
-                                            <input type="checkbox" name="dataCategories[]" id="cat-salud" value="salud" class="inventory-wizard-field-checkbox">
-                                            <label for="cat-salud"><strong>Salud:</strong> historial clínico, diagnósticos, recetas</label>
-                                        </div>
-                                        <div class="compliance-checkbox-group">
-                                            <input type="checkbox" name="dataCategories[]" id="cat-biometricos" value="biometricos" class="inventory-wizard-field-checkbox">
-                                            <label for="cat-biometricos"><strong>Biométricos:</strong> huella, reconocimiento facial, iris</label>
-                                        </div>
-                                        <div class="compliance-checkbox-group">
-                                            <input type="checkbox" name="dataCategories[]" id="cat-geneticos" value="geneticos" class="inventory-wizard-field-checkbox">
-                                            <label for="cat-geneticos"><strong>Genéticos</strong></label>
-                                        </div>
-                                        <div class="compliance-checkbox-group">
-                                            <input type="checkbox" name="dataCategories[]" id="cat-ninos" value="ninos" class="inventory-wizard-field-checkbox">
-                                            <label for="cat-ninos"><strong>Datos de niños</strong> (Art. 17)</label>
-                                        </div>
-                                        <div class="compliance-checkbox-group">
-                                            <input type="checkbox" name="dataCategories[]" id="cat-navegacion" value="navegacion" class="inventory-wizard-field-checkbox">
-                                            <label for="cat-navegacion"><strong>Navegación:</strong> IP, cookies, device ID</label>
-                                        </div>
-                                        <div class="compliance-checkbox-group">
-                                            <input type="checkbox" name="dataCategories[]" id="cat-ubicacion" value="ubicacion" class="inventory-wizard-field-checkbox">
-                                            <label for="cat-ubicacion"><strong>Ubicación geográfica</strong></label>
-                                        </div>
-                                        <div class="compliance-checkbox-group">
-                                            <input type="checkbox" name="dataCategories[]" id="cat-comportamiento" value="comportamiento" class="inventory-wizard-field-checkbox">
-                                            <label for="cat-comportamiento"><strong>Perfilado y comportamiento</strong></label>
-                                        </div>
-                                        <div class="compliance-checkbox-group">
-                                            <input type="checkbox" name="dataCategories[]" id="cat-antecedentes" value="antecedentes" class="inventory-wizard-field-checkbox">
-                                            <label for="cat-antecedentes"><strong>Antecedentes penales/judiciales</strong></label>
-                                        </div>
+                                        <div class="compliance-checkbox-group"><input type="checkbox" name="fields[dataCategories][]" id="cat-identificacion" value="identificacion" class="inventory-wizard-field-checkbox"><label for="cat-identificacion"><strong>Identificación:</strong> nombre, RUT, dirección</label></div>
+                                        <div class="compliance-checkbox-group"><input type="checkbox" name="fields[dataCategories][]" id="cat-contacto" value="contacto" class="inventory-wizard-field-checkbox"><label for="cat-contacto"><strong>Contacto:</strong> email, teléfono, redes</label></div>
+                                        <div class="compliance-checkbox-group"><input type="checkbox" name="fields[dataCategories][]" id="cat-financieros" value="financieros" class="inventory-wizard-field-checkbox"><label for="cat-financieros"><strong>Financieros:</strong> cuentas, tarjetas, ingresos</label></div>
+                                        <div class="compliance-checkbox-group"><input type="checkbox" name="fields[dataCategories][]" id="cat-laborales" value="laborales" class="inventory-wizard-field-checkbox"><label for="cat-laborales"><strong>Laborales:</strong> cargo, sueldo, evaluaciones</label></div>
+                                        <div class="compliance-checkbox-group"><input type="checkbox" name="fields[dataCategories][]" id="cat-salud" value="salud" class="inventory-wizard-field-checkbox"><label for="cat-salud"><strong>Salud:</strong> historial, diagnósticos, recetas</label></div>
+                                        <div class="compliance-checkbox-group"><input type="checkbox" name="fields[dataCategories][]" id="cat-biometricos" value="biometricos" class="inventory-wizard-field-checkbox"><label for="cat-biometricos"><strong>Biométricos:</strong> huella, facial, iris</label></div>
+                                        <div class="compliance-checkbox-group"><input type="checkbox" name="fields[dataCategories][]" id="cat-geneticos" value="geneticos" class="inventory-wizard-field-checkbox"><label for="cat-geneticos"><strong>Genéticos</strong></label></div>
+                                        <div class="compliance-checkbox-group"><input type="checkbox" name="fields[dataCategories][]" id="cat-ninos" value="ninos" class="inventory-wizard-field-checkbox"><label for="cat-ninos"><strong>Datos de niños</strong> (Art. 17)</label></div>
+                                        <div class="compliance-checkbox-group"><input type="checkbox" name="fields[dataCategories][]" id="cat-navegacion" value="navegacion" class="inventory-wizard-field-checkbox"><label for="cat-navegacion"><strong>Navegación:</strong> IP, cookies</label></div>
+                                        <div class="compliance-checkbox-group"><input type="checkbox" name="fields[dataCategories][]" id="cat-ubicacion" value="ubicacion" class="inventory-wizard-field-checkbox"><label for="cat-ubicacion"><strong>Ubicación geográfica</strong></label></div>
+                                        <div class="compliance-checkbox-group"><input type="checkbox" name="fields[dataCategories][]" id="cat-comportamiento" value="comportamiento" class="inventory-wizard-field-checkbox"><label for="cat-comportamiento"><strong>Perfilado y comportamiento</strong></label></div>
+                                        <div class="compliance-checkbox-group"><input type="checkbox" name="fields[dataCategories][]" id="cat-antecedentes" value="antecedentes" class="inventory-wizard-field-checkbox"><label for="cat-antecedentes"><strong>Antecedentes penales/judiciales</strong></label></div>
                                     </div>
                                 </div>
                                 <div class="compliance-form-row grid-cols-3 mt-4">
@@ -1907,46 +1852,19 @@ main.compliance-workspace { position: relative; }
                         <div class="inventory-wizard-step" data-step="4">
                             <div class="inventory-wizard-step-title">Paso 4: Categorías de Titulares</div>
                             <div class="inventory-wizard-fieldset">
-                                <div class="inventory-wizard-fieldset-title">Tipos de titulares de los datos (Art. 14.1.c)</div>
+                                <div class="inventory-wizard-fieldset-title">Tipos de titulares (Art. 14.1.c)</div>
                                 <div class="compliance-form-cell">
                                     <label class="compliance-form-label">Categorías de titulares <span class="required">*</span></label>
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
-                                        <div class="compliance-checkbox-group">
-                                            <input type="checkbox" name="fields[subjectCategories][]" id="sub-clientes" value="clientes" class="inventory-wizard-field-checkbox">
-                                            <label for="sub-clientes"><strong>Clientes / Usuarios</strong></label>
-                                        </div>
-                                        <div class="compliance-checkbox-group">
-                                            <input type="checkbox" name="fields[subjectCategories][]" id="sub-empleados" value="empleados" class="inventory-wizard-field-checkbox">
-                                            <label for="sub-empleados"><strong>Empleados / Colaboradores</strong></label>
-                                        </div>
-                                        <div class="compliance-checkbox-group">
-                                            <input type="checkbox" name="fields[subjectCategories][]" id="sub-proveedores" value="proveedores" class="inventory-wizard-field-checkbox">
-                                            <label for="sub-proveedores"><strong>Proveedores / Contratistas</strong></label>
-                                        </div>
-                                        <div class="compliance-checkbox-group">
-                                            <input type="checkbox" name="fields[subjectCategories][]" id="sub-postulantes" value="postulantes" class="inventory-wizard-field-checkbox">
-                                            <label for="sub-postulantes"><strong>Postulantes a empleo</strong></label>
-                                        </div>
-                                        <div class="compliance-checkbox-group">
-                                            <input type="checkbox" name="fields[subjectCategories][]" id="sub-ninos" value="ninos" class="inventory-wizard-field-checkbox">
-                                            <label for="sub-ninos"><strong>Niños / Niñas / Adolescentes</strong> (Art. 17)</label>
-                                        </div>
-                                        <div class="compliance-checkbox-group">
-                                            <input type="checkbox" name="fields[subjectCategories][]" id="sub-pacientes" value="pacientes" class="inventory-wizard-field-checkbox">
-                                            <label for="sub-pacientes"><strong>Pacientes / Usuarios de salud</strong></label>
-                                        </div>
-                                        <div class="compliance-checkbox-group">
-                                            <input type="checkbox" name="fields[subjectCategories][]" id="sub-visitantes" value="visitantes" class="inventory-wizard-field-checkbox">
-                                            <label for="sub-visitantes"><strong>Visitantes / Invitados</strong></label>
-                                        </div>
-                                        <div class="compliance-checkbox-group">
-                                            <input type="checkbox" name="fields[subjectCategories][]" id="sub-ex_empleados" value="ex_empleados" class="inventory-wizard-field-checkbox">
-                                            <label for="sub-ex_empleados"><strong>Ex-empleados</strong></label>
-                                        </div>
-                                        <div class="compliance-checkbox-group">
-                                            <input type="checkbox" name="fields[subjectCategories][]" id="sub-publico" value="publico_general" class="inventory-wizard-field-checkbox">
-                                            <label for="sub-publico"><strong>Público general</strong></label>
-                                        </div>
+                                        <div class="compliance-checkbox-group"><input type="checkbox" name="fields[subjectCategories][]" id="sub-clientes" value="clientes" class="inventory-wizard-field-checkbox"><label for="sub-clientes"><strong>Clientes / Usuarios</strong></label></div>
+                                        <div class="compliance-checkbox-group"><input type="checkbox" name="fields[subjectCategories][]" id="sub-empleados" value="empleados" class="inventory-wizard-field-checkbox"><label for="sub-empleados"><strong>Empleados / Colaboradores</strong></label></div>
+                                        <div class="compliance-checkbox-group"><input type="checkbox" name="fields[subjectCategories][]" id="sub-proveedores" value="proveedores" class="inventory-wizard-field-checkbox"><label for="sub-proveedores"><strong>Proveedores / Contratistas</strong></label></div>
+                                        <div class="compliance-checkbox-group"><input type="checkbox" name="fields[subjectCategories][]" id="sub-postulantes" value="postulantes" class="inventory-wizard-field-checkbox"><label for="sub-postulantes"><strong>Postulantes a empleo</strong></label></div>
+                                        <div class="compliance-checkbox-group"><input type="checkbox" name="fields[subjectCategories][]" id="sub-ninos" value="ninos" class="inventory-wizard-field-checkbox"><label for="sub-ninos"><strong>Niños / Adolescentes</strong> (Art. 17)</label></div>
+                                        <div class="compliance-checkbox-group"><input type="checkbox" name="fields[subjectCategories][]" id="sub-pacientes" value="pacientes" class="inventory-wizard-field-checkbox"><label for="sub-pacientes"><strong>Pacientes / Salud</strong></label></div>
+                                        <div class="compliance-checkbox-group"><input type="checkbox" name="fields[subjectCategories][]" id="sub-visitantes" value="visitantes" class="inventory-wizard-field-checkbox"><label for="sub-visitantes"><strong>Visitantes / Invitados</strong></label></div>
+                                        <div class="compliance-checkbox-group"><input type="checkbox" name="fields[subjectCategories][]" id="sub-ex_empleados" value="ex_empleados" class="inventory-wizard-field-checkbox"><label for="sub-ex_empleados"><strong>Ex-empleados</strong></label></div>
+                                        <div class="compliance-checkbox-group"><input type="checkbox" name="fields[subjectCategories][]" id="sub-publico" value="publico_general" class="inventory-wizard-field-checkbox"><label for="sub-publico"><strong>Público general</strong></label></div>
                                     </div>
                                 </div>
                             </div>
@@ -2046,13 +1964,17 @@ main.compliance-workspace { position: relative; }
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
                                 Registrar actividad en RAT (Art. 14)
                             </button>
-                            <button type="button" onclick="document.getElementById('inventory-create-form').classList.add('hidden')" class="wizard-btn-prev">
-                                Cancelar
-                            </button>
+                            <button type="button" onclick="cpClosePanel('inventory-create-form')" class="wizard-btn-prev">Cancelar</button>
                         </div>
                     </div>
                 </form>
             </div>
+
+
+
+
+
+
 
             <!-- ═══ TABLA DE INVENTARIO ═══ -->
             <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm overflow-hidden">
@@ -2282,13 +2204,13 @@ main.compliance-workspace { position: relative; }
             <!-- ============================================================ -->
             <!-- ═══ MODAL: EDICIÓN COMPLETA (con guía) ═══ -->
             <!-- ============================================================ -->
+                       <!-- ═══ MODAL: EDICIÓN COMPLETA (con guía) ═══ -->
             <div id="inventory-edit-modal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                 <div class="bg-bg-panel border border-border-theme rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col">
-                    <!-- Header -->
                     <div class="flex items-center justify-between px-6 py-4 border-b border-border-theme flex-shrink-0">
                         <div>
                             <h3 class="text-[15px] font-semibold text-white">Editar actividad de tratamiento</h3>
-                            <p class="text-[11px] text-text-subtle mt-0.5">Actualiza los datos de esta actividad según lo requerido por la Ley 21.719</p>
+                            <p class="text-[11px] text-text-subtle mt-0.5">Actualiza todos los campos del RAT · Ley 21.719 Art. 14</p>
                         </div>
                         <button onclick="document.getElementById('inventory-edit-modal').classList.add('hidden')"
                                 class="text-text-muted hover:text-text-heading transition-colors p-1.5 rounded-lg hover:bg-bg-elevated">
@@ -2296,99 +2218,160 @@ main.compliance-workspace { position: relative; }
                         </button>
                     </div>
 
-                    <!-- Cuerpo con formulario -->
                     <div class="flex-1 overflow-y-auto p-6 scrollbar-custom">
-                        <!-- Leyenda de ayuda -->
-                        <div class="bg-indigo-500/[0.05] border border-indigo-500/20 rounded-lg p-3.5 mb-5 text-[11px] text-text-muted leading-relaxed flex gap-2.5">
-                            <svg class="w-4 h-4 text-indigo-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                            <div>
-                                <p><span class="text-indigo-300 font-semibold">¿Por qué es importante este registro?</span></p>
-                                <p>El Art. 14 de la Ley 21.719 exige mantener un <strong class="text-white">Registro de Actividades de Tratamiento (RAT)</strong> actualizado.
-                                   Este registro es lo primero que revisará la APDP en una fiscalización.</p>
-                            </div>
-                        </div>
-
-                        <form id="inventory-edit-form" method="POST" class="space-y-4">
-                            <input type="hidden" name="update_inventory_item" value="1">
+                        <form id="inventory-edit-form" class="space-y-4">
                             <input type="hidden" name="item_id" id="edit-item-id">
 
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <!-- Nombre -->
-                                <div>
-                                    <label class="compliance-form-label">Nombre de la actividad <span class="text-red-400">*</span></label>
-                                    <input type="text" name="name" id="edit-name" required class="compliance-input w-full" placeholder="Ej: Gestión de clientes">
-                                    <p class="text-[9px] text-text-subtle mt-1">Identifica claramente qué tratamiento realizas. Debe ser específico.</p>
-                                </div>
-
-                                <!-- Propósito -->
-                                <div>
-                                    <label class="compliance-form-label">Finalidad / Propósito <span class="text-[9px] text-text-subtle font-normal">(Art. 3 letra b)</span></label>
-                                    <input type="text" name="purpose" id="edit-purpose" class="compliance-input w-full" placeholder="Ej: Enviar facturación y promociones">
-                                    <p class="text-[9px] text-text-subtle mt-1">La ley exige finalidades determinadas y explícitas.</p>
-                                </div>
-
-                                <!-- Categorías -->
-                                <div>
-                                    <label class="compliance-form-label">Categorías de datos</label>
-                                    <input type="text" name="dataCategories" id="edit-categories" class="compliance-input w-full" placeholder="Ej: nombres, RUT, emails, teléfonos">
-                                    <p class="text-[9px] text-text-subtle mt-1">Enumera los tipos de datos personales que tratas.</p>
-                                </div>
-
-                                <!-- Base legal -->
-                                <div>
-                                    <label class="compliance-form-label">Base de licitud <span class="text-red-400">*</span></label>
-                                    <select name="legalBasis" id="edit-legalBasis" required class="compliance-input w-full">
-                                        <option value="">Seleccionar...</option>
-                                        <option value="Consentimiento">Consentimiento del titular (Art. 12)</option>
-                                        <option value="Ejecución de contrato">Ejecución de contrato (Art. 13)</option>
-                                        <option value="Obligación legal">Obligación legal (Art. 13)</option>
-                                        <option value="Interés legítimo">Interés legítimo (Art. 13)</option>
-                                        <option value="Interés público">Interés público (Art. 13)</option>
-                                    </select>
-                                    <p class="text-[9px] text-text-subtle mt-1">Sin una base legal válida, el tratamiento es ilegal.</p>
-                                </div>
-
-                                <!-- Riesgo -->
-                                <div>
-                                    <label class="compliance-form-label">Nivel de riesgo</label>
-                                    <select name="risk" id="edit-risk" class="compliance-input w-full">
-                                        <option value="low">Bajo - Datos básicos (nombres, teléfonos)</option>
-                                        <option value="medium">Medio - Datos personales comunes (RUT, dirección)</option>
-                                        <option value="high">Alto - Datos sensibles o muchos registros</option>
-                                        <option value="critical">Crítico - Datos muy sensibles (salud, biometría)</option>
-                                    </select>
-                                    <p class="text-[9px] text-text-subtle mt-1">A mayor riesgo, mayores medidas de seguridad.</p>
-                                </div>
-
-                                <!-- Sensibles -->
-                                <div>
-                                    <label class="compliance-form-label">Datos sensibles</label>
-                                    <select name="sensitive" id="edit-sensitive" class="compliance-input w-full">
-                                        <option value="0">No contiene datos sensibles</option>
-                                        <option value="1">Sí - Salud, biometría, religión, origen racial, etc.</option>
-                                    </select>
-                                    <p class="text-[9px] text-text-subtle mt-1">Según Art. 16: salud, origen racial, creencias religiosas, vida sexual, etc.</p>
-                                </div>
-
-                                <!-- Retención -->
-                                <div>
-                                    <label class="compliance-form-label">Días de retención</label>
-                                    <input type="number" name="retentionDays" id="edit-retention" class="compliance-input w-full" placeholder="Ej: 365" min="0">
-                                    <p class="text-[9px] text-text-subtle mt-1">No conservar más tiempo del necesario (Art. 14).</p>
-                                </div>
-
-                                <!-- Almacenamiento -->
-                                <div>
-                                    <label class="compliance-form-label">Almacenamiento</label>
-                                    <input type="text" name="storage" id="edit-storage" class="compliance-input w-full" placeholder="Ej: AWS, servidor local, Google Drive">
-                                    <p class="text-[9px] text-text-subtle mt-1">¿Dónde se guardan físicamente estos datos?</p>
+                            <!-- SECCIÓN 1: Identificación -->
+                            <div class="rounded-lg border border-border-theme/50 bg-bg-base/30 p-4">
+                                <p class="text-[11px] font-bold text-indigo-300 uppercase tracking-wider mb-3">1. Identificación de la Actividad</p>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="compliance-form-label">Nombre <span class="text-red-400">*</span></label>
+                                        <input type="text" name="name" id="edit-name" required class="compliance-input w-full" placeholder="Ej: Gestión de clientes">
+                                    </div>
+                                    <div>
+                                        <label class="compliance-form-label">Código / Referencia</label>
+                                        <input type="text" name="code" id="edit-code" class="compliance-input w-full" placeholder="Ej: RAT-001">
+                                    </div>
+                                    <div>
+                                        <label class="compliance-form-label">Responsable del tratamiento</label>
+                                        <input type="text" name="controllerName" id="edit-controllerName" class="compliance-input w-full">
+                                    </div>
+                                    <div>
+                                        <label class="compliance-form-label">Encargado del tratamiento</label>
+                                        <input type="text" name="processorName" id="edit-processorName" class="compliance-input w-full">
+                                    </div>
                                 </div>
                             </div>
 
-                            <!-- Mensaje de estado -->
+                            <!-- SECCIÓN 2: Finalidad y Base Legal -->
+                            <div class="rounded-lg border border-border-theme/50 bg-bg-base/30 p-4">
+                                <p class="text-[11px] font-bold text-indigo-300 uppercase tracking-wider mb-3">2. Finalidad y Base Legal</p>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="compliance-form-label">Finalidad <span class="text-red-400">*</span></label>
+                                        <input type="text" name="purpose" id="edit-purpose" required class="compliance-input w-full">
+                                    </div>
+                                    <div>
+                                        <label class="compliance-form-label">Base de licitud <span class="text-red-400">*</span></label>
+                                        <select name="legalBasis" id="edit-legalBasis" required class="compliance-select w-full">
+                                            <option value="">Seleccionar...</option>
+                                            <option value="consentimiento">Consentimiento (Art. 12)</option>
+                                            <option value="ejecucion_contrato">Ejecución de contrato</option>
+                                            <option value="obligacion_legal">Obligación legal</option>
+                                            <option value="interes_vital">Interés vital</option>
+                                            <option value="interes_publico">Interés público</option>
+                                            <option value="interes_legitimo">Interés legítimo</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="mt-4">
+                                    <label class="compliance-form-label">Interés legítimo (si aplica)</label>
+                                    <textarea name="legitimateInterest" id="edit-legitimateInterest" rows="2" class="compliance-textarea w-full"></textarea>
+                                </div>
+                            </div>
+
+                            <!-- SECCIÓN 3: Categorías -->
+                            <div class="rounded-lg border border-border-theme/50 bg-bg-base/30 p-4">
+                                <p class="text-[11px] font-bold text-indigo-300 uppercase tracking-wider mb-3">3. Categorías de Datos y Titulares</p>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="compliance-form-label">Categorías de datos</label>
+                                        <textarea name="dataCategories" id="edit-categories" rows="3" class="compliance-textarea w-full" placeholder="identificacion, contacto, financieros"></textarea>
+                                        <p class="text-[9px] text-text-subtle mt-1">Separadas por coma</p>
+                                    </div>
+                                    <div>
+                                        <label class="compliance-form-label">Categorías de titulares</label>
+                                        <textarea name="subjectCategories" id="edit-subjectCategories" rows="3" class="compliance-textarea w-full" placeholder="clientes, empleados"></textarea>
+                                        <p class="text-[9px] text-text-subtle mt-1">Separadas por coma</p>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                    <div>
+                                        <label class="compliance-form-label">¿Datos sensibles? (Art. 16)</label>
+                                        <select name="sensitive" id="edit-sensitive" class="compliance-select w-full">
+                                            <option value="0">No</option>
+                                            <option value="1">Sí</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="compliance-form-label">¿Datos de niños? (Art. 17)</label>
+                                        <select name="childrenData" id="edit-childrenData" class="compliance-select w-full">
+                                            <option value="0">No</option>
+                                            <option value="1">Sí</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- SECCIÓN 4: Frecuencia y Acceso -->
+                            <div class="rounded-lg border border-border-theme/50 bg-bg-base/30 p-4">
+                                <p class="text-[11px] font-bold text-indigo-300 uppercase tracking-wider mb-3">4. Frecuencia, Acceso y Seguridad</p>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="compliance-form-label">Frecuencia de tratamiento</label>
+                                        <select name="treatmentFrequency" id="edit-treatmentFrequency" class="compliance-select w-full">
+                                            <option value="continua">Continua (24/7)</option>
+                                            <option value="diaria">Diaria</option>
+                                            <option value="semanal">Semanal</option>
+                                            <option value="mensual">Mensual</option>
+                                            <option value="ocasional">Ocasional</option>
+                                            <option value="unica">Única</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="compliance-form-label">Control de acceso</label>
+                                        <select name="accessControl" id="edit-accessControl" class="compliance-select w-full">
+                                            <option value="interno_solo">Solo personal interno</option>
+                                            <option value="interno_externo">Interno y proveedores</option>
+                                            <option value="publico">Acceso público</option>
+                                            <option value="terceros">Terceros autorizados</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                    <div>
+                                        <label class="compliance-form-label">Medidas técnicas (coma-separadas)</label>
+                                        <input type="text" name="technicalMeasures" id="edit-technicalMeasures" class="compliance-input w-full" placeholder="cifrado_reposo, mfa">
+                                    </div>
+                                    <div>
+                                        <label class="compliance-form-label">Días de retención</label>
+                                        <input type="number" name="retentionDays" id="edit-retentionDays" class="compliance-input w-full" min="0">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                    <div>
+                                        <label class="compliance-form-label">Nivel de riesgo</label>
+                                        <select name="risk" id="edit-risk" class="compliance-select w-full">
+                                            <option value="low">Bajo</option>
+                                            <option value="medium">Medio</option>
+                                            <option value="high">Alto</option>
+                                            <option value="critical">Crítico</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="compliance-form-label">Almacenamiento</label>
+                                        <input type="text" name="storage" id="edit-storage" class="compliance-input w-full" placeholder="AWS, servidor local...">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- SECCIÓN 5: Observaciones -->
+                            <div class="rounded-lg border border-border-theme/50 bg-bg-base/30 p-4">
+                                <p class="text-[11px] font-bold text-indigo-300 uppercase tracking-wider mb-3">5. Observaciones y Evidencia</p>
+                                <div>
+                                    <label class="compliance-form-label">Observaciones</label>
+                                    <textarea name="notes" id="edit-notes" rows="3" class="compliance-textarea w-full"></textarea>
+                                </div>
+                                <div class="mt-4">
+                                    <label class="compliance-form-label">URL de evidencia</label>
+                                    <input type="url" name="evidenceUrl" id="edit-evidenceUrl" class="compliance-input w-full" placeholder="https://intranet.empresa.cl/rat-001">
+                                </div>
+                            </div>
+
                             <div id="edit-msg" class="hidden p-3 rounded-lg text-[11px]"></div>
 
-                            <!-- Botones -->
                             <div class="flex justify-end gap-2 pt-3 border-t border-border-theme">
                                 <button type="button" onclick="document.getElementById('inventory-edit-modal').classList.add('hidden')"
                                         class="px-4 py-2 text-[11px] font-medium rounded-lg bg-bg-elevated text-text-body border border-border-theme transition-all">Cancelar</button>
@@ -2401,6 +2384,10 @@ main.compliance-workspace { position: relative; }
                     </div>
                 </div>
             </div>
+
+
+
+
 
             <script>
             // ─── Datos de inventario (para uso en JS) ───
@@ -2569,22 +2556,41 @@ main.compliance-workspace { position: relative; }
                 if (detailItemId) openInventoryEditModal(detailItemId);
             }
 
-            // ─── Modal: Edición ───
+            // ─── Modal: Edición (completo) ───
             function openInventoryEditModal(itemId) {
                 const item = inventoryData.find(i => i._id === itemId);
                 if (!item) return;
 
                 document.getElementById('edit-item-id').value = itemId;
                 document.getElementById('edit-name').value = item.name || '';
+                document.getElementById('edit-code').value = item.code || '';
+                document.getElementById('edit-controllerName').value = item.controllerName || '';
+                document.getElementById('edit-processorName').value = item.processorName || '';
                 document.getElementById('edit-purpose').value = item.purpose || '';
-                document.getElementById('edit-categories').value = typeof item.dataCategories === 'string' ? item.dataCategories : (item.dataCategories || '');
                 document.getElementById('edit-legalBasis').value = item.legalBasis || '';
-                document.getElementById('edit-risk').value = item.risk || 'low';
-                document.getElementById('edit-sensitive').value = item.sensitive ? '1' : '0';
-                document.getElementById('edit-retention').value = item.retentionDays || '';
-                document.getElementById('edit-storage').value = item.storage || '';
+                document.getElementById('edit-legitimateInterest').value = item.legitimateInterest || '';
 
-                // Ocultar mensaje anterior
+                // ✅ Convertir arrays a string comma-separated
+                const dc = item.dataCategories;
+                document.getElementById('edit-categories').value = Array.isArray(dc) ? dc.join(', ') : (dc || '');
+
+                const sc = item.subjectCategories;
+                document.getElementById('edit-subjectCategories').value = Array.isArray(sc) ? sc.join(', ') : (sc || '');
+
+                document.getElementById('edit-treatmentFrequency').value = item.treatmentFrequency || 'continua';
+                document.getElementById('edit-accessControl').value = item.accessControl || 'interno_solo';
+
+                const tm = item.technicalMeasures;
+                document.getElementById('edit-technicalMeasures').value = Array.isArray(tm) ? tm.join(', ') : (tm || '');
+
+                document.getElementById('edit-retentionDays').value = item.retentionDays || '';
+                document.getElementById('edit-risk').value = item.risk || 'low';
+                document.getElementById('edit-sensitive').value = (item.sensitive == 1 || item.sensitive === true) ? '1' : '0';
+                document.getElementById('edit-childrenData').value = (item.childrenData == 1 || item.childrenData === true) ? '1' : '0';
+                document.getElementById('edit-storage').value = item.storage || '';
+                document.getElementById('edit-notes').value = item.notes || '';
+                document.getElementById('edit-evidenceUrl').value = item.evidenceUrl || '';
+
                 const msg = document.getElementById('edit-msg');
                 msg.classList.add('hidden');
 
@@ -2597,16 +2603,30 @@ main.compliance-workspace { position: relative; }
                 const formData = new FormData(this);
                 const msg = document.getElementById('edit-msg');
 
+                // Helper: string → array limpio
+                const splitList = (s) => String(s || '').split(/[,\n]/).map(x => x.trim()).filter(Boolean);
+
                 const payload = {
                     token: '<?= h($token) ?>',
                     name: formData.get('name'),
+                    code: formData.get('code'),
+                    controllerName: formData.get('controllerName'),
+                    processorName: formData.get('processorName'),
                     purpose: formData.get('purpose'),
-                    dataCategories: formData.get('dataCategories'),
                     legalBasis: formData.get('legalBasis'),
+                    legitimateInterest: formData.get('legitimateInterest'),
+                    dataCategories: splitList(formData.get('dataCategories')),
+                    subjectCategories: splitList(formData.get('subjectCategories')),
+                    treatmentFrequency: formData.get('treatmentFrequency'),
+                    accessControl: formData.get('accessControl'),
+                    technicalMeasures: splitList(formData.get('technicalMeasures')),
+                    retentionDays: parseInt(formData.get('retentionDays')) || null,
                     risk: formData.get('risk'),
                     sensitive: formData.get('sensitive') === '1',
-                    retentionDays: parseInt(formData.get('retentionDays')) || null,
+                    childrenData: formData.get('childrenData') === '1',
                     storage: formData.get('storage'),
+                    notes: formData.get('notes'),
+                    evidenceUrl: formData.get('evidenceUrl'),
                 };
 
                 msg.classList.remove('hidden');
@@ -2614,22 +2634,22 @@ main.compliance-workspace { position: relative; }
                 msg.className = 'p-3 rounded-lg text-[11px] bg-blue-500/10 border border-blue-500/20 text-blue-400';
 
                 try {
-                    const res = await fetch('/api/compliance/inventory/' + formData.get('item_id'), {
+                    const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/compliance/inventory/' + formData.get('item_id')), {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
                     });
                     const data = await res.json();
                     if (data.success) {
-                        msg.textContent = 'Cambios guardados correctamente. Recargando...';
+                        msg.textContent = 'Cambios guardados. Recargando...';
                         msg.className = 'p-3 rounded-lg text-[11px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400';
-                        setTimeout(() => location.reload(), 1200);
+                        setTimeout(() => location.reload(), 900);
                     } else {
-                        msg.textContent = (data.error || 'Error al guardar los cambios');
+                        msg.textContent = (data.error || 'Error al guardar');
                         msg.className = 'p-3 rounded-lg text-[11px] bg-red-500/10 border border-red-500/20 text-red-400';
                     }
-                } catch (e) {
-                    msg.textContent = 'Error de conexión: ' + e.message;
+                } catch (err) {
+                    msg.textContent = 'Error de conexión: ' + err.message;
                     msg.className = 'p-3 rounded-lg text-[11px] bg-red-500/10 border border-red-500/20 text-red-400';
                 }
             });
@@ -2642,7 +2662,7 @@ main.compliance-workspace { position: relative; }
                 return div.innerHTML;
             }
 
-            // ─── Inventory Wizard JavaScript (Independent Implementation) ───
+             // ─── Inventory Wizard JavaScript ───
             (function() {
                 const form = document.getElementById('inventory-wizard-form');
                 if (!form) return;
@@ -2650,7 +2670,6 @@ main.compliance-workspace { position: relative; }
                 let currentStep = 1;
                 const totalSteps = 6;
 
-                // Step validation rules
                 const stepValidation = {
                     1: function() {
                         const name = document.getElementById('inventory-wizard-name').value.trim();
@@ -2667,7 +2686,7 @@ main.compliance-workspace { position: relative; }
                         return null;
                     },
                     3: function() {
-                        const checkboxes = form.querySelectorAll('.inventory-wizard-field-checkbox:checked');
+                        const checkboxes = form.querySelectorAll('.inventory-wizard-step[data-step="3"] .inventory-wizard-field-checkbox:checked');
                         if (checkboxes.length === 0) return 'Por favor seleccione al menos una categoría de datos.';
                         return null;
                     },
@@ -2683,9 +2702,7 @@ main.compliance-workspace { position: relative; }
                         if (!risk) return 'Por favor seleccione el nivel de riesgo.';
                         return null;
                     },
-                    6: function() {
-                        return null; // No required fields in step 6
-                    }
+                    6: function() { return null; }
                 };
 
                 function showError(message) {
@@ -2696,53 +2713,42 @@ main.compliance-workspace { position: relative; }
                         errorEl.classList.add('show');
                     }
                 }
-
                 function hideError() {
                     const errorEl = document.getElementById('inventory-wizard-error');
-                    if (errorEl) {
-                        errorEl.classList.remove('show');
-                    }
+                    if (errorEl) errorEl.classList.remove('show');
                 }
 
                 function updateWizard() {
-                    // Update step visibility
-                    document.querySelectorAll('.inventory-wizard-step').forEach(el => {
+                    document.querySelectorAll('#inventory-wizard-form .inventory-wizard-step').forEach(el => {
                         el.classList.remove('active');
-                        if (parseInt(el.dataset.step) === currentStep) {
-                            el.classList.add('active');
-                        }
+                        if (parseInt(el.dataset.step) === currentStep) el.classList.add('active');
                     });
 
-                    // Update step indicators
-                    document.querySelectorAll('.inventory-wizard-step-dot').forEach(el => {
+                    document.querySelectorAll('#inventory-wizard-form .inventory-wizard-step-dot').forEach(el => {
                         const step = parseInt(el.dataset.step);
                         el.classList.remove('active', 'completed');
-                        if (step === currentStep) {
-                            el.classList.add('active');
-                        } else if (step < currentStep) {
-                            el.classList.add('completed');
-                        }
+                        if (step === currentStep) el.classList.add('active');
+                        else if (step < currentStep) el.classList.add('completed');
                     });
 
-                    // Update progress bar
                     const progress = (currentStep / totalSteps) * 100;
-                    document.getElementById('inventory-wizard-progress-fill').style.width = progress + '%';
-                    document.getElementById('inventory-wizard-current-step').textContent = currentStep;
+                    const pf = document.getElementById('inventory-wizard-progress-fill');
+                    if (pf) pf.style.width = progress + '%';
+                    const cs = document.getElementById('inventory-wizard-current-step');
+                    if (cs) cs.textContent = currentStep;
 
-                    // Update navigation buttons
                     const prevBtn = document.getElementById('inventory-wizard-prev-btn');
                     const nextBtn = document.getElementById('inventory-wizard-next-btn');
                     const submitBtn = document.getElementById('inventory-wizard-submit-btn');
 
-                    prevBtn.disabled = currentStep === 1;
+                    if (prevBtn) prevBtn.disabled = currentStep === 1;
                     if (currentStep === totalSteps) {
-                        nextBtn.style.display = 'none';
+                        if (nextBtn) nextBtn.style.display = 'none';
                         if (submitBtn) submitBtn.classList.add('visible');
                     } else {
-                        nextBtn.style.display = 'inline-flex';
+                        if (nextBtn) nextBtn.style.display = 'inline-flex';
                         if (submitBtn) submitBtn.classList.remove('visible');
                     }
-
                     hideError();
                 }
 
@@ -2750,37 +2756,28 @@ main.compliance-workspace { position: relative; }
                     const validator = stepValidation[currentStep];
                     if (validator) {
                         const error = validator();
-                        if (error) {
-                            showError(error);
-                            return false;
-                        }
+                        if (error) { showError(error); return false; }
                     }
                     return true;
                 }
 
-                // Navigation functions
-                window.InventoryWizard = {
-                    nextStep: function() {
-                        if (currentStep < totalSteps && validateCurrentStep()) {
-                            currentStep++;
-                            updateWizard();
-                            window.scrollTo({ top: form.offsetTop - 100, behavior: 'smooth' });
-                        }
-                    },
-                    prevStep: function() {
-                        if (currentStep > 1) {
-                            currentStep--;
-                            updateWizard();
-                            window.scrollTo({ top: form.offsetTop - 100, behavior: 'smooth' });
-                        }
+                const prevBtn = document.getElementById('inventory-wizard-prev-btn');
+                const nextBtn = document.getElementById('inventory-wizard-next-btn');
+
+                if (nextBtn) nextBtn.addEventListener('click', function() {
+                    if (currentStep < totalSteps && validateCurrentStep()) {
+                        currentStep++;
+                        updateWizard();
                     }
-                };
+                });
 
-                // Event listeners
-                document.getElementById('inventory-wizard-prev-btn').addEventListener('click', window.InventoryWizard.prevStep);
-                document.getElementById('inventory-wizard-next-btn').addEventListener('click', window.InventoryWizard.nextStep);
+                if (prevBtn) prevBtn.addEventListener('click', function() {
+                    if (currentStep > 1) {
+                        currentStep--;
+                        updateWizard();
+                    }
+                });
 
-                // Initialize wizard
                 updateWizard();
             })();
             </script>

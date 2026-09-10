@@ -163,8 +163,19 @@ curl_setopt_array($ch, [
 ]);
 
 if ($method !== 'GET') {
-    $headersToSend[] = 'Content-Type: application/x-www-form-urlencoded';
-    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($body));
+    // ✅ Si el body contiene arrays (dataCategories[], subjectCategories[], items, mapping…),
+    // enviamos como JSON para que el backend reciba la estructura correcta.
+    $hasArrays = false;
+    foreach ($body as $v) {
+        if (is_array($v)) { $hasArrays = true; break; }
+    }
+    if ($hasArrays) {
+        $headersToSend[] = 'Content-Type: application/json';
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body, JSON_UNESCAPED_UNICODE));
+    } else {
+        $headersToSend[] = 'Content-Type: application/x-www-form-urlencoded';
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($body));
+    }
 }
 
 curl_setopt($ch, CURLOPT_HTTPHEADER, $headersToSend);
