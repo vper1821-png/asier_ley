@@ -3,31 +3,31 @@ $pageTitle = 'Dashboard';
 require_once __DIR__ . '/../includes/header.php';
 require_login();
 
-$user = $_SESSION['user'] ?? [];
+$user  = $_SESSION['user'] ?? [];
 $token = $_SESSION['token'] ?? '';
 
 // ── Fetch dashboard stats (KPIs) ──
 $statsRes = api_post_form('/api/dashboard/stats', ['token' => $token]);
 $statsOk  = is_array($statsRes) && isset($statsRes['stats']);
 
-$s              = $statsOk ? $statsRes['stats']   : [];
-$scores         = $statsOk ? ($statsRes['scores']         ?? []) : [];
-$checklistMeta  = $statsOk ? ($statsRes['checklist']      ?? ['done'=>0,'total'=>10]) : ['done'=>0,'total'=>10];
-$dbCompliance   = $statsOk ? ($statsRes['dbCompliance']   ?? []) : [];
-$complianceItems= $statsOk ? ($statsRes['complianceItems']?? []) : [];
-$companyName    = $statsRes['companyName'] ?? ($user['companyName'] ?? $user['email'] ?? '');
-$userCount      = $statsRes['userCount']   ?? null;
+$s               = $statsOk ? $statsRes['stats']           : [];
+$scores          = $statsOk ? ($statsRes['scores']          ?? []) : [];
+$checklistMeta   = $statsOk ? ($statsRes['checklist']       ?? ['done'=>0,'total'=>10]) : ['done'=>0,'total'=>10];
+$dbCompliance    = $statsOk ? ($statsRes['dbCompliance']    ?? []) : [];
+$complianceItems = $statsOk ? ($statsRes['complianceItems'] ?? []) : [];
+$companyName     = $statsRes['companyName'] ?? ($user['companyName'] ?? $user['email'] ?? '');
+$userCount       = $statsRes['userCount']   ?? null;
 
 // ── Valores clave ──
-$onlineAgents   = (int)($s['onlineAgents']         ?? 0);
-$totalAgents    = (int)($s['totalAgents']          ?? 0);
-$totalDatabases = (int)($s['totalDatabases']       ?? 0);
-$compliantDBs   = (int)($s['compliantDBs']         ?? 0);
-$nonCompliantDBs= (int)($s['nonCompliantDBs']      ?? 0);
-$activeAlerts   = (int)($s['activeAlerts']         ?? 0);
-$openBreaches   = (int)($s['openBreaches']         ?? 0);
-$totalBreaches  = (int)($s['totalBreaches']        ?? 0);
-$vulnUsers      = (int)($s['vulnerableUsersCount'] ?? 0);
+$onlineAgents    = (int)($s['onlineAgents']         ?? 0);
+$totalAgents     = (int)($s['totalAgents']          ?? 0);
+$totalDatabases  = (int)($s['totalDatabases']       ?? 0);
+$compliantDBs    = (int)($s['compliantDBs']         ?? 0);
+$nonCompliantDBs = (int)($s['nonCompliantDBs']      ?? 0);
+$activeAlerts    = (int)($s['activeAlerts']         ?? 0);
+$openBreaches    = (int)($s['openBreaches']         ?? 0);
+$totalBreaches   = (int)($s['totalBreaches']        ?? 0);
+$vulnUsers       = (int)($s['vulnerableUsersCount'] ?? 0);
 
 $globalScore     = (int)($scores['global']         ?? 0);
 $agentDBScore    = (int)($scores['agentDb']        ?? 0);
@@ -40,22 +40,6 @@ $checklistTotal  = max(1, (int)($checklistMeta['total'] ?? 10));
 
 $pctColor = $complianceScore >= 70 ? 'text-emerald-400' : ($complianceScore >= 40 ? 'text-yellow-400' : 'text-red-400');
 $pctBar   = $complianceScore >= 70 ? 'bg-emerald-500'   : ($complianceScore >= 40 ? 'bg-yellow-500'   : 'bg-red-500');
-
-// ── UF con fallback ──
-$ufValue = null;
-if (!empty($_SESSION['uf_cache']) && $_SESSION['uf_cache']['ts'] > time() - 21600) {
-    $ufValue = $_SESSION['uf_cache']['value'];
-} else {
-    $ufCh = curl_init('https://mindicador.cl/api/uf');
-    curl_setopt_array($ufCh, [CURLOPT_RETURNTRANSFER=>true, CURLOPT_TIMEOUT=>3]);
-    $ufRaw = @curl_exec($ufCh);
-    @curl_close($ufCh);
-    if ($ufRaw) {
-        $ufJson = json_decode($ufRaw, true);
-        $ufValue = $ufJson['serie'][0]['valor'] ?? null;
-        if ($ufValue) $_SESSION['uf_cache'] = ['value'=>$ufValue, 'ts'=>time()];
-    }
-}
 
 function kpi_card($label, $value, $sub, $color, $icon, $big = true) {
     $size = $big ? 'text-[25px] sm:text-[28px]' : 'text-[21px] sm:text-[24px]';
@@ -104,7 +88,7 @@ function kpi_card($label, $value, $sub, $color, $icon, $big = true) {
             </div>
             <?php endif; ?>
 
-            <!-- KPI grid -->
+            <!-- KPI grid principal -->
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
                 <?php
                 $icoAgents = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>';
@@ -120,24 +104,6 @@ function kpi_card($label, $value, $sub, $color, $icon, $big = true) {
                 kpi_card('Usuarios Vulnerables', $vulnUsers, 'Datos en riesgo', $vulnUsers > 0 ? '#f87171' : '#34d399', $icoUsers);
                 ?>
             </div>
-
-            <!-- UF + Plan -->
-            <?php if ($ufValue): ?>
-            <div class="rounded-xl border border-white/[0.04] bg-white/[0.015] px-5 py-4 flex items-center justify-between">
-                <div class="flex items-center gap-4">
-                    <div class="w-9 h-9 rounded-lg bg-white/[0.03] border border-white/[0.05] flex items-center justify-center text-text-muted">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                    </div>
-                    <div>
-                        <p class="text-[10px] text-text-subtle uppercase tracking-widest font-medium">Valor UF Hoy</p>
-                        <p class="text-[16px] font-semibold text-white mt-0.5 tracking-tight">$<?= number_format($ufValue, 2, ',', '.') ?></p>
-                    </div>
-                </div>
-                <div class="text-right">
-                    <p class="text-[10px] text-text-subtle font-medium">Plan: <span class="text-text-body font-semibold"><?= h($user['planType'] ?? 'Gratuito') ?></span></p>
-                </div>
-            </div>
-            <?php endif; ?>
 
             <!-- Secondary stats -->
             <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -256,7 +222,6 @@ function kpi_card($label, $value, $sub, $color, $icon, $big = true) {
 
                 <!-- Desglose por área -->
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <!-- Agente & DB -->
                     <div class="rounded-xl border border-white/[0.04] bg-white/[0.01] p-5">
                         <div class="flex items-center gap-2 mb-3">
                             <div class="w-7 h-7 rounded-lg bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center text-yellow-400"><?= $icoAgents ?></div>
@@ -273,7 +238,6 @@ function kpi_card($label, $value, $sub, $color, $icon, $big = true) {
                         </div>
                     </div>
 
-                    <!-- Compliance -->
                     <div class="rounded-xl border border-white/[0.04] bg-white/[0.01] p-5">
                         <div class="flex items-center gap-2 mb-3">
                             <div class="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400"><?= $icoShield ?></div>
@@ -290,7 +254,6 @@ function kpi_card($label, $value, $sub, $color, $icon, $big = true) {
                         </div>
                     </div>
 
-                    <!-- Hardening -->
                     <div class="rounded-xl border border-white/[0.04] bg-white/[0.01] p-5">
                         <div class="flex items-center gap-2 mb-3">
                             <div class="w-7 h-7 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400">
@@ -417,6 +380,7 @@ function kpi_card($label, $value, $sub, $color, $icon, $big = true) {
 const DASH_TOKEN = <?= json_encode($token) ?>;
 const loadedTabs = new Set();
 
+// ── Fetch helper ──
 async function dashFetch(path) {
     const res = await fetch(path, {
         method: 'POST',
@@ -431,6 +395,24 @@ function esc(s) {
     return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+function kpiMini(label, value, sub, color) {
+    return `
+      <div class="rounded-xl border border-white/[0.04] bg-white/[0.01] p-4">
+        <p class="text-[9px] font-semibold text-text-subtle uppercase tracking-[.14em] mb-2">${esc(label)}</p>
+        <p class="text-[20px] font-bold leading-none" style="color:${color}">${esc(value)}</p>
+        <p class="text-[10px] text-text-muted mt-1.5">${esc(sub)}</p>
+      </div>`;
+}
+
+// Convierte cualquier formato de piiType a un string legible
+function piiLabel(t) {
+    if (t === null || t === undefined) return '';
+    if (typeof t === 'string') return t;
+    if (typeof t === 'object') return t.type || t.name || t.label || JSON.stringify(t);
+    return String(t);
+}
+
+// ── Tabs ──
 function showDashTab(key) {
     document.querySelectorAll('.dashtab-content').forEach(el => el.classList.add('hidden'));
     document.getElementById('dashtab-' + key).classList.remove('hidden');
@@ -449,43 +431,100 @@ function showDashTab(key) {
     }
 }
 
-// ── ARCO ──
+// ═══════════════════════════════════════════════════════════
+// ARCO — 10 días hábiles (Ley 21.719)
+// ═══════════════════════════════════════════════════════════
 async function loadArco() {
     const L = document.getElementById('arco-loading');
     const B = document.getElementById('arco-body');
     try {
         const d = await dashFetch('/api/dashboard/arco-summary');
+
+        // Colección no encontrada → mensaje de ayuda
+        if ((!d.recent || d.recent.length === 0) && (d.total || 0) === 0 && d._debug && d._debug.collection === null) {
+            L.innerHTML = `
+              <div class="rounded-xl border border-yellow-500/30 bg-yellow-500/5 p-6 text-center space-y-2">
+                <p class="text-[12px] text-yellow-300 font-semibold">No se encontró la colección ARCO</p>
+                <p class="text-[11px] text-yellow-200/70">
+                  Prueba <code class="font-mono bg-black/30 px-1.5 py-0.5 rounded">/api/dashboard/arco-debug</code>
+                  para ver la colección y campos reales.
+                </p>
+              </div>`;
+            return;
+        }
+
         L.classList.add('hidden');
         B.classList.remove('hidden');
-        const overdueColor = d.overdue > 0 ? 'text-red-400' : 'text-emerald-400';
+
+        const slaDays   = d.slaDays || 10;
+        const pending   = d.pending ?? 0;
+        const inProg    = d.in_progress ?? 0;
+        const completed = (d.completed ?? 0) + (d.finished ?? 0);
+        const overdue   = d.overdue ?? 0;
+        const avgDays   = d.avgBusinessDays ?? 0;
+        const debugBadge = d._debug && d._debug.collection
+            ? `<span class="text-[9px] text-text-subtle/50 font-mono">col: ${esc(d._debug.collection)} (${esc(d._debug.via || '')})</span>`
+            : '';
+
         B.innerHTML = `
-          <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            ${kpiMini('Total', d.total, 'Solicitudes registradas', '#818cf8')}
-            ${kpiMini('Abiertas', d.open, 'En gestión', d.open > 0 ? '#fbbf24' : '#34d399')}
-            ${kpiMini('Vencidas', d.overdue, 'SLA 15 días hábiles', d.overdue > 0 ? '#f87171' : '#34d399')}
-            ${kpiMini('Prom. resolución', d.avgBusinessDays + ' d', 'Días hábiles', '#22d3ee')}
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <p class="text-[11px] text-text-subtle">SLA legal: <span class="text-white font-semibold">${slaDays} días hábiles</span> (Ley 21.719)</p>
+            <div class="flex items-center gap-3">
+              <a href="/arco.php" class="text-[11px] text-blue-400 hover:text-blue-300 underline underline-offset-2">Ir al módulo ARCO completo →</a>
+              ${debugBadge}
+            </div>
           </div>
+
+          <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
+            ${kpiMini('Total', d.total ?? 0, 'Solicitudes recibidas', '#818cf8')}
+            ${kpiMini('Pendientes', pending, 'Requieren atención', pending > 0 ? '#fbbf24' : '#34d399')}
+            ${kpiMini('En proceso', inProg, 'Siendo gestionadas', '#60a5fa')}
+            ${kpiMini('Completadas', completed, 'Respondidas al titular', '#34d399')}
+            ${kpiMini('Vencidas', overdue, `SLA ${slaDays} días`, overdue > 0 ? '#f87171' : '#34d399')}
+          </div>
+
           <div class="rounded-xl border border-white/[0.04] bg-white/[0.01] overflow-hidden">
-            <div class="px-5 py-3 border-b border-white/[0.04] flex justify-between items-center">
-              <p class="text-[11px] font-semibold text-text-heading">Solicitudes ARCO — SLA 15 días hábiles</p>
-              <span class="text-[10px] text-text-subtle">${d.total} registradas</span>
+            <div class="px-5 py-3 border-b border-white/[0.04] flex items-center justify-between">
+              <p class="text-[11px] font-semibold text-text-heading">Últimas solicitudes</p>
+              <span class="text-[10px] text-text-subtle">Prom. resolución: ${avgDays} días hábiles</span>
             </div>
             <div class="divide-y divide-white/[0.03]">
               ${(d.recent || []).length === 0
-                ? '<p class="px-5 py-6 text-center text-[11px] text-text-subtle">Sin solicitudes ARCO registradas.</p>'
-                : d.recent.map(r => `
-                <div class="px-5 py-3 flex items-center justify-between gap-4">
-                  <div class="min-w-0">
-                    <p class="text-[12px] font-medium text-text-heading truncate">${esc(r.type.toUpperCase())} · ${esc(r.subject || '—')}</p>
-                    <p class="text-[10px] text-text-subtle mt-0.5 font-mono">${esc(r.requestId || r.id)}</p>
-                  </div>
-                  <div class="text-right flex-shrink-0">
-                    <p class="text-[11px] font-semibold ${r.overdue ? 'text-red-400' : (r.daysRemaining <= 3 ? 'text-yellow-400' : 'text-emerald-400')}">
-                      ${r.overdue ? `Vencida ${Math.abs(r.daysRemaining)} d` : `${r.daysRemaining} días restantes`}
-                    </p>
-                    <p class="text-[9px] text-text-subtle mt-0.5">${esc(r.status)}</p>
-                  </div>
-                </div>`).join('')}
+                ? '<p class="px-5 py-6 text-center text-[11px] text-text-subtle">Sin solicitudes ARCO para esta empresa.</p>'
+                : d.recent.map(r => {
+                    const isClosed = ['completed','finished','resolved','rejected'].includes(r.status);
+                    const cls = r.overdue
+                      ? 'text-red-400'
+                      : (isClosed ? 'text-emerald-400'
+                          : (typeof r.daysRemaining === 'number' && r.daysRemaining <= 3 ? 'text-yellow-400' : 'text-emerald-400'));
+                    let label;
+                    if (isClosed) {
+                        label = 'Cerrada';
+                    } else if (r.overdue) {
+                        label = `Vencida ${Math.abs(r.daysRemaining)} d`;
+                    } else if (typeof r.daysRemaining === 'number') {
+                        label = `${r.daysRemaining} días restantes`;
+                    } else {
+                        label = 'En plazo';
+                    }
+                    const rid = String(r.requestId || r.id || '');
+                    const shortId = rid ? `#AR-${rid.slice(-6).toUpperCase()}` : '';
+                    return `
+                    <div class="px-5 py-3 flex items-center justify-between gap-4">
+                      <div class="min-w-0">
+                        <p class="text-[12px] font-medium text-text-heading truncate">
+                          ${esc(String(r.type || '').toUpperCase())} · ${esc(r.subject || '—')}
+                        </p>
+                        <p class="text-[10px] text-text-subtle mt-0.5 font-mono truncate">
+                          ${esc(shortId)}${r.email ? ' · ' + esc(r.email) : ''}
+                        </p>
+                      </div>
+                      <div class="text-right flex-shrink-0">
+                        <p class="text-[11px] font-semibold ${cls}">${esc(label)}</p>
+                        <p class="text-[9px] text-text-subtle mt-0.5">${esc(r.status || '')}</p>
+                      </div>
+                    </div>`;
+                  }).join('')}
             </div>
           </div>`;
     } catch (e) {
@@ -493,7 +532,9 @@ async function loadArco() {
     }
 }
 
-// ── Brechas ──
+// ═══════════════════════════════════════════════════════════
+// Brechas — Notificación 72h a la Agencia
+// ═══════════════════════════════════════════════════════════
 async function loadBreaches() {
     const L = document.getElementById('breach-loading');
     const B = document.getElementById('breach-body');
@@ -503,10 +544,10 @@ async function loadBreaches() {
         B.classList.remove('hidden');
         B.innerHTML = `
           <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            ${kpiMini('Total', d.total, 'Reportadas', '#818cf8')}
-            ${kpiMini('Abiertas', d.open, 'Sin resolver', d.open > 0 ? '#f87171' : '#34d399')}
-            ${kpiMini('Notificadas', d.notified, 'A la Agencia', '#34d399')}
-            ${kpiMini('Vencidas 72h', d.overdue72, 'SLA notificación', d.overdue72 > 0 ? '#f87171' : '#34d399')}
+            ${kpiMini('Total', d.total ?? 0, 'Reportadas', '#818cf8')}
+            ${kpiMini('Abiertas', d.open ?? 0, 'Sin resolver', (d.open ?? 0) > 0 ? '#f87171' : '#34d399')}
+            ${kpiMini('Notificadas', d.notified ?? 0, 'A la Agencia', '#34d399')}
+            ${kpiMini('Vencidas 72h', d.overdue72 ?? 0, 'SLA notificación', (d.overdue72 ?? 0) > 0 ? '#f87171' : '#34d399')}
           </div>
           <div class="rounded-xl border border-white/[0.04] bg-white/[0.01] overflow-hidden">
             <div class="px-5 py-3 border-b border-white/[0.04]">
@@ -537,7 +578,9 @@ async function loadBreaches() {
     }
 }
 
-// ── Archivos ──
+// ═══════════════════════════════════════════════════════════
+// Archivos & PII — filtra por agentId + userId (backend)
+// ═══════════════════════════════════════════════════════════
 async function loadFiles() {
     const L = document.getElementById('files-loading');
     const B = document.getElementById('files-body');
@@ -545,53 +588,85 @@ async function loadFiles() {
         const d = await dashFetch('/api/dashboard/files-summary');
         L.classList.add('hidden');
         B.classList.remove('hidden');
-        const mb = (d.totalBytes / 1048576).toFixed(1);
+
+        const bytes = Number(d.totalBytes || 0);
+        const volLabel = bytes >= 1048576
+            ? (bytes / 1048576).toFixed(1) + ' MB'
+            : (bytes / 1024).toFixed(1) + ' KB';
+
+        const piiList = Array.isArray(d.piiTypes) ? d.piiTypes : [];
+        const agentList = Array.isArray(d.byAgent) ? d.byAgent : [];
+        const recentList = Array.isArray(d.recent) ? d.recent : [];
+        const maxPiiCount = Math.max(1, ...piiList.map(t => Number(t.count) || 0));
+        const maxAgentCount = Math.max(1, ...agentList.map(a => Number(a.count) || 0));
+
         B.innerHTML = `
           <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            ${kpiMini('Archivos', d.total, 'Monitoreados', '#818cf8')}
-            ${kpiMini('Con PII', d.withPii, 'Datos sensibles', d.withPii > 0 ? '#f87171' : '#34d399')}
-            ${kpiMini('Volumen', mb + ' MB', 'Total escaneado', '#22d3ee')}
-            ${kpiMini('Tipos PII', (d.piiTypes||[]).length, 'Categorías detectadas', '#fbbf24')}
+            ${kpiMini('Archivos', d.total ?? 0, 'Monitoreados', '#818cf8')}
+            ${kpiMini('Con PII', d.withPii ?? 0, 'Datos sensibles', (d.withPii ?? 0) > 0 ? '#f87171' : '#34d399')}
+            ${kpiMini('Volumen', volLabel, 'Total escaneado', '#22d3ee')}
+            ${kpiMini('Tipos PII', piiList.length, 'Categorías detectadas', '#fbbf24')}
           </div>
+
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div class="rounded-xl border border-white/[0.04] bg-white/[0.01] p-5">
               <p class="text-[10px] font-medium text-text-subtle uppercase tracking-widest mb-3">Tipos de PII detectados</p>
-              ${(d.piiTypes || []).length === 0
+              ${piiList.length === 0
                 ? '<p class="text-[11px] text-text-subtle text-center py-4">Sin datos sensibles detectados.</p>'
-                : d.piiTypes.map(t => `
-                <div class="mb-2">
-                  <div class="flex justify-between text-[10px] text-text-muted mb-1"><span>${esc(t.type)}</span><span>${t.count}</span></div>
-                  <div class="h-1.5 rounded-full bg-white/[0.04] overflow-hidden"><div class="h-full rounded-full bg-[#f87171]" style="width:${Math.min(100, t.count)}%"></div></div>
-                </div>`).join('')}
+                : piiList.map(t => {
+                    const label = piiLabel(t.type ?? t);
+                    const count = Number(t.count) || 0;
+                    const width = Math.min(100, (count / maxPiiCount) * 100);
+                    return `
+                    <div class="mb-2">
+                      <div class="flex justify-between text-[10px] text-text-muted mb-1"><span>${esc(label)}</span><span>${count}</span></div>
+                      <div class="h-1.5 rounded-full bg-white/[0.04] overflow-hidden"><div class="h-full rounded-full bg-[#f87171]" style="width:${width}%"></div></div>
+                    </div>`;
+                  }).join('')}
             </div>
+
             <div class="rounded-xl border border-white/[0.04] bg-white/[0.01] p-5">
               <p class="text-[10px] font-medium text-text-subtle uppercase tracking-widest mb-3">Top agentes por archivos</p>
-              ${(d.byAgent || []).length === 0
+              ${agentList.length === 0
                 ? '<p class="text-[11px] text-text-subtle text-center py-4">Sin agentes reportando.</p>'
-                : d.byAgent.map(a => `
-                <div class="mb-2">
-                  <div class="flex justify-between text-[10px] text-text-muted mb-1"><span class="font-mono">${esc(a.agentId).slice(0,12)}…</span><span>${a.count}</span></div>
-                  <div class="h-1.5 rounded-full bg-white/[0.04] overflow-hidden"><div class="h-full rounded-full bg-[#818cf8]" style="width:${Math.min(100, a.count)}%"></div></div>
-                </div>`).join('')}
+                : agentList.map(a => {
+                    const aid = String(a.agentId || 'desconocido');
+                    const count = Number(a.count) || 0;
+                    const width = Math.min(100, (count / maxAgentCount) * 100);
+                    return `
+                    <div class="mb-2">
+                      <div class="flex justify-between text-[10px] text-text-muted mb-1">
+                        <span class="font-mono">${esc(aid.slice(0, 12))}${aid.length > 12 ? '…' : ''}</span>
+                        <span>${count}</span>
+                      </div>
+                      <div class="h-1.5 rounded-full bg-white/[0.04] overflow-hidden"><div class="h-full rounded-full bg-[#818cf8]" style="width:${width}%"></div></div>
+                    </div>`;
+                  }).join('')}
             </div>
           </div>
+
           <div class="rounded-xl border border-white/[0.04] bg-white/[0.01] overflow-hidden">
-            <div class="px-5 py-3 border-b border-white/[0.04]">
+            <div class="px-5 py-3 border-b border-white/[0.04] flex items-center justify-between">
               <p class="text-[11px] font-semibold text-text-heading">Últimos archivos con datos sensibles</p>
+              <span class="text-[10px] text-text-subtle">${recentList.length} recientes</span>
             </div>
             <div class="divide-y divide-white/[0.03]">
-              ${(d.recent || []).length === 0
+              ${recentList.length === 0
                 ? '<p class="px-5 py-6 text-center text-[11px] text-text-subtle">Sin archivos con PII detectada.</p>'
-                : d.recent.map(f => `
-                <div class="px-5 py-3 flex items-center justify-between gap-4">
-                  <div class="min-w-0">
-                    <p class="text-[12px] font-medium text-text-heading truncate">${esc(f.name)}</p>
-                    <p class="text-[10px] text-text-subtle mt-0.5 truncate">${esc(f.path)}</p>
-                  </div>
-                  <div class="flex-shrink-0 flex flex-wrap gap-1 justify-end max-w-[40%]">
-                    ${(f.piiTypes || []).map(t => `<span class="text-[9px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">${esc(t)}</span>`).join('')}
-                  </div>
-                </div>`).join('')}
+                : recentList.map(f => {
+                    const types = Array.isArray(f.piiTypes) ? f.piiTypes : [];
+                    return `
+                    <div class="px-5 py-3 flex items-center justify-between gap-4">
+                      <div class="min-w-0">
+                        <p class="text-[12px] font-medium text-text-heading truncate">${esc(f.name || 'archivo')}</p>
+                        <p class="text-[10px] text-text-subtle mt-0.5 truncate">${esc(f.path || '')}</p>
+                      </div>
+                      <div class="flex-shrink-0 flex flex-wrap gap-1 justify-end max-w-[45%]">
+                        ${types.slice(0, 4).map(t => `<span class="text-[9px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20 whitespace-nowrap">${esc(piiLabel(t))}</span>`).join('')}
+                        ${types.length > 4 ? `<span class="text-[9px] px-1.5 py-0.5 rounded bg-white/[0.04] text-text-subtle">+${types.length - 4}</span>` : ''}
+                      </div>
+                    </div>`;
+                  }).join('')}
             </div>
           </div>`;
     } catch (e) {
@@ -599,7 +674,9 @@ async function loadFiles() {
     }
 }
 
-// ── Auditoría ──
+// ═══════════════════════════════════════════════════════════
+// Auditoría — filtrada por empresa (backend)
+// ═══════════════════════════════════════════════════════════
 async function loadAudit() {
     const L = document.getElementById('audit-loading');
     const B = document.getElementById('audit-body');
@@ -607,37 +684,44 @@ async function loadAudit() {
         const d = await dashFetch('/api/dashboard/recent-activity');
         L.classList.add('hidden');
         B.classList.remove('hidden');
+
+        const items = Array.isArray(d.items) ? d.items : [];
+
         B.innerHTML = `
           <div class="rounded-xl border border-white/[0.04] bg-white/[0.01] overflow-hidden">
-            <div class="px-5 py-3 border-b border-white/[0.04]">
+            <div class="px-5 py-3 border-b border-white/[0.04] flex items-center justify-between">
               <p class="text-[11px] font-semibold text-text-heading">Actividad reciente</p>
+              <span class="text-[10px] text-text-subtle">${items.length} eventos</span>
             </div>
-            <div class="divide-y divide-white/[0.03] max-h-[600px] overflow-y-auto scrollbar-custom">
-              ${(d.items || []).length === 0
-                ? '<p class="px-5 py-6 text-center text-[11px] text-text-subtle">Sin eventos de auditoría.</p>'
-                : d.items.map(i => `
-                <div class="px-5 py-3 flex items-center gap-3">
-                  <span class="w-2 h-2 rounded-full flex-shrink-0 ${i.severity === 'critical' ? 'bg-red-400' : (i.severity === 'warning' ? 'bg-yellow-400' : 'bg-emerald-400')}"></span>
-                  <div class="flex-1 min-w-0">
-                    <p class="text-[12px] font-medium text-text-heading truncate">${esc(i.action)}</p>
-                    <p class="text-[10px] text-text-subtle mt-0.5 truncate">${esc(i.user)} · ${esc(i.target)}</p>
-                  </div>
-                  <span class="text-[10px] text-text-subtle flex-shrink-0 tabular-nums">${esc((i.createdAt || '').slice(0, 16).replace('T', ' '))}</span>
-                </div>`).join('')}
-            </div>
+            ${items.length === 0
+              ? `<div class="px-5 py-8 text-center">
+                   <p class="text-[11px] text-text-subtle">Sin eventos de auditoría para esta empresa.</p>
+                   <p class="text-[10px] text-text-subtle/70 mt-1">Verifica que exista una colección <code class="font-mono bg-black/30 px-1 py-0.5 rounded">activity_logs</code> o <code class="font-mono bg-black/30 px-1 py-0.5 rounded">audit_logs</code> con registros de tu empresa.</p>
+                 </div>`
+              : `<div class="divide-y divide-white/[0.03] max-h-[600px] overflow-y-auto scrollbar-custom">
+                   ${items.map(i => {
+                     const sev = String(i.severity || 'info').toLowerCase();
+                     const dotCls = sev === 'critical' ? 'bg-red-400'
+                                  : (sev === 'warning' || sev === 'warn') ? 'bg-yellow-400'
+                                  : 'bg-emerald-400';
+                     const dateStr = (i.createdAt || '').slice(0, 16).replace('T', ' ');
+                     return `
+                     <div class="px-5 py-3 flex items-center gap-3">
+                       <span class="w-2 h-2 rounded-full flex-shrink-0 ${dotCls}"></span>
+                       <div class="flex-1 min-w-0">
+                         <p class="text-[12px] font-medium text-text-heading truncate">${esc(i.action || '')}</p>
+                         <p class="text-[10px] text-text-subtle mt-0.5 truncate">
+                           ${esc(i.user || '—')}${i.target ? ' · ' + esc(i.target) : ''}
+                         </p>
+                       </div>
+                       <span class="text-[10px] text-text-subtle flex-shrink-0 tabular-nums">${esc(dateStr)}</span>
+                     </div>`;
+                   }).join('')}
+                 </div>`}
           </div>`;
     } catch (e) {
         L.innerHTML = `<p class="text-[11px] text-red-400">Error al cargar auditoría: ${esc(e.message)}</p>`;
     }
-}
-
-function kpiMini(label, value, sub, color) {
-    return `
-      <div class="rounded-xl border border-white/[0.04] bg-white/[0.01] p-4">
-        <p class="text-[9px] font-semibold text-text-subtle uppercase tracking-[.14em] mb-2">${esc(label)}</p>
-        <p class="text-[20px] font-bold leading-none" style="color:${color}">${esc(value)}</p>
-        <p class="text-[10px] text-text-muted mt-1.5">${esc(sub)}</p>
-      </div>`;
 }
 </script>
 

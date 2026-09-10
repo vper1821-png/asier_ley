@@ -84,8 +84,10 @@ $routes = [
 
     // Dashboard
     'POST /api/dashboard/status' => 'routes/dashboard.php@status',
-    'GET /api/dashboard/stats' => 'routes/dashboard.php@stats',
-    'POST /api/dashboard/stats' => 'routes/dashboard.php@stats',
+    'GET /api/dashboard/stats'   => 'routes/dashboard.php@stats',
+    'POST /api/dashboard/stats'  => 'routes/dashboard.php@stats',
+
+    // Dashboard — extra (lazy tabs)
     'GET /api/dashboard/arco-summary'      => 'routes/dashboard.php@arcoSummary',
     'POST /api/dashboard/arco-summary'     => 'routes/dashboard.php@arcoSummary',
     'GET /api/dashboard/breach-timers'     => 'routes/dashboard.php@breachTimers',
@@ -94,8 +96,10 @@ $routes = [
     'POST /api/dashboard/files-summary'    => 'routes/dashboard.php@filesSummary',
     'GET /api/dashboard/recent-activity'   => 'routes/dashboard.php@recentActivity',
     'POST /api/dashboard/recent-activity'  => 'routes/dashboard.php@recentActivity',
-    'GET /api/dashboard/documentation'     => 'routes/dashboard.php@documentation',
-    'POST /api/dashboard/documentation'    => 'routes/dashboard.php@documentation',
+
+    // Debug ARCO (puedes quitarlo en producción)
+    'GET /api/dashboard/arco-debug'        => 'routes/dashboard.php@arcoDebug',
+    'POST /api/dashboard/arco-debug'       => 'routes/dashboard.php@arcoDebug',
 
     // Agents
     'POST /api/agents'              => 'routes/agents.php@listAll',
