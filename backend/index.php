@@ -321,10 +321,7 @@ $routes = [
     'POST /api/public/portal/revoke-consent' => 'routes/public_portal.php@portalRevokeConsent',
     'GET /api/public/portal/download'        => 'routes/public_portal.php@portalDownloadAll',
     'POST /api/public/portal/arco/create'    => 'routes/public_portal.php@portalCreateARCO',
-    'POST /api/public/portal/concrete-data'  => 'routes/public_portal.php@portalRequestConcreteData',
-    'POST /api/public/portal/upload-identity'=> 'routes/public_portal.php@portalUploadIdentity',
-    'GET /api/public/portal/concrete-status' => 'routes/public_portal.php@portalConcreteDataStatus',
-    'GET /api/public/portal/deliver'         => 'routes/public_portal.php@portalDeliver',
+    
 
     // ═══════ Panel del DPO ═══════
     'POST /api/compliance/revocations/pending' => 'routes/compliance.php@listPendingRevocations',

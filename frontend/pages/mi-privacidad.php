@@ -65,12 +65,16 @@ require_once __DIR__ . '/../includes/header.php';
             <div id="pt-consents"></div>
             <div id="pt-arco"></div>
 
-            <!-- Datos concretos -->
-            <div class="rounded-2xl border border-primary-500/30 bg-primary-500/5 p-5">
-                <h3 class="text-[13px] font-semibold text-white mb-2">🔐 Solicitar mis datos concretos</h3>
-                <p class="text-[11px] text-text-muted mb-3">Para ver los datos específicos que la empresa tiene sobre ti (nombre, RUT, historial), el DPO validará tu identidad mediante cédula y selfie.</p>
-                <button onclick="requestConcreteData()" class="btn-primary text-[12px]">Solicitar datos concretos</button>
-            </div>
+            <!-- Acceso a datos concretos -->
+<div class="rounded-2xl border border-primary-500/30 bg-primary-500/5 p-5">
+    <h3 class="text-[13px] font-semibold text-white mb-2">🔐 Solicitar acceso a mis datos</h3>
+    <p class="text-[11px] text-text-muted mb-3">
+        Puedes solicitar formalmente el acceso a los datos específicos que la empresa tiene sobre ti
+        (nombre, RUT, historial). El Delegado de Protección de Datos procesará tu solicitud en un plazo
+        máximo de 10 días hábiles.
+    </p>
+    <button onclick="openArcoModal('acceso')" class="btn-primary text-[12px]">Solicitar acceso</button>
+</div>
 
             <!-- Derechos ARCO -->
             <div class="rounded-2xl border border-border-theme bg-bg-panel/60 p-5">
