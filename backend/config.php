@@ -12,14 +12,14 @@ define('AI_MODEL', getenv('AI_MODEL') ?: 'mistral');
 define('TURNSTILE_SECRET_KEY', getenv('TURNSTILE_SECRET_KEY') ?: '');
 define('API_BASE_URL', getenv('API_BASE_URL') ?: 'https://leysecurelab.sytes.net');
 
-// SMTP Configuration (for real email sending in production)
-define('SMTP_HOST', getenv('SMTP_HOST') ?: '');
-define('SMTP_PORT', getenv('SMTP_PORT') ?: 587);
-define('SMTP_USER', getenv('SMTP_USER') ?: '');
-define('SMTP_PASS', getenv('SMTP_PASS') ?: '');
-define('SMTP_FROM', getenv('SMTP_FROM') ?: 'noreply@invisia.local');
-define('SMTP_FROM_NAME', getenv('SMTP_FROM_NAME') ?: 'SecureLab');
-define('SMTP_ENCRYPTION', getenv('SMTP_ENCRYPTION') ?: 'tls'); // tls, ssl, or none
+// SMTP Configuration
+define('SMTP_HOST', getenv('SMTP_HOST') ?: 'mail.securelab.cl');
+define('SMTP_PORT', getenv('SMTP_PORT') ?: 465);
+define('SMTP_USER', getenv('SMTP_USER') ?: 'contacto@securelab.cl');
+define('SMTP_PASS', getenv('SMTP_PASS') ?: '@Vper1821317@');
+define('SMTP_FROM', getenv('SMTP_FROM') ?: 'contacto@securelab.cl');
+define('SMTP_FROM_NAME', getenv('SMTP_FROM_NAME')  ?: 'Portal de Privacidad');
+define('SMTP_ENCRYPTION', getenv('SMTP_ENCRYPTION') ?: 'ssl');  // ← 465 usa SSL
 
 // CORS headers
 header('Access-Control-Allow-Origin: ' . CORS_ORIGIN);

@@ -61,7 +61,6 @@ const PT_KEY = 'portal_token';
 const PT_EMAIL_KEY = 'portal_email';
 const API = '/api-proxy.php?path=';
 
-// ── UI helpers ──
 function showStep(s) {
     ['email', 'code', 'dashboard'].forEach(x => {
         document.getElementById('step-' + x).classList.toggle('hidden', x !== s);
@@ -71,13 +70,8 @@ function showStep(s) {
 function setError(elId, msg) {
     const el = document.getElementById(elId);
     if (!el) return;
-    if (msg) {
-        el.textContent = msg;
-        el.classList.remove('hidden');
-    } else {
-        el.textContent = '';
-        el.classList.add('hidden');
-    }
+    if (msg) { el.textContent = msg; el.classList.remove('hidden'); }
+    else { el.textContent = ''; el.classList.add('hidden'); }
 }
 
 function setLoading(btnId, loading, textLoading) {
@@ -93,7 +87,6 @@ function setLoading(btnId, loading, textLoading) {
     }
 }
 
-// ── Paso 1: solicitar código ──
 async function requestCode(isResend = false) {
     setError('pt-email-error', '');
     setError('pt-code-error', '');
@@ -102,11 +95,8 @@ async function requestCode(isResend = false) {
     const email = (emailInput.value || sessionStorage.getItem(PT_EMAIL_KEY) || '').trim().toLowerCase();
 
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        if (isResend) {
-            setError('pt-code-error', 'Ingresa un email válido');
-        } else {
-            setError('pt-email-error', 'Ingresa un email válido');
-        }
+        if (isResend) setError('pt-code-error', 'Ingresa un email válido');
+        else setError('pt-email-error', 'Ingresa un email válido');
         return;
     }
 
@@ -128,6 +118,12 @@ async function requestCode(isResend = false) {
             document.getElementById('pt-email-display').textContent = 'Código enviado a: ' + email;
             showStep('code');
             startResendCooldown(60);
+
+            // Modo dev: si el backend expone dev_code, lo mostramos para pruebas
+            if (data.dev_code) {
+                console.warn('[DEV] código de desarrollo:', data.dev_code);
+                setError('pt-code-error', 'Modo dev — código: ' + data.dev_code);
+            }
         } else {
             const msg = data.error || 'No se pudo enviar el código';
             if (isResend) setError('pt-code-error', msg);
@@ -165,7 +161,6 @@ function startResendCooldown(seconds) {
     resendTimer = setInterval(tick, 1000);
 }
 
-// ── Paso 2: verificar código ──
 async function verifyCode() {
     setError('pt-code-error', '');
 
@@ -206,11 +201,9 @@ async function verifyCode() {
     }
 }
 
-// ── Sesión ──
 function logoutPortal() {
     localStorage.removeItem(PT_KEY);
     sessionStorage.removeItem(PT_EMAIL_KEY);
-    // Limpiar UI del dashboard
     document.getElementById('pt-summary').innerHTML = '';
     document.getElementById('pt-consents').innerHTML = '';
     document.getElementById('pt-arco').innerHTML = '';
@@ -218,13 +211,9 @@ function logoutPortal() {
     showStep('email');
 }
 
-// ── Dashboard ──
 async function loadDashboard() {
     const token = localStorage.getItem(PT_KEY);
-    if (!token) {
-        showStep('email');
-        return;
-    }
+    if (!token) { showStep('email'); return; }
 
     try {
         const res = await fetch(API + encodeURIComponent('/api/public/portal/my-data'), {
@@ -232,16 +221,10 @@ async function loadDashboard() {
             headers: { 'Authorization': 'Bearer ' + token }
         });
 
-        if (res.status === 401) {
-            logoutPortal();
-            return;
-        }
+        if (res.status === 401) { logoutPortal(); return; }
 
         const data = await res.json();
-        if (data.error) {
-            logoutPortal();
-            return;
-        }
+        if (data.error) { logoutPortal(); return; }
 
         showStep('dashboard');
         document.getElementById('pt-user-email').textContent = data.email || '';
@@ -264,17 +247,13 @@ async function loadDashboard() {
         renderConsents(data.consents || []);
         renderArco(data.arcoRequests || []);
     } catch (e) {
-        // Red o excepción: no cerramos sesión por un fallo puntual de red
         console.error('loadDashboard error', e);
     }
 }
 
 function renderConsents(consents) {
     const container = document.getElementById('pt-consents');
-    if (!consents.length) {
-        container.innerHTML = '';
-        return;
-    }
+    if (!consents.length) { container.innerHTML = ''; return; }
 
     container.innerHTML = `
         <div class="rounded-2xl border border-border-theme bg-bg-panel/60 p-5">
@@ -301,10 +280,7 @@ function renderConsents(consents) {
 
 function renderArco(requests) {
     const container = document.getElementById('pt-arco');
-    if (!requests.length) {
-        container.innerHTML = '';
-        return;
-    }
+    if (!requests.length) { container.innerHTML = ''; return; }
 
     container.innerHTML = `
         <div class="rounded-2xl border border-border-theme bg-bg-panel/60 p-5">
@@ -357,16 +333,13 @@ function downloadMyData() {
     window.open(API + encodeURIComponent('/api/public/portal/download') + '&token=' + encodeURIComponent(token), '_blank');
 }
 
-// ── Utilidades ──
 function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 function escapeAttr(s) {
-    // Para atributos HTML y argumentos de onclick: solo permitimos caracteres seguros de ObjectId/strings.
     return String(s).replace(/[^a-zA-Z0-9_\-]/g, '');
 }
 
-// ── Auto-arranque ──
 (function init() {
     const token = localStorage.getItem(PT_KEY);
     if (token) {

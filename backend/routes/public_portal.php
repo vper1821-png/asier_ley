@@ -18,23 +18,22 @@ function portalRequestCode() {
     $db = Database::getInstance();
     $now = date('c');
 
-    // ── Anti-abuse: cooldown por email ──
+    // Anti-abuse: cooldown por email
     $cooldownCutoff = date('c', time() - PORTAL_RESEND_COOLDOWN);
     $recent = $db->find('portal_sessions', [
         'email' => $email,
         'createdAt' => ['$gte' => $cooldownCutoff],
     ]);
     if (!empty($recent)) {
-        // Respondemos igual (anti-enumeración) pero sin emitir nuevo código.
         json_response(['success' => true, 'message' => 'Si el email existe recibirás un código']);
     }
 
-    // ── ¿Existe el titular en alguna colección? ──
+    // ¿Existe el titular?
     $exists = $db->findOne('compliance_consents', ['email' => $email])
            || $db->findOne('arco_requests', ['solicitante.email' => $email]);
 
     if ($exists) {
-        // Invalidar códigos previos vigentes de este email
+        // Invalidar códigos previos vigentes
         $pending = $db->find('portal_sessions', [
             'email' => $email,
             'used' => false,
@@ -55,7 +54,7 @@ function portalRequestCode() {
             'createdAt' => $now,
         ]);
 
-        // Resolver companyId: consentimiento primero, ARCO como fallback
+        // companyId: consentimiento primero, ARCO como fallback
         $companyId = '';
         $consent = $db->findOne('compliance_consents', ['email' => $email]);
         if ($consent && !empty($consent['userId'])) {
@@ -73,11 +72,19 @@ function portalRequestCode() {
             'recipient' => $email,
             'recipientType' => 'titular',
             'templateCode' => 'portal_magic_code',
-            'variables' => ['code' => $code, 'ttlMinutes' => PORTAL_CODE_TTL / 60],
+            'variables' => ['code' => $code],
         ]);
+
+        // Modo desarrollo (activar solo si SMTP no está disponible):
+        if (defined('PORTAL_DEV_SHOW_CODE') && PORTAL_DEV_SHOW_CODE) {
+            json_response([
+                'success' => true,
+                'message' => 'Si el email existe recibirás un código',
+                'dev_code' => $code,
+            ]);
+        }
     }
 
-    // Anti-enumeración: siempre OK
     json_response(['success' => true, 'message' => 'Si el email existe recibirás un código']);
 }
 
@@ -96,7 +103,6 @@ function portalVerifyCode() {
     $db = Database::getInstance();
     $now = date('c');
 
-    // Buscar la sesión vigente más reciente para este email
     $sessions = $db->find('portal_sessions', [
         'email' => $email,
         'used' => false,
@@ -107,18 +113,15 @@ function portalVerifyCode() {
         json_error('código inválido o expirado', 401);
     }
 
-    // Tomar la más reciente por createdAt (string ISO, comparación lexicográfica válida)
     usort($sessions, fn($a, $b) => strcmp($b['createdAt'] ?? '', $a['createdAt'] ?? ''));
     $session = $sessions[0];
 
-    // Límite de intentos
     $attempts = (int)($session['attempts'] ?? 0);
     if ($attempts >= PORTAL_MAX_ATTEMPTS) {
         $db->updateOne('portal_sessions', ['_id' => $session['_id']], ['used' => true]);
         json_error('demasiados intentos. Solicita un nuevo código.', 429);
     }
 
-    // Comparar hash en tiempo constante
     if (!hash_equals((string)$session['codeHash'], hash('sha256', $code))) {
         $db->updateOne('portal_sessions', ['_id' => $session['_id']], [
             'attempts' => $attempts + 1,
@@ -127,7 +130,6 @@ function portalVerifyCode() {
         json_error('código inválido o expirado', 401);
     }
 
-    // Éxito: emitir token y marcar sesión como usada
     $token = Auth::createPortalToken($email);
 
     $db->updateOne('portal_sessions', ['_id' => $session['_id']], [
@@ -135,7 +137,6 @@ function portalVerifyCode() {
         'usedAt' => $now,
     ]);
 
-    // Limpieza oportunista: marcar como usadas las sesiones ya expiradas de este email
     foreach ($sessions as $s) {
         if ($s['_id'] !== $session['_id']) {
             $db->updateOne('portal_sessions', ['_id' => $s['_id']], ['used' => true]);

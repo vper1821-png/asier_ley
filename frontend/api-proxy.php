@@ -28,7 +28,7 @@ if ($raw !== '') {
     }
 }
 
-// Debug log para el problema de guardado de compliance
+// Debug log para compliance
 if (str_contains($path, '/api/invisia/compliance/checklist') || str_contains($path, '/api/invisia/compliance/')) {
     $logBody = $body;
     unset($logBody['token']);
@@ -63,7 +63,7 @@ if (str_starts_with($authHeader, 'Bearer ')) {
 }
 
 if ($isPublic && $bearer !== '') {
-    // En rutas públicas, el Bearer del titular (portal) tiene prioridad sobre la sesión PHP.
+    // En rutas públicas, el Bearer del titular tiene prioridad sobre la sesión PHP.
     $sessionToken = $bearer;
 } else {
     $sessionToken = $_SESSION['token'] ?? $_GET['token'] ?? $body['token'] ?? $bearer;
@@ -83,22 +83,16 @@ if ($sessionToken) {
 // Forward query string params (except path)
 $query = $_GET;
 unset($query['path']);
-if ($sessionToken && !$isPublic) {
-    // En rutas públicas no forzamos el token en query (evita contaminar el Bearer del portal).
-    $query['token'] = $sessionToken;
-} elseif ($sessionToken && $isPublic) {
-    // Igual lo mandamos por si el backend lee de $_GET como fallback, pero el Bearer manda.
+if ($sessionToken) {
     $query['token'] = $sessionToken;
 }
 
-// Backend URL from server-side config (overridable via API_BASE_URL env var)
+// Backend URL
 $backendBase = API_BASE_URL;
 $url = $backendBase . $path;
 $url .= (str_contains($url, '?') ? '&' : '?') . http_build_query($query);
 
-$headersToSend = [
-    'Accept: */*',
-];
+$headersToSend = ['Accept: */*'];
 if (!empty($_SERVER['HTTP_HOST'])) {
     $headersToSend[] = 'Host: ' . $_SERVER['HTTP_HOST'];
 }
@@ -106,7 +100,7 @@ if ($sessionToken) {
     $headersToSend[] = 'Authorization: Bearer ' . $sessionToken;
 }
 
-// ── Streaming directo para descargas de archivos (NSIS, binarios, reportes) ──
+// ── Streaming directo para descargas ──
 if (str_contains($path, 'download') || isset($_GET['installer'])) {
     @set_time_limit(180);
     if (function_exists('apache_setenv')) @apache_setenv('no-gzip', '1');
@@ -163,7 +157,7 @@ if (str_contains($path, 'download') || isset($_GET['installer'])) {
     exit;
 }
 
-// ── Solicitudes estándar JSON / API ──
+// ── Solicitudes estándar ──
 $ch = curl_init($url);
 if ($method === 'HEAD') {
     curl_setopt($ch, CURLOPT_NOBODY, true);
