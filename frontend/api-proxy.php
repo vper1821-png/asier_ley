@@ -35,16 +35,41 @@ if (str_contains($path, '/api/invisia/compliance/checklist') || str_contains($pa
     file_put_contents('/tmp/api-proxy-compliance.log', date('c') . ' ' . $method . ' ' . $path . ' body=' . json_encode($logBody, JSON_UNESCAPED_SLASHES) . "\n", FILE_APPEND);
 }
 
-// Extract token from multiple sources: session, GET, body, Authorization header
-$sessionToken = $_SESSION['token'] ?? $_GET['token'] ?? $body['token'] ?? '';
-if (!$sessionToken) {
-    $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
-    if (str_starts_with($auth, 'Bearer ')) {
-        $sessionToken = substr($auth, 7);
+// ── Rutas públicas (no requieren sesión PHP) ──
+$publicPaths = [
+    '/api/public/portal/request-code',
+    '/api/public/portal/verify-code',
+    '/api/public/portal/my-data',
+    '/api/public/portal/revoke-consent',
+    '/api/public/portal/download',
+    '/api/certification/verify',
+    '/api/compliance/public-policy',
+    '/api/arco/track',
+];
+
+$isPublic = false;
+foreach ($publicPaths as $p) {
+    if ($path === $p || str_starts_with($path, $p . '/')) {
+        $isPublic = true;
+        break;
     }
 }
 
-if (!$sessionToken && !is_logged_in()) {
+// ── Extracción de token ──
+$authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? ($_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '');
+$bearer = '';
+if (str_starts_with($authHeader, 'Bearer ')) {
+    $bearer = substr($authHeader, 7);
+}
+
+if ($isPublic && $bearer !== '') {
+    // En rutas públicas, el Bearer del titular (portal) tiene prioridad sobre la sesión PHP.
+    $sessionToken = $bearer;
+} else {
+    $sessionToken = $_SESSION['token'] ?? $_GET['token'] ?? $body['token'] ?? $bearer;
+}
+
+if (!$isPublic && !$sessionToken && !is_logged_in()) {
     http_response_code(401);
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode(['error' => 'no autenticado']);
@@ -58,7 +83,11 @@ if ($sessionToken) {
 // Forward query string params (except path)
 $query = $_GET;
 unset($query['path']);
-if ($sessionToken) {
+if ($sessionToken && !$isPublic) {
+    // En rutas públicas no forzamos el token en query (evita contaminar el Bearer del portal).
+    $query['token'] = $sessionToken;
+} elseif ($sessionToken && $isPublic) {
+    // Igual lo mandamos por si el backend lee de $_GET como fallback, pero el Bearer manda.
     $query['token'] = $sessionToken;
 }
 
@@ -99,7 +128,6 @@ if (str_contains($path, 'download') || isset($_GET['installer'])) {
             $len = strlen($header);
             $trimmed = trim($header);
             if (!empty($trimmed)) {
-                // Capturar código de estado HTTP antes de escribir nada
                 if (preg_match('/^HTTP\/\d(?:\.\d)? (\d{3})/', $trimmed, $m)) {
                     http_response_code((int)$m[1]);
                     return $len;
@@ -163,8 +191,6 @@ curl_setopt_array($ch, [
 ]);
 
 if ($method !== 'GET') {
-    // ✅ Si el body contiene arrays (dataCategories[], subjectCategories[], items, mapping…),
-    // enviamos como JSON para que el backend reciba la estructura correcta.
     $hasArrays = false;
     foreach ($body as $v) {
         if (is_array($v)) { $hasArrays = true; break; }
