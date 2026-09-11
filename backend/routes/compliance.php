@@ -5,6 +5,12 @@
 // para que cada usuario pueda crear/modificar sus propios elementos, pero al listarlos se compartan.
 
 require_once __DIR__ . '/../Auth.php';
+require_once __DIR__ . '/../lib/NotificationService.php';
+
+// Constantes portables (definidas también en public_portal.php; aquí por si se carga solo)
+if (!defined('PORTAL_DELIVERY_TTL_HOURS')) define('PORTAL_DELIVERY_TTL_HOURS', 48);
+if (!defined('PORTAL_ARCO_SLA_DAYS'))     define('PORTAL_ARCO_SLA_DAYS', 10);
+if (!defined('API_BASE_URL'))             define('API_BASE_URL', getenv('API_BASE_URL') ?: 'https://leysecurelab.sytes.net');
 
 // ─── Función auxiliar para obtener userIds de la empresa ───
 function getCompanyUserIds($user, $db) {
@@ -25,16 +31,13 @@ function getCompanyUserIds($user, $db) {
     return $userIds;
 }
 
-// ✅ NUEVO: Helper para verificar si el usuario es DPO/DPD
+// Helper para verificar si el usuario es DPO/DPD
 function isDpoOrDpd($user, $db) {
-    // Superadmin siempre puede
     if (!empty($user['isAdmin']) || ($user['role'] ?? '') === 'superadmin') {
         return true;
     }
-    // Refrescar desde BD (por si el JWT está desactualizado)
     $record = $db->findOne('users', ['_id' => $user['_id']]) ?? [];
     $role = strtolower($record['role'] ?? ($user['role'] ?? ''));
-    // Roles válidos para aprobar DPIA
     return in_array($role, ['dpo', 'dpd'], true);
 }
 
@@ -481,8 +484,6 @@ function crud() {
     $userIds = getCompanyUserIds($user, $db);
     $isSuperAdmin = ($userIds === null);
 
-    // ─── Manejo de PDFs para cualquier recurso soportado ────
-    // ✅ NUEVO: 'dpia' agregado
     $pdfResources = ['consents', 'inventory', 'breaches', 'trainings', 'pseudonymization',
                       'arco-requests', 'arco', 'incident_response', 'breach_protocol',
                       'apdp', 'privacy', 'dpd', 'incident-response', 'breach-protocol',
@@ -495,7 +496,6 @@ function crud() {
         return;
     }
 
-    // ── Endpoints especiales ──
     if ($resource === 'overview' || $resource === 'stats') {
         $filter = $isSuperAdmin ? [] : ['userId' => ['$in' => $userIds]];
         $data = [
@@ -560,7 +560,6 @@ function crud() {
         return;
     }
 
-    // ─── Checklist ──────────────────────────────────────────────────
     if ($resource === 'checklist') {
         $filter = $isSuperAdmin ? [] : ['userId' => ['$in' => $userIds]];
         if (!$id) {
@@ -628,7 +627,6 @@ function crud() {
         json_error('método no soportado', 405);
     }
 
-    // ─── Colecciones estándar ──────────────────────────────────────
     $allowedCollections = ['consents', 'inventory', 'breaches', 'templates', 'trainings', 'dpia', 'dpa', 'pseudonymization', 'invites', 'processors', 'transfers', 'public_policy'];
     if (!in_array($resource, $allowedCollections)) {
         json_error('recurso no soportado', 404);
@@ -636,7 +634,6 @@ function crud() {
 
     $collection = 'compliance_' . $resource;
 
-    // Bulk import
     if ($id === 'bulk' && $method === 'POST') {
         $items = $body['items'] ?? $body['invites'] ?? $body ?? [];
         if (!is_array($items) || empty($items)) json_error('items requerido');
@@ -658,7 +655,6 @@ function crud() {
         return;
     }
 
-    // Asignación de firma a capacitación
     if ($resource === 'invites' && $id && $action === 'assign-training' && $method === 'POST') {
         $invite = $db->findOne($collection, ['_id' => $id, 'userId' => $user['_id']]);
         if (!$invite) json_error('invitación no encontrada', 404);
@@ -687,7 +683,6 @@ function crud() {
         return;
     }
 
-    // Desasignar firma
     if ($resource === 'invites' && $id && $action === 'unassign' && $method === 'POST') {
         $invite = $db->findOne($collection, ['_id' => $id, 'userId' => $user['_id']]);
         if (!$invite) json_error('invitación no encontrada', 404);
@@ -715,7 +710,6 @@ function crud() {
         return;
     }
 
-    // GET list (filtrado por empresa)
     if ($method === 'GET' && !$id) {
         $filter = $isSuperAdmin ? [] : ['userId' => ['$in' => $userIds]];
         if (!empty($_GET['active'])) $filter['active'] = filter_var($_GET['active'], FILTER_VALIDATE_BOOLEAN);
@@ -734,7 +728,6 @@ function crud() {
         return;
     }
 
-    // GET one
     if ($method === 'GET' && $id) {
         $filter = ['_id' => $id];
         if (!$isSuperAdmin) $filter['userId'] = ['$in' => $userIds];
@@ -744,7 +737,6 @@ function crud() {
         return;
     }
 
-    // POST (create)
     if ($method === 'POST' && !$id) {
         $item = $body;
         unset($item['token']);
@@ -759,7 +751,6 @@ function crud() {
         return;
     }
 
-    // PUT (update)
     if ($method === 'PUT' && $id) {
         $filter = ['_id' => $id];
         if (!$isSuperAdmin) $filter['userId'] = ['$in' => $userIds];
@@ -773,7 +764,6 @@ function crud() {
         return;
     }
 
-    // DELETE one (solo del usuario autenticado)
     if ($method === 'DELETE' && $id) {
         $existing = $db->findOne($collection, ['_id' => $id, 'userId' => $user['_id']]);
         if (!$existing) json_error('elemento no encontrado o no pertenece al usuario', 404);
@@ -782,7 +772,6 @@ function crud() {
         return;
     }
 
-    // DELETE all (solo del usuario autenticado)
     if ($method === 'DELETE' && !$id) {
         $all = $db->find($collection, ['userId' => $user['_id']]);
         foreach ($all as $it) $db->deleteOne($collection, ['_id' => $it['_id']]);
@@ -790,7 +779,6 @@ function crud() {
         return;
     }
 
-    // Acciones sobre un elemento (POST con action)
     if ($method === 'POST' && $id && $action) {
         $filter = ['_id' => $id];
         if (!$isSuperAdmin) $filter['userId'] = ['$in' => $userIds];
@@ -803,7 +791,6 @@ function crud() {
             case 'revoke': $actionUpdates = ['active' => false, 'revokedAt' => date('c')] + $actionUpdates; break;
             case 'resolve': $actionUpdates = ['status' => 'resolved', 'resolvedAt' => date('c'), 'resolution' => $extra] + $actionUpdates; break;
 
-            // ✅ NUEVO: aprobación de DPIA solo por DPO/DPD/superadmin
             case 'approve':
                 if ($resource === 'dpia' && !isDpoOrDpd($user, $db)) {
                     json_error('Solo el DPO/DPD puede aprobar evaluaciones de impacto', 403);
@@ -817,7 +804,6 @@ function crud() {
                 ] + $actionUpdates;
                 break;
 
-            // ✅ NUEVO: rechazo de DPIA solo por DPO/DPD/superadmin
             case 'reject':
                 if ($resource === 'dpia' && !isDpoOrDpd($user, $db)) {
                     json_error('Solo el DPO/DPD puede rechazar evaluaciones de impacto', 403);
@@ -1084,13 +1070,10 @@ function generateCompliancePDF($resource) {
                 $html = $pdfGenerator->generateARCORequestsPDF($itemId);
                 $result = $pdfGenerator->generatePDFFile($html, 'solicitudes-arco');
                 break;
-
-            // ✅ NUEVO: case para generar PDF de DPIA
             case 'dpia':
                 $html = $pdfGenerator->generateDPIAPDF($itemId);
                 $result = $pdfGenerator->generatePDFFile($html, 'dpia');
                 break;
-
             case 'arco':
                 $arcoDoc = $db->findOne('compliance_checklist', ['userId' => $user['_id'], 'section' => 'arco']);
                 $arcoData = (array)($arcoDoc['data'] ?? []);
@@ -1345,4 +1328,241 @@ function generatePublicPolicy() {
     header('Content-Type: text/html; charset=utf-8');
     echo $html;
     exit;
+}
+
+// ═══════════════════════════════════════════════════════════
+// PANEL DEL DPO — Revisar revocaciones de consentimiento
+// ═══════════════════════════════════════════════════════════
+function listPendingRevocations() {
+    $user = Auth::requireAuth();
+    $role = strtolower($user['role'] ?? '');
+    if (!in_array($role, ['dpo','dpd','admin','superadmin'], true)) {
+        json_error('solo el DPO puede revisar revocaciones', 403);
+    }
+
+    $db = Database::getInstance();
+
+    $userRecord = $db->findOne('users', ['_id' => $user['_id']]);
+    $companyId  = $userRecord['companyId'] ?? $user['_id'];
+    $subs       = $db->find('users', ['companyId' => $companyId]);
+    $userIds    = array_map('strval', array_column($subs, '_id'));
+    if (empty($userIds)) $userIds = [(string)$user['_id']];
+
+    $filter = [
+        'userId'           => ['$in' => $userIds],
+        'revokedAt'        => ['$ne' => null],
+        'revocationStatus' => 'pending_review',
+    ];
+
+    $items = $db->find('compliance_consents', $filter, ['limit' => 500]);
+
+    json_response(['items' => $items]);
+}
+
+function reviewRevocation() {
+    $user = Auth::requireAuth();
+    $role = strtolower($user['role'] ?? '');
+    if (!in_array($role, ['dpo','dpd','admin','superadmin'], true)) {
+        json_error('solo el DPO puede revisar revocaciones', 403);
+    }
+
+    $body = get_body();
+    $consentId = $body['consentId'] ?? '';
+    $effect    = $body['effect'] ?? '';
+    $notes     = trim((string)($body['notes'] ?? ''));
+    $otherBases = $body['otherLegalBases'] ?? [];
+
+    if (!$consentId) json_error('consentId requerido');
+    if (!in_array($effect, ['cessation','partial'], true)) {
+        json_error('effect debe ser cessation o partial');
+    }
+    if ($effect === 'partial' && empty($otherBases)) {
+        json_error('debes indicar qué otras bases legales aplican');
+    }
+
+    $db = Database::getInstance();
+    $consent = $db->findOne('compliance_consents', ['_id' => $consentId]);
+    if (!$consent) json_error('consentimiento no encontrado', 404);
+
+    $userRec = $db->findOne('users', ['_id' => $user['_id']]);
+    $reviewerName = $userRec['name'] ?? $user['email'] ?? 'DPO';
+
+    $db->updateOne('compliance_consents', ['_id' => $consentId], [
+        'revocationStatus' => 'confirmed',
+        'revocationEffect' => $effect,
+        'revocationNotes'  => $notes,
+        'otherLegalBases'  => $otherBases,
+        'reviewedAt'       => date('c'),
+        'reviewedBy'       => (string)$user['_id'],
+        'reviewedByName'   => $reviewerName,
+    ]);
+
+    NotificationService::queue($db, [
+        'companyId'     => $consent['userId'] ?? '',
+        'channel'       => 'email',
+        'recipient'     => $consent['email'] ?? '',
+        'recipientType' => 'titular',
+        'templateCode'  => 'revocation_reviewed',
+        'variables'     => [
+            'purpose' => $consent['purpose'] ?? '',
+            'effect'  => $effect === 'cessation' ? 'cese total' : 'cese parcial',
+            'notes'   => $notes,
+        ],
+    ]);
+
+    audit_log('revocation_reviewed', [
+        'consentId' => $consentId,
+        'effect'    => $effect,
+    ], $user['_id']);
+
+    json_response(['success' => true]);
+}
+
+// ═══════════════════════════════════════════════════════════
+// PANEL DEL DPO — Validar identidad y entregar datos concretos
+// ═══════════════════════════════════════════════════════════
+function listIdentityPending() {
+    $user = Auth::requireAuth();
+    $role = strtolower($user['role'] ?? '');
+    if (!in_array($role, ['dpo','dpd','admin','superadmin'], true)) {
+        json_error('solo el DPO puede ver estas solicitudes', 403);
+    }
+
+    $db = Database::getInstance();
+    $userRecord = $db->findOne('users', ['_id' => $user['_id']]);
+    $companyId  = $userRecord['companyId'] ?? $user['_id'];
+
+    $items = $db->find('arco_requests', [
+        'companyId' => $companyId,
+        'source'    => 'concrete_data',
+        'status'    => ['$in' => ['pending_identity','pending_validation','in_progress']],
+    ], ['limit' => 200]);
+
+    foreach ($items as &$it) {
+        if (!empty($it['identityDocuments'])) {
+            foreach ($it['identityDocuments'] as $k => $doc) {
+                $it['identityDocuments'][$k]['path'] = basename($doc['path'] ?? '');
+            }
+        }
+    }
+    unset($it);
+
+    json_response(['items' => $items]);
+}
+
+function verifyIdentity() {
+    $user = Auth::requireAuth();
+    $role = strtolower($user['role'] ?? '');
+    if (!in_array($role, ['dpo','dpd','admin','superadmin'], true)) {
+        json_error('solo el DPO puede validar identidad', 403);
+    }
+
+    $body = get_body();
+    $requestId = $body['requestId'] ?? '';
+    $action    = $body['action'] ?? 'approve';
+    $reason    = trim((string)($body['reason'] ?? ''));
+
+    if (!$requestId) json_error('requestId requerido');
+    if (!in_array($action, ['approve','reject'], true)) json_error('action inválido');
+
+    $db = Database::getInstance();
+    $req = $db->findOne('arco_requests', ['requestId' => $requestId, 'source' => 'concrete_data']);
+    if (!$req) json_error('solicitud no encontrada', 404);
+
+    $now = date('c');
+
+    if ($action === 'reject') {
+        $db->updateOne('arco_requests', ['_id' => $req['_id']], [
+            'identityStatus'       => 'rejected',
+            'identityRejectedAt'   => $now,
+            'identityRejectReason' => $reason,
+            'status'               => 'pending_identity',
+            'updatedAt'            => $now,
+        ]);
+
+        NotificationService::queue($db, [
+            'companyId'     => $req['companyId'] ?? '',
+            'channel'       => 'email',
+            'recipient'     => $req['solicitante']['email'] ?? '',
+            'recipientType' => 'titular',
+            'templateCode'  => 'identity_rejected',
+            'variables'     => ['requestId' => $requestId, 'reason' => $reason],
+        ]);
+
+        json_response(['success' => true, 'status' => 'rejected']);
+    }
+
+    $db->updateOne('arco_requests', ['_id' => $req['_id']], [
+        'identityStatus'     => 'verified',
+        'identityVerifiedAt' => $now,
+        'identityVerifiedBy' => (string)$user['_id'],
+        'status'             => 'in_progress',
+        'updatedAt'          => $now,
+    ]);
+
+    json_response(['success' => true, 'status' => 'verified']);
+}
+
+function deliverConcreteData() {
+    $user = Auth::requireAuth();
+    $role = strtolower($user['role'] ?? '');
+    if (!in_array($role, ['dpo','dpd','admin','superadmin'], true)) {
+        json_error('solo el DPO puede entregar datos', 403);
+    }
+
+    $body = get_body();
+    $requestId = $body['requestId'] ?? '';
+    $response  = trim((string)($body['response'] ?? ''));
+    if (!$requestId) json_error('requestId requerido');
+
+    $db = Database::getInstance();
+    $req = $db->findOne('arco_requests', ['requestId' => $requestId, 'source' => 'concrete_data']);
+    if (!$req) json_error('solicitud no encontrada', 404);
+    if (($req['identityStatus'] ?? '') !== 'verified') {
+        json_error('la identidad debe estar verificada primero', 400);
+    }
+
+    $deliveryToken = bin2hex(random_bytes(32));
+    $tokenHash     = hash('sha256', $deliveryToken);
+    $expiresAt     = date('c', time() + PORTAL_DELIVERY_TTL_HOURS * 3600);
+    $now           = date('c');
+
+    $db->updateOne('arco_requests', ['_id' => $req['_id']], [
+        'status'            => 'completed',
+        'response'          => $response ?: 'Datos personales entregados conforme al Art. 8 Ley 21.719.',
+        'deliveryTokenHash' => $tokenHash,
+        'deliveryExpiresAt' => $expiresAt,
+        'deliveryUrl'       => '/api/public/portal/deliver?token=' . urlencode($deliveryToken),
+        'resolvedAt'        => $now,
+        'resolvedBy'        => (string)$user['_id'],
+        'updatedAt'         => $now,
+        'statusHistory'     => array_merge($req['statusHistory'] ?? [], [[
+            'at'     => $now,
+            'by'     => $user['email'] ?? 'DPO',
+            'status' => 'completed',
+            'kind'   => 'delivered',
+            'note'   => 'Datos entregados por enlace temporal con vigencia de ' . PORTAL_DELIVERY_TTL_HOURS . ' horas.',
+        ]]),
+    ]);
+
+    NotificationService::queue($db, [
+        'companyId'     => $req['companyId'] ?? '',
+        'channel'       => 'email',
+        'recipient'     => $req['solicitante']['email'] ?? '',
+        'recipientType' => 'titular',
+        'templateCode'  => 'concrete_data_delivered',
+        'variables'     => [
+            'requestId'    => $requestId,
+            'deliveryUrl'  => API_BASE_URL . '/api/public/portal/deliver?token=' . urlencode($deliveryToken),
+            'expiresHours' => PORTAL_DELIVERY_TTL_HOURS,
+        ],
+    ]);
+
+    audit_log('concrete_data_delivered', ['requestId' => $requestId], $user['_id']);
+
+    json_response([
+        'success'     => true,
+        'deliveryUrl' => API_BASE_URL . '/api/public/portal/deliver?token=' . urlencode($deliveryToken),
+        'expiresAt'   => $expiresAt,
+    ]);
 }

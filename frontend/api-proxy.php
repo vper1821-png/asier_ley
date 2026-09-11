@@ -37,11 +37,22 @@ if (str_contains($path, '/api/invisia/compliance/checklist') || str_contains($pa
 
 // ── Rutas públicas (no requieren sesión PHP) ──
 $publicPaths = [
+    // Capa 1
+    '/api/public/portal/check-email',
+
+    // Capa 3
     '/api/public/portal/request-code',
     '/api/public/portal/verify-code',
     '/api/public/portal/my-data',
     '/api/public/portal/revoke-consent',
     '/api/public/portal/download',
+    '/api/public/portal/arco/create',
+    '/api/public/portal/concrete-data',
+    '/api/public/portal/upload-identity',
+    '/api/public/portal/concrete-status',
+    '/api/public/portal/deliver',
+
+    // Otros públicos
     '/api/certification/verify',
     '/api/compliance/public-policy',
     '/api/arco/track',

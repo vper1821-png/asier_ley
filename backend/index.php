@@ -311,13 +311,27 @@ $routes = [
     'POST /api/certification/revoke'                => 'routes/certification.php@certRevoke',
     'GET /api/certification/verify'                 => 'routes/certification.php@certVerify',
 
-    // ═══════ Portal del Titular (público) ═══════
-    'POST /api/public/portal/request-code'              => 'routes/public_portal.php@portalRequestCode',
-    'POST /api/public/portal/verify-code'               => 'routes/public_portal.php@portalVerifyCode',
-    'GET /api/public/portal/my-data'                   => 'routes/public_portal.php@portalMyData',
-    'POST /api/public/portal/revoke-consent'            => 'routes/public_portal.php@portalRevokeConsent',
-    'GET /api/public/portal/download'                  => 'routes/public_portal.php@portalDownloadAll',
+    // ═══════ Portal del Titular — Capa 1 ═══════
+    'POST /api/public/portal/check-email'    => 'routes/public_portal.php@portalCheckEmail',
 
+    // ═══════ Portal del Titular — Capa 3 ═══════
+    'POST /api/public/portal/request-code'   => 'routes/public_portal.php@portalRequestCode',
+    'POST /api/public/portal/verify-code'    => 'routes/public_portal.php@portalVerifyCode',
+    'GET /api/public/portal/my-data'         => 'routes/public_portal.php@portalMyData',
+    'POST /api/public/portal/revoke-consent' => 'routes/public_portal.php@portalRevokeConsent',
+    'GET /api/public/portal/download'        => 'routes/public_portal.php@portalDownloadAll',
+    'POST /api/public/portal/arco/create'    => 'routes/public_portal.php@portalCreateARCO',
+    'POST /api/public/portal/concrete-data'  => 'routes/public_portal.php@portalRequestConcreteData',
+    'POST /api/public/portal/upload-identity'=> 'routes/public_portal.php@portalUploadIdentity',
+    'GET /api/public/portal/concrete-status' => 'routes/public_portal.php@portalConcreteDataStatus',
+    'GET /api/public/portal/deliver'         => 'routes/public_portal.php@portalDeliver',
+
+    // ═══════ Panel del DPO ═══════
+    'POST /api/compliance/revocations/pending' => 'routes/compliance.php@listPendingRevocations',
+    'POST /api/compliance/revocations/review'  => 'routes/compliance.php@reviewRevocation',
+    'POST /api/compliance/identity/pending'    => 'routes/compliance.php@listIdentityPending',
+    'POST /api/compliance/identity/verify'     => 'routes/compliance.php@verifyIdentity',
+    'POST /api/compliance/identity/deliver'    => 'routes/compliance.php@deliverConcreteData',
 
 
 ];
