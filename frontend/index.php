@@ -31,6 +31,7 @@ $routes = [
     '/host-monitor'        => 'pages/host-monitor.php',
     '/host-privacy'        => 'pages/host-privacy.php',
     '/settings'            => 'pages/settings.php',
+    '/mi-privacidad'       => 'pages/mi-privacidad.php',
 ];
 
 // /firmar/:token

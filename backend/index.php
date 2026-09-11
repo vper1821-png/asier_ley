@@ -310,6 +310,16 @@ $routes = [
     'POST /api/certification/list'                  => 'routes/certification.php@certList',
     'POST /api/certification/revoke'                => 'routes/certification.php@certRevoke',
     'GET /api/certification/verify'                 => 'routes/certification.php@certVerify',
+
+    // ═══════ Portal del Titular (público) ═══════
+    'POST /api/public/portal/request-code'              => 'routes/public_portal.php@portalRequestCode',
+    'POST /api/public/portal/verify-code'               => 'routes/public_portal.php@portalVerifyCode',
+    'GET  /api/public/portal/my-data'                   => 'routes/public_portal.php@portalMyData',
+    'POST /api/public/portal/revoke-consent'            => 'routes/public_portal.php@portalRevokeConsent',
+    'GET  /api/public/portal/download'                  => 'routes/public_portal.php@portalDownloadAll',
+
+
+
 ];
 
 // Check static routes first
