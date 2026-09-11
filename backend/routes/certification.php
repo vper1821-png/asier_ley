@@ -189,6 +189,42 @@ function certComputeDocStatus($def, $scope, $db) {
     return $result;
 }
 
+// ═══════════════════════════════════════════════════════════
+// ✅ FIX: Helper para validar que el usuario puede aprobar/firmar/rechazar
+// Reglas:
+//   1. Superadmin global: siempre puede (bypass intencional)
+//   2. Usuario debe tener rol 'dpo' o 'dpd'
+//   3. Cuenta debe estar activa
+// ═══════════════════════════════════════════════════════════
+function certCanApprove($user, $db) {
+    // Superadmin global puede todo
+    if (!empty($user['isAdmin']) && ($user['role'] ?? '') === 'superadmin') {
+        return ['ok' => true, 'reason' => ''];
+    }
+
+    // Refrescar usuario desde BD (por si el JWT está desactualizado)
+    $record = $db->findOne('users', ['_id' => $user['_id']]) ?? [];
+    if (empty($record)) {
+        return ['ok' => false, 'reason' => 'Usuario no encontrado'];
+    }
+
+    // Cuenta debe estar activa
+    if (empty($record['isActive'])) {
+        return ['ok' => false, 'reason' => 'Tu cuenta está suspendida'];
+    }
+
+    $role = strtolower($record['role'] ?? ($user['role'] ?? ''));
+
+    if (!in_array($role, ['dpo', 'dpd'], true)) {
+        return [
+            'ok' => false,
+            'reason' => 'Solo el DPO/DPD de la empresa puede aprobar, firmar o rechazar documentos de certificación',
+        ];
+    }
+
+    return ['ok' => true, 'reason' => ''];
+}
+
 function certGenerateCertId() {
     $year = date('Y');
     $rand = strtoupper(bin2hex(random_bytes(4)));
@@ -371,7 +407,6 @@ function certGenerateDocument() {
     ];
 
     if ($existing) {
-        // ✅ FIX: añadir entrada al historial en cada regeneración
         $history = $existing['history'] ?? [];
         $history[] = [
             'version' => $newVersion,
@@ -421,6 +456,15 @@ function certUpdateDocumentStatus() {
 
     if (!in_array($action, ['approve', 'sign', 'reject', 'reset'], true)) {
         json_error('acción no válida');
+    }
+
+    // ✅ FIX: Solo DPO/DPD (o superadmin) puede aprobar, firmar o rechazar.
+    // 'reset' lo puede hacer cualquier usuario de la empresa (es un rollback).
+    if (in_array($action, ['approve', 'sign', 'reject'], true)) {
+        $check = certCanApprove($user, $db);
+        if (!$check['ok']) {
+            json_error($check['reason'] ?: 'No autorizado', 403);
+        }
     }
 
     $existing = certGetDocumentState($db, $scope['companyId'], $code);
@@ -734,7 +778,6 @@ function certVerify() {
         'masterHash' => $cert['masterHash'] ?? null,
         'verifyUrl'  => $cert['verifyUrl'] ?? null,
         'isExpired'  => !empty($cert['expiresAt']) && strtotime($cert['expiresAt']) < time(),
-        // ✅ FIX: exponer info de revocación
         'revokedAt'     => $cert['revokedAt'] ?? null,
         'revokedReason' => $cert['revokedReason'] ?? null,
     ]);

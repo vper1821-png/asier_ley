@@ -24,6 +24,12 @@ $scoreColor = $score >= 90 ? 'text-emerald-400' : ($score >= 70 ? 'text-amber-40
 $scoreBar   = $score >= 90 ? 'bg-emerald-500'   : ($score >= 70 ? 'bg-amber-500'   : 'bg-red-500');
 $scoreRing  = $score >= 90 ? '#34d399'          : ($score >= 70 ? '#fbbf24'        : '#f87171');
 
+// ✅ FIX: validar en el frontend si el usuario puede aprobar/firmar
+// (la validación real está en el backend, esto es solo para UX)
+$currentRole = strtolower($user['role'] ?? '');
+$isDpoOrDpd = in_array($currentRole, ['dpo', 'dpd'], true)
+           || (($user['role'] ?? '') === 'superadmin');
+
 $statusCfg = [
     'signed'         => ['label' => 'Firmado',        'class' => 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25', 'dot' => 'bg-emerald-400'],
     'approved'       => ['label' => 'Aprobado',       'class' => 'bg-teal-500/10 text-teal-400 border-teal-500/25',          'dot' => 'bg-teal-400'],
@@ -57,6 +63,12 @@ $statusCfg = [
                 </div>
             </div>
             <div class="flex items-center gap-2.5">
+                <?php if (!$isDpoOrDpd && !$isSuperAdmin): ?>
+                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-medium bg-amber-500/10 border border-amber-500/25 text-amber-400" title="Solo el DPO/DPD puede aprobar, firmar o rechazar documentos">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                    Modo lectura (no DPO)
+                </span>
+                <?php endif; ?>
                 <button onclick="location.reload()" class="px-3 py-2 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] text-text-muted border border-white/[0.05] transition-all" title="Actualizar">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
@@ -282,7 +294,7 @@ $statusCfg = [
                                     <?php endif; ?>
                                 </div>
 
-                                <div class="flex items-center gap-1.5 flex-shrink-0">
+                                <div class="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
                                     <?php if ($d['pdfUrl']): ?>
                                     <a href="<?= h($d['pdfUrl']) ?>" target="_blank"
                                        class="p-1.5 rounded-lg text-text-muted hover:text-indigo-400 hover:bg-indigo-500/10 transition-all"
@@ -298,18 +310,36 @@ $statusCfg = [
                                     </button>
                                     <?php endif; ?>
 
+                                    <?php /* ✅ FIX: Aprobar solo para DPO/DPD */ ?>
                                     <?php if ($d['version'] > 0 && $d['status'] !== 'approved' && $d['status'] !== 'signed'): ?>
-                                    <button onclick="updateCertDocStatus('<?= h($d['code']) ?>', 'approve')"
-                                            class="px-2.5 py-1 rounded-lg text-[10px] font-medium bg-teal-500/10 border border-teal-500/25 text-teal-400 hover:bg-teal-500/20 transition-all">
-                                        Aprobar
-                                    </button>
+                                        <?php if ($isDpoOrDpd): ?>
+                                        <button onclick="updateCertDocStatus('<?= h($d['code']) ?>', 'approve')"
+                                                class="px-2.5 py-1 rounded-lg text-[10px] font-medium bg-teal-500/10 border border-teal-500/25 text-teal-400 hover:bg-teal-500/20 transition-all">
+                                            Aprobar
+                                        </button>
+                                        <?php else: ?>
+                                        <button disabled
+                                                title="Solo el DPO/DPD de la empresa puede aprobar este documento"
+                                                class="px-2.5 py-1 rounded-lg text-[10px] font-medium bg-white/[0.03] text-text-subtle border border-white/[0.06] cursor-not-allowed opacity-60">
+                                            Aprobar (solo DPO)
+                                        </button>
+                                        <?php endif; ?>
                                     <?php endif; ?>
 
+                                    <?php /* ✅ FIX: Firmar solo para DPO/DPD */ ?>
                                     <?php if ($d['status'] === 'approved'): ?>
-                                    <button onclick="signCertDoc('<?= h($d['code']) ?>')"
-                                            class="px-2.5 py-1 rounded-lg text-[10px] font-medium bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 hover:bg-emerald-500/20 transition-all">
-                                        Firmar
-                                    </button>
+                                        <?php if ($isDpoOrDpd): ?>
+                                        <button onclick="signCertDoc('<?= h($d['code']) ?>')"
+                                                class="px-2.5 py-1 rounded-lg text-[10px] font-medium bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 hover:bg-emerald-500/20 transition-all">
+                                            Firmar
+                                        </button>
+                                        <?php else: ?>
+                                        <button disabled
+                                                title="Solo el DPO/DPD de la empresa puede firmar este documento"
+                                                class="px-2.5 py-1 rounded-lg text-[10px] font-medium bg-white/[0.03] text-text-subtle border border-white/[0.06] cursor-not-allowed opacity-60">
+                                            Firmar (solo DPO)
+                                        </button>
+                                        <?php endif; ?>
                                     <?php endif; ?>
 
                                     <?php if ($needsManual && !$d['pdfUrl']): ?>
@@ -366,6 +396,7 @@ $statusCfg = [
 
 <script>
 const CERT_TOKEN = <?= json_encode($token) ?>;
+const IS_DPO_OR_DPD = <?= $isDpoOrDpd ? 'true' : 'false' ?>;
 let certFilter = 'all';
 
 function setCertFilter(status) {
@@ -422,6 +453,12 @@ async function generateCertDoc(code) {
 }
 
 async function updateCertDocStatus(code, action) {
+    // ✅ FIX: Validación en frontend (defensa adicional)
+    if ((action === 'approve' || action === 'reject') && !IS_DPO_OR_DPD) {
+        alert('Solo el DPO/DPD de la empresa puede ' + (action === 'approve' ? 'aprobar' : 'rechazar') + ' documentos.');
+        return;
+    }
+
     if (!confirm('¿' + (action === 'approve' ? 'Aprobar' : action) + ' el documento ' + code + '?')) return;
     try {
         const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/certification/documents/status'), {
@@ -436,6 +473,11 @@ async function updateCertDocStatus(code, action) {
 }
 
 function signCertDoc(code) {
+    // ✅ FIX: Validación en frontend
+    if (!IS_DPO_OR_DPD) {
+        alert('Solo el DPO/DPD de la empresa puede firmar documentos.');
+        return;
+    }
     document.getElementById('sign-code').value = code;
     document.getElementById('sign-modal').classList.remove('hidden');
     setTimeout(() => document.getElementById('sign-name').focus(), 100);
