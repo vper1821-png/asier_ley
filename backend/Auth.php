@@ -139,4 +139,45 @@ class Auth {
     private static function base64url_decode($data) {
         return base64_decode(strtr($data, '-_', '+/'));
     }
+
+    /**
+     * NUEVO: Token para sesión del portal del titular (purpose=portal_titular).
+     */
+    public static function createPortalToken(string $email): string {
+        return self::createToken($email, [
+            'email' => $email,
+            'purpose' => 'portal_titular',
+            'exp' => time() + 86400 * 30,  // 30 días
+        ]);
+    }
+    
+    /**
+     * NUEVO: Verifica el token del portal y devuelve el email del titular.
+     */
+    public static function requirePortalSession(): string {
+        $token = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+        if (str_starts_with($token, 'Bearer ')) {
+            $token = substr($token, 7);
+        }
+        if (!$token) {
+            $token = $_GET['token'] ?? '';
+        }
+        if (!$token) {
+            json_error('sesión requerida', 401);
+        }
+        
+        $payload = self::verifyToken($token);
+        if (!$payload || ($payload['purpose'] ?? '') !== 'portal_titular') {
+            json_error('sesión inválida', 401);
+        }
+        
+        $email = $payload['email'] ?? '';
+        if (!$email || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            json_error('sesión inválida', 401);
+        }
+        
+        return $email;
+    }
+
+
 }
