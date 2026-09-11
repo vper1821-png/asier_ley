@@ -252,7 +252,7 @@ $routes = [
     // Compliance Files
     'POST /api/compliance/files/upload'    => 'routes/compliance_files.php@upload',
     'POST /api/compliance/files/analyze'   => 'routes/compliance_files.php@analyze',
-    'GET  /api/compliance/files'           => 'routes/compliance_files.php@listFiles',
+    'GET /api/compliance/files'           => 'routes/compliance_files.php@listFiles',
     'DELETE /api/compliance/files'         => 'routes/compliance_files.php@deleteFile',
     'POST /api/compliance/files/map'       => 'routes/compliance_files.php@mapColumns',
     'POST /api/compliance/files/agent-scan' => 'routes/compliance_files.php@agentScan',
@@ -314,9 +314,9 @@ $routes = [
     // ═══════ Portal del Titular (público) ═══════
     'POST /api/public/portal/request-code'              => 'routes/public_portal.php@portalRequestCode',
     'POST /api/public/portal/verify-code'               => 'routes/public_portal.php@portalVerifyCode',
-    'GET  /api/public/portal/my-data'                   => 'routes/public_portal.php@portalMyData',
+    'GET /api/public/portal/my-data'                   => 'routes/public_portal.php@portalMyData',
     'POST /api/public/portal/revoke-consent'            => 'routes/public_portal.php@portalRevokeConsent',
-    'GET  /api/public/portal/download'                  => 'routes/public_portal.php@portalDownloadAll',
+    'GET /api/public/portal/download'                  => 'routes/public_portal.php@portalDownloadAll',
 
 
 
