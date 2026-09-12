@@ -1180,7 +1180,51 @@ function generateCompliancePDF($resource) {
     }
 }
 
-// ─── Generar política pública ──────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════
+// HELPERS BSON — convierten objetos MongoDB a string/array seguros
+// ═══════════════════════════════════════════════════════════════════
+if (!function_exists('_pub_bson_str')) {
+    function _pub_bson_str($v): string {
+        if ($v === null) return '';
+        if (is_scalar($v)) return (string)$v;
+        if ($v instanceof \MongoDB\Model\BSONDocument) $v = $v->getArrayCopy();
+        if ($v instanceof \MongoDB\Model\BSONArray)      $v = $v->getArrayCopy();
+        if (is_array($v)) {
+            $parts = [];
+            foreach ($v as $x) {
+                if (is_scalar($x)) $parts[] = (string)$x;
+            }
+            return implode(', ', $parts);
+        }
+        if (is_object($v) && method_exists($v, 'getArrayCopy')) {
+            return _pub_bson_str($v->getArrayCopy());
+        }
+        return '';
+    }
+}
+
+if (!function_exists('_pub_bson_arr')) {
+    function _pub_bson_arr($v): array {
+        if ($v === null) return [];
+        if (is_array($v)) return array_values($v);
+        if ($v instanceof \MongoDB\Model\BSONDocument) return array_values($v->getArrayCopy());
+        if ($v instanceof \MongoDB\Model\BSONArray)      return array_values($v->getArrayCopy());
+        if (is_object($v) && method_exists($v, 'getArrayCopy')) return array_values($v->getArrayCopy());
+        if (is_string($v)) {
+            return array_values(array_filter(array_map('trim', explode(',', $v)), fn($x) => $x !== ''));
+        }
+        if (is_scalar($v)) return [(string)$v];
+        return [];
+    }
+}
+
+if (!function_exists('_pub_h')) {
+    function _pub_h($s): string {
+        return htmlspecialchars(_pub_bson_str($s), ENT_QUOTES, 'UTF-8');
+    }
+}
+
+// ─── Generar política pública (Art. 14 ter Ley 21.719) ─────────────
 function generatePublicPolicy() {
     $token = $_GET['token'] ?? '';
     if (!$token) {
@@ -1205,19 +1249,59 @@ function generatePublicPolicy() {
     }
 
     $config = $db->findOne('compliance_config', ['userId' => $user['_id']]) ?? [];
-    $companyName = $config['companyName'] ?? ($user['companyName'] ?? ($user['email'] ?? 'Empresa'));
-    $dpdName = $config['dpdName'] ?? '—';
-    $dpdEmail = $config['dpdEmail'] ?? '—';
-    $dpdPhone = $config['dpdPhone'] ?? '—';
-    $privacyPolicyUrl = $config['privacyPolicyUrl'] ?? '';
-    $cookiesPolicyUrl = $config['cookiesPolicyUrl'] ?? '';
-    $dataRetentionPolicy = $config['dataRetentionPolicy'] ?? '';
 
-    $inventory = $db->find('compliance_inventory', ['userId' => $user['_id']]);
-    $consents = $db->find('compliance_consents', ['userId' => $user['_id']]);
-    $breaches = $db->find('compliance_breaches', ['userId' => $user['_id']]);
+    // ── Sanitizar config ──
+    $companyName  = _pub_h($config['companyName'] ?? ($user['companyName'] ?? ($user['email'] ?? 'Empresa')));
+    $dpdName      = _pub_h($config['dpdName'] ?? '—');
+    $dpdEmail     = _pub_h($config['dpdEmail'] ?? '—');
+    $dpdPhone     = _pub_h($config['dpdPhone'] ?? '—');
+    $dpdAddress   = _pub_h($config['dpdAddress'] ?? '');
+    $dpdPublicUrl = _pub_h($config['dpdPublicUrl'] ?? '');
 
-    $html = "<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>Política de Privacidad - {$companyName}</title>";
+    // ── Cargar colecciones ──
+    $inventory  = $db->find('compliance_inventory',  ['userId' => $user['_id']]);
+    $consents   = $db->find('compliance_consents',   ['userId' => $user['_id']]);
+    $breaches   = $db->find('compliance_breaches',   ['userId' => $user['_id']]);
+    $processors = $db->find('compliance_processors', ['userId' => $user['_id']]);
+    $transfers  = $db->find('compliance_transfers',  ['userId' => $user['_id']]);
+
+    // ── Sanitizar inventory (causa del crash original) ──
+    $invClean = [];
+    foreach ($inventory as $inv) {
+        $invClean[] = [
+            'name'       => _pub_bson_str($inv['name'] ?? ''),
+            'purpose'    => _pub_bson_str($inv['purpose'] ?? ''),
+            'legalBasis' => _pub_bson_str($inv['legalBasis'] ?? ''),
+            'categories' => _pub_bson_arr($inv['dataCategories'] ?? null),
+        ];
+    }
+
+    // ── Categorías únicas ──
+    $catMap = [];
+    foreach ($invClean as $inv) {
+        foreach ($inv['categories'] as $c) {
+            $c = trim((string)$c);
+            if ($c !== '') $catMap[$c] = true;
+        }
+    }
+    $catList = array_keys($catMap);
+
+    // ── Contadores ──
+    $activeConsents = 0;
+    foreach ($consents as $c) {
+        if (empty($c['revokedAt'])) $activeConsents++;
+    }
+    $resolvedBreaches = 0;
+    foreach ($breaches as $b) {
+        if (($b['status'] ?? '') === 'resolved') $resolvedBreaches++;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // HTML
+    // ═══════════════════════════════════════════════════════════
+    $html  = "<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'>";
+    $html .= "<meta name='viewport' content='width=device-width, initial-scale=1.0'>";
+    $html .= "<title>Política de Privacidad — {$companyName}</title>";
     $html .= "<style>
         body{font-family:'Inter',Arial,sans-serif;line-height:1.7;color:#1a1a1a;max-width:900px;margin:0 auto;padding:40px 20px;background:#fafafa}
         .header{border-bottom:2px solid #1a1a1a;padding-bottom:20px;margin-bottom:40px}
@@ -1236,45 +1320,56 @@ function generatePublicPolicy() {
         @media print{body{background:#fff;padding:0}.footer{display:none}}
     </style></head><body>";
 
-    $html .= "<div class='header'><h1>Política de Privacidad</h1><p>{$companyName} · Ley 21.719 · Protección de Datos Personales</p></div>";
-    $html .= "<div class='meta'><strong>Versión:</strong> 1.0 | <strong>Fecha:</strong> " . date('d/m/Y') . " | <strong>Responsable:</strong> {$companyName}</div>";
+    $html .= "<div class='header'><h1>Política de Privacidad</h1>";
+    $html .= "<p>{$companyName} · Ley 21.719 · Protección de Datos Personales</p></div>";
 
+    $html .= "<div class='meta'><strong>Versión:</strong> 1.0 | ";
+    $html .= "<strong>Fecha:</strong> " . date('d/m/Y') . " | ";
+    $html .= "<strong>Responsable:</strong> {$companyName}</div>";
+
+    // 1. Identidad
     $html .= "<section><h2>1. Identidad del Responsable</h2>";
     $html .= "<p><strong>Nombre:</strong> {$companyName}</p>";
     $html .= "<p><strong>Contacto DPD:</strong> {$dpdName} — {$dpdEmail} — {$dpdPhone}</p>";
+    if ($dpdAddress !== '') $html .= "<p><strong>Dirección:</strong> {$dpdAddress}</p>";
+    if ($dpdPublicUrl !== '') $html .= "<p><strong>Sitio web DPD:</strong> <a href='{$dpdPublicUrl}'>{$dpdPublicUrl}</a></p>";
     $html .= "</section>";
 
+    // 2. Finalidades
     $html .= "<section><h2>2. Finalidades y Base Legal del Tratamiento</h2>";
     $html .= "<p>Tratamos sus datos personales para las siguientes finalidades, con la base legal correspondiente:</p>";
-    $html .= "<ul>";
-    foreach ($inventory as $inv) {
-        $purpose = $inv['purpose'] ?? $inv['name'] ?? '';
-        $basis = $inv['legalBasis'] ?? '';
-        $categories = $inv['dataCategories'] ?? '';
-        if (is_array($categories)) $categories = implode(', ', $categories);
-        $html .= "<li><strong>{$purpose}</strong> — Base legal: {$basis} — Categorías: {$categories}</li>";
+    if (empty($invClean)) {
+        $html .= "<p><em>El responsable no ha declarado todavía las finalidades del tratamiento.</em></p>";
+    } else {
+        $html .= "<ul>";
+        foreach ($invClean as $inv) {
+            $p = $inv['purpose'] !== '' ? $inv['purpose'] : $inv['name'];
+            $b = $inv['legalBasis'] !== '' ? $inv['legalBasis'] : 'No especificada';
+            $c = implode(', ', $inv['categories']);
+            $html .= "<li><strong>" . htmlspecialchars($p, ENT_QUOTES, 'UTF-8') . "</strong>";
+            $html .= " — Base legal: " . htmlspecialchars($b, ENT_QUOTES, 'UTF-8');
+            if ($c !== '') $html .= " — Categorías: " . htmlspecialchars($c, ENT_QUOTES, 'UTF-8');
+            $html .= "</li>";
+        }
+        $html .= "</ul>";
     }
-    $html .= "</ul>";
     $html .= "</section>";
 
+    // 3. Categorías
     $html .= "<section><h2>3. Categorías de Datos Tratados</h2>";
     $html .= "<p>Según el Art. 14.1.c de la Ley 21.719, las categorías principales son:</p>";
-    $html .= "<ul>";
-    $catMap = [];
-    foreach ($inventory as $inv) {
-        $cats = $inv['dataCategories'] ?? '';
-        if (is_array($cats)) {
-            foreach ($cats as $c) $catMap[$c] = true;
-        } else {
-            foreach (explode(';', $cats) as $c) $catMap[trim($c)] = true;
+    if (empty($catList)) {
+        $html .= "<p><em>No hay categorías declaradas todavía.</em></p>";
+    } else {
+        $html .= "<ul>";
+        foreach ($catList as $cat) {
+            $html .= "<li>" . htmlspecialchars($cat, ENT_QUOTES, 'UTF-8') . "</li>";
         }
+        $html .= "</ul>";
     }
-    foreach (array_keys($catMap) as $cat) {
-        $html .= "<li>{$cat}</li>";
-    }
-    $html .= "</ul>";
     $html .= "</section>";
 
+    // 4. Derechos
     $html .= "<section><h2>4. Derechos del Titular (Art. 4-13 Ley 21.719)</h2>";
     $html .= "<p>Usted puede ejercer los siguientes derechos gratuitamente:</p>";
     $html .= "<ul>";
@@ -1288,32 +1383,65 @@ function generatePublicPolicy() {
     $html .= "<p>Para ejercer sus derechos, contacte al DPD en: {$dpdEmail}</p>";
     $html .= "</section>";
 
+    // 5. Consentimiento
     $html .= "<section><h2>5. Consentimiento (Art. 12)</h2>";
     $html .= "<p>Cuando el tratamiento se base en consentimiento, este es libre, informado, específico, previo e inequívoco. Puede revocarlo en cualquier momento contactando al DPD.</p>";
-    $html .= "<p>Total de consentimientos activos registrados: " . count(array_filter($consents, fn($c) => empty($c['revokedAt']))) . "</p>";
+    $html .= "<p>Total de consentimientos activos registrados: " . $activeConsents . "</p>";
     $html .= "</section>";
 
+    // 6. Cesiones
     $html .= "<section><h2>6. Cesiones y Transferencias Internacionales (Art. 15, 21, 27)</h2>";
     $html .= "<p>No cedemos datos a terceros salvo obligación legal, ejecución de contrato o consentimiento. Las transferencias internacionales se realizan con garantías adecuadas (decisión de adecuación, cláusulas tipo, BCR).</p>";
+
+    if (count($processors) > 0) {
+        $html .= "<h3>Encargados del tratamiento</h3><ul>";
+        foreach ($processors as $p) {
+            $n = _pub_bson_str($p['name'] ?? '');
+            $s = _pub_bson_str($p['serviceType'] ?? '');
+            $c = _pub_bson_str($p['country'] ?? '');
+            $html .= "<li><strong>" . htmlspecialchars($n, ENT_QUOTES, 'UTF-8') . "</strong>";
+            if ($s !== '') $html .= " — " . htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+            if ($c !== '') $html .= " (" . htmlspecialchars($c, ENT_QUOTES, 'UTF-8') . ")";
+            $html .= "</li>";
+        }
+        $html .= "</ul>";
+    }
+
+    if (count($transfers) > 0) {
+        $html .= "<h3>Transferencias internacionales</h3><ul>";
+        foreach ($transfers as $t) {
+            $c = _pub_bson_str($t['destinationCountry'] ?? '');
+            $m = _pub_bson_str($t['mechanism'] ?? '');
+            $html .= "<li>" . htmlspecialchars($c, ENT_QUOTES, 'UTF-8');
+            if ($m !== '') $html .= " — " . htmlspecialchars($m, ENT_QUOTES, 'UTF-8');
+            $html .= "</li>";
+        }
+        $html .= "</ul>";
+    }
     $html .= "</section>";
 
+    // 7. Seguridad
     $html .= "<section><h2>7. Medidas de Seguridad (Art. 14 quinquies, 25, 26)</h2>";
     $html .= "<p>Implementamos medidas técnicas y organizativas: cifrado, control de acceso, registro de accesos, evaluación de impacto (DPIA), plan de respuesta a incidentes.</p>";
-    $html .= "<p>Incidentes de seguridad registrados: " . count($breaches) . " (resueltos: " . count(array_filter($breaches, fn($b) => ($b['status'] ?? '') === 'resolved')) . ")</p>";
+    $html .= "<p>Incidentes de seguridad registrados: " . count($breaches) . " (resueltos: " . $resolvedBreaches . ")</p>";
     $html .= "</section>";
 
+    // 8. Retención
     $html .= "<section><h2>8. Retención de Datos (Art. 14)</h2>";
     $html .= "<p>Los datos se conservan solo el tiempo necesario para la finalidad del tratamiento o mientras exista obligación legal.</p>";
     $html .= "</section>";
 
+    // 9. DPD
     $html .= "<section><h2>9. Delegado de Protección de Datos (Art. 28)</h2>";
     $html .= "<div class='dpd-card'><h3>Contacto DPD</h3>";
     $html .= "<p><strong>Nombre:</strong> {$dpdName}</p>";
     $html .= "<p><strong>Email:</strong> {$dpdEmail}</p>";
     $html .= "<p><strong>Teléfono:</strong> {$dpdPhone}</p>";
-    $html .= "</div>";
-    $html .= "</section>";
+    if ($dpdAddress !== '') $html .= "<p><strong>Dirección:</strong> {$dpdAddress}</p>";
+    if ($dpdPublicUrl !== '') $html .= "<p><strong>Sitio web:</strong> <a href='{$dpdPublicUrl}'>{$dpdPublicUrl}</a></p>";
+    $html .= "</div></section>";
 
+    // 10. APDP
     $html .= "<section><h2>10. Reclamaciones ante la APDP</h2>";
     $html .= "<p>Si considera que sus derechos no han sido respetados, puede presentar reclamación ante la Agencia de Protección de Datos Personales (APDP) en www.apdp.cl</p>";
     $html .= "</section>";
@@ -1325,43 +1453,54 @@ function generatePublicPolicy() {
 
     $html .= "</body></html>";
 
-    // Versionado inmutable (Art. 14 ter Ley 21.719)
-    $companyId = $config['companyId'] ?? $user['_id'];
-    $policyHash = hash('sha256', $html);
-    $lastVersion = $db->findOne('compliance_policy_versions',
-        ['companyId' => $companyId],
-        ['sort' => ['version' => -1]]
-    );
-    if (!$lastVersion || ($lastVersion['hash'] ?? '') !== $policyHash) {
-        $nextVersion = ((int)($lastVersion['version'] ?? 0)) + 1;
-        $publishedAt = date('c');
-        $db->insertOne('compliance_policy_versions', [
-            'companyId'       => $companyId,
-            'userId'          => $user['_id'],
-            'version'         => $nextVersion,
-            'html'            => $html,
-            'hash'            => $policyHash,
-            'publishedAt'     => $publishedAt,
-            'publishedBy'     => (string)$user['_id'],
-            'publishedByName' => $user['name'] ?? ($user['email'] ?? 'Usuario'),
-            'companyName'     => $config['companyName'] ?? '',
-            'dpdName'         => $config['dpdName'] ?? '',
-            'dpdEmail'        => $config['dpdEmail'] ?? '',
-            'apdpRegistered'  => $config['apdpRegistered'] ?? '',
-        ]);
-        if (!empty($config['_id'])) {
-            $db->updateOne('compliance_config', ['_id' => $config['_id']], [
-                'publishedPolicyVersion' => $nextVersion,
-                'publishedPolicyHash'    => $policyHash,
-                'publishedPolicyAt'      => $publishedAt,
+    // ═══════════════════════════════════════════════════════════
+    // VERSIONADO INMUTABLE — Art. 14 ter
+    // Envuelto en try/catch para que NUNCA rompa la vista pública
+    // ═══════════════════════════════════════════════════════════
+    try {
+        $companyId  = $config['companyId'] ?? $user['_id'];
+        $policyHash = hash('sha256', $html);
+
+        $lastVersion = $db->findOne('compliance_policy_versions',
+            ['companyId' => $companyId],
+            ['sort' => ['version' => -1]]
+        );
+
+        if (!$lastVersion || ($lastVersion['hash'] ?? '') !== $policyHash) {
+            $nextVersion = ((int)($lastVersion['version'] ?? 0)) + 1;
+            $publishedAt = date('c');
+
+            $db->insertOne('compliance_policy_versions', [
+                'companyId'       => $companyId,
+                'userId'          => $user['_id'],
+                'version'         => $nextVersion,
+                'html'            => $html,
+                'hash'            => $policyHash,
+                'publishedAt'     => $publishedAt,
+                'publishedBy'     => (string)$user['_id'],
+                'publishedByName' => $user['name'] ?? ($user['email'] ?? 'Usuario'),
+                'companyName'     => $config['companyName'] ?? '',
+                'dpdName'         => $config['dpdName'] ?? '',
+                'dpdEmail'        => $config['dpdEmail'] ?? '',
+                'apdpRegistered'  => $config['apdpRegistered'] ?? '',
             ]);
+
+            if (!empty($config['_id'])) {
+                $db->updateOne('compliance_config', ['_id' => $config['_id']], [
+                    'publishedPolicyVersion' => $nextVersion,
+                    'publishedPolicyHash'    => $policyHash,
+                    'publishedPolicyAt'      => $publishedAt,
+                ]);
+            }
         }
+    } catch (\Throwable $e) {
+        // No bloqueamos la vista si el versionado falla
+        error_log('[PublicPolicy] Versionado falló: ' . $e->getMessage());
     }
 
     header('Content-Type: text/html; charset=utf-8');
     echo $html;
     exit;
-
 }
 
 // ═══════════════════════════════════════════════════════════
