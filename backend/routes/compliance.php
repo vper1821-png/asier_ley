@@ -1325,9 +1325,43 @@ function generatePublicPolicy() {
 
     $html .= "</body></html>";
 
+    // Versionado inmutable (Art. 14 ter Ley 21.719)
+    $companyId = $config['companyId'] ?? $user['_id'];
+    $policyHash = hash('sha256', $html);
+    $lastVersion = $db->findOne('compliance_policy_versions',
+        ['companyId' => $companyId],
+        ['sort' => ['version' => -1]]
+    );
+    if (!$lastVersion || ($lastVersion['hash'] ?? '') !== $policyHash) {
+        $nextVersion = ((int)($lastVersion['version'] ?? 0)) + 1;
+        $publishedAt = date('c');
+        $db->insertOne('compliance_policy_versions', [
+            'companyId'       => $companyId,
+            'userId'          => $user['_id'],
+            'version'         => $nextVersion,
+            'html'            => $html,
+            'hash'            => $policyHash,
+            'publishedAt'     => $publishedAt,
+            'publishedBy'     => (string)$user['_id'],
+            'publishedByName' => $user['name'] ?? ($user['email'] ?? 'Usuario'),
+            'companyName'     => $config['companyName'] ?? '',
+            'dpdName'         => $config['dpdName'] ?? '',
+            'dpdEmail'        => $config['dpdEmail'] ?? '',
+            'apdpRegistered'  => $config['apdpRegistered'] ?? '',
+        ]);
+        if (!empty($config['_id'])) {
+            $db->updateOne('compliance_config', ['_id' => $config['_id']], [
+                'publishedPolicyVersion' => $nextVersion,
+                'publishedPolicyHash'    => $policyHash,
+                'publishedPolicyAt'      => $publishedAt,
+            ]);
+        }
+    }
+
     header('Content-Type: text/html; charset=utf-8');
     echo $html;
     exit;
+
 }
 
 // ═══════════════════════════════════════════════════════════

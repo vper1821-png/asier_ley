@@ -22,20 +22,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (isset($_POST['item_action']) && $col) {
         $res = api_post_form('/api/compliance/' . urlencode($col) . '/' . urlencode($_POST['item_id']) . '/' . urlencode($_POST['item_action']), ['token' => $token, 'response' => $_POST['response'] ?? '']);
         if (!empty($res['success'])) $msg = 'Acción aplicada.'; else $err = $res['error'] ?? 'Error.';
-    } elseif (isset($_POST['save_config'])) {
-        api_post_form('/api/invisia/compliance/config', [
+     } elseif (isset($_POST['save_config'])) {
+        // Construimos el payload SOLO con los campos que el form DPD envía.
+        // NO incluimos privacyPolicyUrl / cookiesPolicyUrl / dataRetentionPolicy
+        // para evitar pisar los valores que se editan en el otro formulario.
+        $payload = [
             'token' => $token,
+            // Empresa
             'companyName' => $_POST['companyName'] ?? '',
-            'dpdName' => $_POST['dpdName'] ?? '',
+            'companyRut'  => $_POST['companyRut']  ?? '',
+            // DPD (Art. 28)
+            'dpdName'  => $_POST['dpdName']  ?? '',
+            'dpdRut'   => $_POST['dpdRut']   ?? '',
             'dpdEmail' => $_POST['dpdEmail'] ?? '',
             'dpdPhone' => $_POST['dpdPhone'] ?? '',
-            'privacyPolicyUrl' => $_POST['privacyPolicyUrl'] ?? '',
-            'cookiesPolicyUrl' => $_POST['cookiesPolicyUrl'] ?? '',
-            'dataRetentionPolicy' => $_POST['dataRetentionPolicy'] ?? '',
-            'apdpRegistered' => !empty($_POST['apdpRegistered']) ? '1' : '',
-            'complianceLevel' => $_POST['complianceLevel'] ?? 'basic',
-        ]);
-        $msg = 'Configuración guardada.';
+            'dpdTitle' => $_POST['dpdTitle'] ?? '',
+            'dpdAddress'   => $_POST['dpdAddress']   ?? '',
+            'dpdPublicUrl' => $_POST['dpdPublicUrl'] ?? '',
+            'dpdAppointmentDate' => $_POST['dpdAppointmentDate'] ?? '',
+            // Registro APDP (Art. 31)
+            'apdpRegistered'         => $_POST['apdpRegistered']         ?? '',
+            'apdpRegistrationNumber' => $_POST['apdpRegistrationNumber'] ?? '',
+            'apdpRegistrationDate'   => $_POST['apdpRegistrationDate']   ?? '',
+            'apdpObservations'       => $_POST['apdpObservations']       ?? '',
+            // Modelo de prevención (Arts. 49-51)
+            'complianceLevel'          => $_POST['complianceLevel']          ?? '',
+            'preventionModel'          => $_POST['preventionModel']          ?? '',
+            'preventionModelDate'      => $_POST['preventionModelDate']      ?? '',
+            'preventionModelCertifier' => $_POST['preventionModelCertifier'] ?? '',
+        ];
+
+        $res = api_post_form('/api/invisia/compliance/config', $payload);
+
+        if (!empty($res['success']) || empty($res['error'])) {
+            $msg = 'Configuración del DPD y registro APDP guardada correctamente.';
+        } else {
+            $err = $res['error'] ?? 'Error al guardar la configuración.';
+        }
     } elseif (isset($_POST['update_config'])) {
         $res = api_post_form('/api/invisia/compliance/config', [
             'token' => $token,
@@ -2847,51 +2870,460 @@ main.compliance-workspace { position: relative; }
                 <h3 class="text-[14px] md:text-[15px] font-semibold text-text-heading">Política de Privacidad</h3>
                 <p class="text-[11px] md:text-[12px] text-text-muted mt-1">Configuración de políticas de privacidad</p>
             </div>
-            
-            <!-- Formulario de configuración de DPD con diseño profesional -->
+
+
+
+
+            <?php
+            // ═══════════════════════════════════════════════════════════
+            // PANEL DE GOBERNANZA — B + C + D + E
+            // ═══════════════════════════════════════════════════════════
+
+            // B: Estado de los 5 documentos Cap. I
+            $certDash = api_post_form('/api/certification/dashboard', ['token' => $token]);
+            $govDocs = [];
+            $govPct = 0;
+            $govDone = 0;
+            $govTotal = 0;
+            $totalCertScore = 0;
+            if (is_array($certDash) && empty($certDash['error'])) {
+                $totalCertScore = (int)($certDash['score'] ?? 0);
+                foreach (($certDash['documents'] ?? []) as $d) {
+                    if (($d['chapter'] ?? '') === 'I') $govDocs[] = $d;
+                }
+                $govWeightTotal = 0;
+                $govWeightDone = 0;
+                foreach ($govDocs as $d) {
+                    $w = (int)($d['weight'] ?? 0);
+                    $govWeightTotal += $w;
+                    $s = $d['status'] ?? 'missing';
+                    $val = match($s) {
+                        'signed' => 1.00, 'approved' => 0.85,
+                        'ready' => 0.75, 'draft' => 0.40, default => 0.00,
+                    };
+                    $govWeightDone += $w * $val;
+                    $govTotal++;
+                    if (in_array($s, ['ready','approved','signed'], true)) $govDone++;
+                }
+                $govPct = $govWeightTotal > 0 ? (int)round($govWeightDone / $govWeightTotal * 100) : 0;
+            }
+
+            // C: URL informe
+            $reportUrl = '/api-proxy.php?path=' . urlencode('/api/reports/download/all');
+
+            // D: URL política pública
+            $publicPolicyUrl = API_BASE_URL_BROWSER . '/api/compliance/public-policy?token=' . urlencode($token);
+
+            // E: Contadores portal titular
+            $activeConsentsPrivacy = count(array_filter($consents, fn($c) => empty($c['revokedAt'])));
+            $totalConsentsPrivacy  = count($consents);
+            $openArco = count(array_filter($arcoRequests, fn($r) =>
+                !in_array($r['status'] ?? '', ['completed','resolved','finished','rejected'], true)
+            ));
+            $totalArco = count($arcoRequests);
+            $portalUrl = rtrim(defined('SITE_URL') ? SITE_URL : '', '/') . '/mi-privacidad';
+
+            // F: Metadata de versión publicada (puede ser null si aún no aplicaste F en backend)
+            $policyVersion = $config['publishedPolicyVersion'] ?? null;
+            $policyHash    = $config['publishedPolicyHash']    ?? null;
+            $policyPublAt  = $config['publishedPolicyAt']      ?? null;
+
+            // Estilos de estado DOC
+            $docStatusMap = [
+                'signed'         => ['label' => 'Firmado',    'cls' => 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25', 'dot' => 'bg-emerald-400'],
+                'approved'       => ['label' => 'Aprobado',   'cls' => 'bg-teal-500/10 text-teal-400 border-teal-500/25',          'dot' => 'bg-teal-400'],
+                'ready'          => ['label' => 'Listo',      'cls' => 'bg-blue-500/10 text-blue-400 border-blue-500/25',          'dot' => 'bg-blue-400'],
+                'draft'          => ['label' => 'Borrador',   'cls' => 'bg-amber-500/10 text-amber-400 border-amber-500/25',       'dot' => 'bg-amber-400'],
+                'pending_manual' => ['label' => 'Requiere carga','cls' => 'bg-purple-500/10 text-purple-400 border-purple-500/25', 'dot' => 'bg-purple-400'],
+                'missing'        => ['label' => 'Faltante',   'cls' => 'bg-red-500/10 text-red-400 border-red-500/25',             'dot' => 'bg-red-400'],
+                'rejected'       => ['label' => 'Rechazado',  'cls' => 'bg-red-500/10 text-red-400 border-red-500/25',             'dot' => 'bg-red-400'],
+                'expired'        => ['label' => 'Expirado',   'cls' => 'bg-gray-500/10 text-gray-400 border-gray-500/25',          'dot' => 'bg-gray-400'],
+            ];
+            ?>
+
+            <!-- B) Panel de Gobernanza -->
             <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5 mb-5">
-                <h4 class="text-[13px] font-semibold text-text-heading mb-4">Configuración del Delegado de Protección de Datos (DPD)</h4>
-                
-                <form method="POST" class="space-y-4">
-                    <input type="hidden" name="save_config" value="1">
-                    
-                    <div class="compliance-form-row">
-                        <div>
-                            <label class="compliance-form-label">Nombre de la empresa *</label>
-                            <input type="text" name="companyName" required class="compliance-input w-full" value="<?= h($config['companyName'] ?? '') ?>" placeholder="Nombre de la empresa responsable">
-                        </div>
-                        <div>
-                            <label class="compliance-form-label">Nombre del DPD *</label>
-                            <input type="text" name="dpdName" required class="compliance-input w-full" value="<?= h($config['dpdName'] ?? '') ?>" placeholder="Nombre completo del Delegado">
-                        </div>
-                        <div>
-                            <label class="compliance-form-label">Email del DPD *</label>
-                            <input type="email" name="dpdEmail" required class="compliance-input w-full" value="<?= h($config['dpdEmail'] ?? '') ?>" placeholder="dpd@empresa.cl">
-                        </div>
-                        <div>
-                            <label class="compliance-form-label">Teléfono del DPD</label>
-                            <input type="tel" name="dpdPhone" class="compliance-input w-full" value="<?= h($config['dpdPhone'] ?? '') ?>" placeholder="+56 9 1234 5678">
-                        </div>
-                    </div>
-                    
-                    <div class="flex items-center gap-2">
-                        <input type="checkbox" name="apdpRegistered" id="apdpRegistered" value="1" <?= ($config['apdpRegistered'] === '1' || $config['apdpRegistered'] === true) ? 'checked' : '' ?> class="w-4 h-4 rounded border-border-theme text-primary-600 focus:ring-primary-500">
-                        <label for="apdpRegistered" class="text-[11px] text-text-body">Registrado en APDP (Agencia de Protección de Datos Personales)</label>
-                    </div>
-                    
+                <div class="flex items-start justify-between gap-4 mb-4 pb-4 border-b border-border-theme/30">
                     <div>
-                        <label class="compliance-form-label">Nivel de Cumplimiento</label>
-                        <select name="complianceLevel" class="compliance-input w-full">
-                            <option value="basic" <?= ($config['complianceLevel'] ?? '') === 'basic' ? 'selected' : '' ?>>Básico</option>
-                            <option value="intermediate" <?= ($config['complianceLevel'] ?? '') === 'intermediate' ? 'selected' : '' ?>>Intermedio</option>
-                            <option value="advanced" <?= ($config['complianceLevel'] ?? '') === 'advanced' ? 'selected' : '' ?>>Avanzado</option>
-                            <option value="certified" <?= ($config['complianceLevel'] ?? '') === 'certified' ? 'selected' : '' ?>>Certificado</option>
-                        </select>
+                        <h4 class="text-[14px] font-semibold text-text-heading flex items-center gap-2">
+                            <span class="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 flex items-center justify-center flex-shrink-0">
+                                <?= cIcon('shield', 'w-4 h-4') ?>
+                            </span>
+                            Estado de Gobernanza — Capítulo I de Certificación
+                        </h4>
+                        <p class="text-[11px] text-text-muted mt-1.5 leading-relaxed max-w-2xl">
+                            Los 5 documentos del <strong class="text-emerald-300">Capítulo I</strong> representan el <strong class="text-emerald-300">20% del score total</strong> de certificación. Se generan automáticamente con los datos que editas aquí abajo.
+                        </p>
                     </div>
-                    
-                    <div class="flex justify-end gap-3 pt-2 border-t border-border-subtle">
-                        <button type="submit" class="btn-primary">
-                            Guardar Configuración DPD
+                    <div class="text-right flex-shrink-0">
+                        <p class="text-[22px] font-bold <?= $govPct >= 90 ? 'text-emerald-400' : ($govPct >= 70 ? 'text-amber-400' : 'text-red-400') ?> leading-none"><?= $govPct ?>%</p>
+                        <p class="text-[9px] text-text-subtle mt-1"><?= $govDone ?>/<?= $govTotal ?> listos</p>
+                    </div>
+                </div>
+
+                <div class="w-full bg-bg-elevated/50 rounded-full h-2 mb-5">
+                    <div class="h-full rounded-full transition-all duration-700 <?= $govPct >= 90 ? 'bg-emerald-500' : ($govPct >= 70 ? 'bg-amber-500' : 'bg-red-500') ?>" style="width: <?= $govPct ?>%"></div>
+                </div>
+
+                <?php if (empty($govDocs)): ?>
+                    <p class="text-[11px] text-text-subtle text-center py-6">
+                        No se pudo obtener el estado de certificación. Verifica que el módulo <a href="/certification" class="text-primary-400 hover:text-primary-300 underline">Certificación</a> esté disponible.
+                    </p>
+                <?php else: ?>
+                    <div class="space-y-2">
+                        <?php foreach ($govDocs as $d):
+                            $s   = $d['status'] ?? 'missing';
+                            $st  = $docStatusMap[$s] ?? $docStatusMap['missing'];
+                            $isReady = in_array($s, ['ready','approved','signed'], true);
+                        ?>
+                            <div class="flex items-center gap-3 px-3.5 py-2.5 rounded-lg border transition-colors <?= $isReady ? 'bg-emerald-500/[0.03] border-emerald-500/15' : 'bg-bg-base/40 border-border-theme/40' ?>">
+                                <span class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 border <?= $st['cls'] ?>">
+                                    <?= cIcon($isReady ? 'check' : 'xmark', 'w-3.5 h-3.5') ?>
+                                </span>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <span class="text-[10px] font-mono text-text-subtle"><?= h($d['code'] ?? '') ?></span>
+                                        <span class="text-[12px] font-medium <?= $isReady ? 'text-emerald-200' : 'text-text-heading' ?> truncate"><?= h($d['name'] ?? '') ?></span>
+                                        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold border <?= $st['cls'] ?>">
+                                            <span class="w-1 h-1 rounded-full <?= $st['dot'] ?>"></span>
+                                            <?= h($st['label']) ?>
+                                        </span>
+                                    </div>
+                                    <?php if (!empty($d['version']) && $d['version'] > 0): ?>
+                                        <p class="text-[9px] text-text-subtle mt-0.5 font-mono">v<?= (int)$d['version'] ?></p>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="flex items-center gap-1.5 flex-shrink-0">
+                                    <?php if (!empty($d['pdfUrl'])): ?>
+                                        <a href="<?= h($d['pdfUrl']) ?>" target="_blank" title="Descargar PDF"
+                                           class="p-1.5 rounded-lg text-text-muted hover:text-indigo-400 hover:bg-indigo-500/10 transition-all">
+                                            <?= cIcon('fileText', 'w-3.5 h-3.5') ?>
+                                        </a>
+                                    <?php endif; ?>
+                                    <a href="/certification"
+                                       class="px-2.5 py-1 rounded-lg text-[10px] font-medium border transition-all <?= $isReady ? 'bg-blue-500/10 border-blue-500/20 text-blue-400 hover:bg-blue-500/20' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20' ?>">
+                                        <?= $isReady ? 'Regenerar →' : 'Generar →' ?>
+                                    </a>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <div class="mt-4 pt-3 border-t border-border-theme/30 flex items-center justify-between text-[10px] text-text-subtle">
+                        <span>Score total de certificación: <span class="font-mono text-text-heading font-semibold"><?= $totalCertScore ?>%</span></span>
+                        <a href="/certification" class="text-primary-400 hover:text-primary-300 font-medium">Ir al módulo de certificación →</a>
+                    </div>
+                <?php endif; ?>
+            </div>
+
+            <!-- C + D + E) Acciones rápidas -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
+
+                <!-- C) Informe -->
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5 flex flex-col">
+                    <div class="flex items-center gap-2.5 mb-3">
+                        <span class="w-9 h-9 rounded-lg bg-indigo-500/10 border border-indigo-500/25 text-indigo-400 flex items-center justify-center flex-shrink-0">
+                            <?= cIcon('fileText', 'w-4 h-4') ?>
+                        </span>
+                        <div>
+                            <p class="text-[12px] font-semibold text-text-heading">Informe de Cumplimiento</p>
+                            <p class="text-[10px] text-text-subtle">PDF · 26 secciones</p>
+                        </div>
+                    </div>
+                    <p class="text-[10px] text-text-muted leading-relaxed flex-1 mb-3">
+                        Informe formal con score por artículo, severidad y multas UTM. Listo para presentar ante la APDP.
+                    </p>
+                    <a href="<?= h($reportUrl) ?>" target="_blank"
+                       class="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg text-[11px] font-semibold bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white transition-all shadow-sm">
+                        <?= cIcon('fileText', 'w-3.5 h-3.5') ?>
+                        Descargar informe
+                    </a>
+                </div>
+
+                <!-- D) Política pública -->
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5 flex flex-col">
+                    <div class="flex items-center gap-2.5 mb-3">
+                        <span class="w-9 h-9 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 flex items-center justify-center flex-shrink-0">
+                            <?= cIcon('globe', 'w-4 h-4') ?>
+                        </span>
+                        <div>
+                            <p class="text-[12px] font-semibold text-text-heading">Política Pública</p>
+                            <p class="text-[10px] text-text-subtle">Art. 14 ter · versionada</p>
+                        </div>
+                    </div>
+                    <?php if ($policyVersion): ?>
+                        <div class="flex items-center gap-2 mb-2 text-[10px]">
+                            <span class="px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-semibold">v<?= (int)$policyVersion ?></span>
+                            <?php if ($policyPublAt): ?><span class="text-text-subtle font-mono"><?= h(substr($policyPublAt, 0, 16)) ?></span><?php endif; ?>
+                        </div>
+                        <?php if ($policyHash): ?>
+                            <p class="text-[9px] text-text-subtle font-mono truncate mb-3" title="<?= h($policyHash) ?>">hash: <?= h(substr($policyHash, 0, 16)) ?>…</p>
+                        <?php endif; ?>
+                    <?php else: ?>
+                        <p class="text-[10px] text-amber-400 mb-3 flex items-center gap-1.5"><?= cIcon('alert', 'w-3 h-3') ?> Sin versión publicada todavía</p>
+                    <?php endif; ?>
+                    <p class="text-[10px] text-text-muted leading-relaxed flex-1 mb-3">
+                        Se regenera automáticamente con los datos del DPD, políticas e inventario. Cada publicación crea una versión con hash SHA-256.
+                    </p>
+                    <a href="<?= h($publicPolicyUrl) ?>" target="_blank"
+                       class="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg text-[11px] font-semibold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white transition-all shadow-sm">
+                        <?= cIcon('globe', 'w-3.5 h-3.5') ?>
+                        Publicar / Ver política
+                    </a>
+                </div>
+
+                <!-- E) Portal titular -->
+                <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5 flex flex-col">
+                    <div class="flex items-center gap-2.5 mb-3">
+                        <span class="w-9 h-9 rounded-lg bg-cyan-500/10 border border-cyan-500/25 text-cyan-400 flex items-center justify-center flex-shrink-0">
+                            <?= cIcon('users', 'w-4 h-4') ?>
+                        </span>
+                        <div>
+                            <p class="text-[12px] font-semibold text-text-heading">Portal del Titular</p>
+                            <p class="text-[10px] text-text-subtle">Art. 8-13</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 mb-3">
+                        <div class="rounded-lg bg-bg-base/50 border border-border-theme/40 px-2.5 py-2">
+                            <p class="text-[9px] text-text-subtle uppercase tracking-wide">Consent.</p>
+                            <p class="text-[16px] font-bold text-white leading-none mt-1"><?= $activeConsentsPrivacy ?><span class="text-[10px] text-text-subtle font-normal">/<?= $totalConsentsPrivacy ?></span></p>
+                        </div>
+                        <div class="rounded-lg bg-bg-base/50 border border-border-theme/40 px-2.5 py-2">
+                            <p class="text-[9px] text-text-subtle uppercase tracking-wide">ARCO</p>
+                            <p class="text-[16px] font-bold <?= $openArco > 0 ? 'text-amber-400' : 'text-white' ?> leading-none mt-1"><?= $openArco ?><span class="text-[10px] text-text-subtle font-normal">/<?= $totalArco ?></span></p>
+                        </div>
+                    </div>
+                    <p class="text-[10px] text-text-muted leading-relaxed flex-1 mb-3">
+                        Los titulares pueden consultar y ejercer sus derechos en este portal público.
+                    </p>
+                    <a href="<?= h($portalUrl) ?>" target="_blank"
+                       class="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg text-[11px] font-semibold bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] text-text-body hover:text-white transition-all">
+                        <?= cIcon('users', 'w-3.5 h-3.5') ?>
+                        Abrir portal
+                    </a>
+                </div>
+            </div>
+
+
+
+            
+            <!-- ═══════════════════════════════════════════════════════════════════
+                 FORM DPD EXTENDIDO — Art. 28 y 31 + modelo de prevención
+                 ═══════════════════════════════════════════════════════════════════ -->
+            <div class="rounded-xl border border-border-theme bg-bg-panel/60 backdrop-blur-sm p-5 mb-5">
+
+                <div class="flex items-start justify-between gap-4 mb-5 pb-4 border-b border-border-theme/30">
+                    <div>
+                        <h4 class="text-[14px] font-semibold text-text-heading flex items-center gap-2">
+                            <span class="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/25 text-blue-400 flex items-center justify-center flex-shrink-0">
+                                <?= cIcon('shield', 'w-4 h-4') ?>
+                            </span>
+                            Delegado de Protección de Datos y Registro APDP
+                        </h4>
+                        <p class="text-[11px] text-text-muted mt-1.5 leading-relaxed max-w-2xl">
+                            Designación formal del DPD (Art. 28), publicación de contacto, inscripción en la APDP (Art. 31) y modelo de prevención (Arts. 49-51).
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <?php if (!empty($config['dpdEmail']) && !empty($config['dpdName'])): ?>
+                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
+                                <?= cIcon('check', 'w-3 h-3') ?> DPD designado
+                            </span>
+                        <?php else: ?>
+                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-red-500/10 text-red-400 border border-red-500/25">
+                                <?= cIcon('alert', 'w-3 h-3') ?> Sin designar
+                            </span>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <form method="POST" class="space-y-6">
+                    <input type="hidden" name="save_config" value="1">
+
+                    <!-- SECCIÓN 1: Identificación -->
+                    <fieldset class="compliance-fieldset">
+                        <legend class="compliance-fieldset-legend flex items-center gap-2">
+                            <span class="w-5 h-5 rounded bg-blue-500/15 text-blue-300 text-[10px] font-bold flex items-center justify-center">1</span>
+                            Identificación del Responsable
+                        </legend>
+                        <div class="compliance-form-row mt-3">
+                            <div class="compliance-form-cell">
+                                <label class="compliance-form-label">Razón social / Nombre empresa <span class="required">*</span></label>
+                                <input type="text" name="companyName" required class="compliance-input" value="<?= h($config['companyName'] ?? '') ?>" placeholder="Ej: SecureLab SpA">
+                            </div>
+                            <div class="compliance-form-cell">
+                                <label class="compliance-form-label">RUT empresa</label>
+                                <input type="text" name="companyRut" id="companyRut" class="compliance-input" value="<?= h($config['companyRut'] ?? '') ?>" placeholder="76.123.456-7" pattern="[0-9]{1,2}\.[0-9]{3}\.[0-9]{3}-[0-9kK]{1}">
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- SECCIÓN 2: Designación del DPD -->
+                    <fieldset class="compliance-fieldset">
+                        <legend class="compliance-fieldset-legend flex items-center gap-2">
+                            <span class="w-5 h-5 rounded bg-emerald-500/15 text-emerald-300 text-[10px] font-bold flex items-center justify-center">2</span>
+                            Designación del DPD <span class="text-[9px] font-normal text-text-subtle ml-1">(Art. 28)</span>
+                        </legend>
+                        <div class="compliance-form-row mt-3">
+                            <div class="compliance-form-cell">
+                                <label class="compliance-form-label">Nombre completo <span class="required">*</span></label>
+                                <input type="text" name="dpdName" required class="compliance-input" value="<?= h($config['dpdName'] ?? '') ?>" placeholder="Juan Pérez González">
+                            </div>
+                            <div class="compliance-form-cell">
+                                <label class="compliance-form-label">RUT del DPD</label>
+                                <input type="text" name="dpdRut" id="dpdRut" class="compliance-input" value="<?= h($config['dpdRut'] ?? '') ?>" placeholder="12.345.678-9" pattern="[0-9]{1,2}\.[0-9]{3}\.[0-9]{3}-[0-9kK]{1}">
+                            </div>
+                        </div>
+                        <div class="compliance-form-row mt-4">
+                            <div class="compliance-form-cell">
+                                <label class="compliance-form-label">Email <span class="required">*</span></label>
+                                <input type="email" name="dpdEmail" required class="compliance-input" value="<?= h($config['dpdEmail'] ?? '') ?>" placeholder="dpd@empresa.cl">
+                            </div>
+                            <div class="compliance-form-cell">
+                                <label class="compliance-form-label">Teléfono</label>
+                                <input type="tel" name="dpdPhone" class="compliance-input" value="<?= h($config['dpdPhone'] ?? '') ?>" placeholder="+56 9 1234 5678">
+                            </div>
+                        </div>
+                        <div class="compliance-form-row mt-4">
+                            <div class="compliance-form-cell">
+                                <label class="compliance-form-label">Cargo formal</label>
+                                <select name="dpdTitle" class="compliance-select">
+                                    <?php
+                                    $dpdTitle = $config['dpdTitle'] ?? '';
+                                    $opts = ['', 'dpd', 'dpd_adjunto', 'privacy_officer', 'legal_counsel', 'ciso', 'otro'];
+                                    $labels = [''=>'Seleccionar…','dpd'=>'DPD titular','dpd_adjunto'=>'DPD adjunto','privacy_officer'=>'Privacy Officer','legal_counsel'=>'Asesor legal','ciso'=>'CISO','otro'=>'Otro'];
+                                    foreach ($opts as $v): ?>
+                                        <option value="<?= h($v) ?>" <?= $dpdTitle === $v ? 'selected' : '' ?>><?= h($labels[$v]) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="compliance-form-cell">
+                                <label class="compliance-form-label">Fecha de designación</label>
+                                <input type="date" name="dpdAppointmentDate" class="compliance-input" value="<?= h($config['dpdAppointmentDate'] ?? '') ?>">
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- SECCIÓN 3: Publicación del DPD -->
+                    <fieldset class="compliance-fieldset">
+                        <legend class="compliance-fieldset-legend flex items-center gap-2">
+                            <span class="w-5 h-5 rounded bg-indigo-500/15 text-indigo-300 text-[10px] font-bold flex items-center justify-center">3</span>
+                            Publicación obligatoria <span class="text-[9px] font-normal text-text-subtle ml-1">(Art. 28.3)</span>
+                        </legend>
+                        <div class="compliance-form-row mt-3">
+                            <div class="compliance-form-cell">
+                                <label class="compliance-form-label">Dirección física</label>
+                                <input type="text" name="dpdAddress" class="compliance-input" value="<?= h($config['dpdAddress'] ?? '') ?>" placeholder="Av. Providencia 1234, Of. 501, Santiago">
+                            </div>
+                            <div class="compliance-form-cell">
+                                <label class="compliance-form-label">URL pública del DPD</label>
+                                <input type="url" name="dpdPublicUrl" class="compliance-input" value="<?= h($config['dpdPublicUrl'] ?? '') ?>" placeholder="https://empresa.cl/dpd">
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- SECCIÓN 4: Registro APDP -->
+                    <fieldset class="compliance-fieldset">
+                        <legend class="compliance-fieldset-legend flex items-center gap-2">
+                            <span class="w-5 h-5 rounded bg-amber-500/15 text-amber-300 text-[10px] font-bold flex items-center justify-center">4</span>
+                            Registro APDP <span class="text-[9px] font-normal text-text-subtle ml-1">(Art. 31)</span>
+                        </legend>
+                        <div class="compliance-form-row mt-3">
+                            <div class="compliance-form-cell">
+                                <label class="compliance-form-label">Estado <span class="required">*</span></label>
+                                <select name="apdpRegistered" class="compliance-select" required>
+                                    <?php $apdpReg = (string)($config['apdpRegistered'] ?? ''); ?>
+                                    <option value=""           <?= $apdpReg === ''           ? 'selected' : '' ?>>— Sin definir —</option>
+                                    <option value="1"          <?= $apdpReg === '1'          ? 'selected' : '' ?>>Sí - Registrado</option>
+                                    <option value="en_proceso" <?= $apdpReg === 'en_proceso' ? 'selected' : '' ?>>En proceso</option>
+                                    <option value="0"          <?= $apdpReg === '0'          ? 'selected' : '' ?>>No - Pendiente</option>
+                                </select>
+                            </div>
+                            <div class="compliance-form-cell">
+                                <label class="compliance-form-label">Número de registro</label>
+                                <input type="text" name="apdpRegistrationNumber" class="compliance-input font-mono" value="<?= h($config['apdpRegistrationNumber'] ?? '') ?>" placeholder="APDP-2024-001234">
+                            </div>
+                        </div>
+                        <div class="compliance-form-row mt-4">
+                            <div class="compliance-form-cell">
+                                <label class="compliance-form-label">Fecha inscripción</label>
+                                <input type="date" name="apdpRegistrationDate" class="compliance-input" value="<?= h($config['apdpRegistrationDate'] ?? '') ?>">
+                            </div>
+                            <div class="compliance-form-cell">
+                                <label class="compliance-form-label">Observaciones</label>
+                                <input type="text" name="apdpObservations" class="compliance-input" value="<?= h($config['apdpObservations'] ?? '') ?>" placeholder="Vigencia, renovaciones">
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- SECCIÓN 5: Modelo de prevención -->
+                    <fieldset class="compliance-fieldset">
+                        <legend class="compliance-fieldset-legend flex items-center gap-2">
+                            <span class="w-5 h-5 rounded bg-violet-500/15 text-violet-300 text-[10px] font-bold flex items-center justify-center">5</span>
+                            Nivel y modelo de prevención <span class="text-[9px] font-normal text-text-subtle ml-1">(Arts. 49-51)</span>
+                        </legend>
+                        <div class="compliance-form-row mt-3">
+                            <div class="compliance-form-cell">
+                                <label class="compliance-form-label">Nivel de cumplimiento</label>
+                                <select name="complianceLevel" class="compliance-select">
+                                    <?php $lvl = $config['complianceLevel'] ?? ''; ?>
+                                    <option value=""            <?= $lvl === ''            ? 'selected' : '' ?>>— Sin definir —</option>
+                                    <option value="basico"      <?= $lvl === 'basico'      ? 'selected' : '' ?>>Básico</option>
+                                    <option value="intermedio"  <?= $lvl === 'intermedio'  ? 'selected' : '' ?>>Intermedio</option>
+                                    <option value="avanzado"    <?= $lvl === 'avanzado'    ? 'selected' : '' ?>>Avanzado</option>
+                                    <option value="certificado" <?= $lvl === 'certificado' ? 'selected' : '' ?>>Certificado</option>
+                                </select>
+                            </div>
+                            <div class="compliance-form-cell">
+                                <label class="compliance-form-label">Modelo de prevención</label>
+                                <select name="preventionModel" class="compliance-select">
+                                    <?php $pm = $config['preventionModel'] ?? ''; ?>
+                                    <option value=""                    <?= $pm === ''                    ? 'selected' : '' ?>>No certificado</option>
+                                    <option value="basico"              <?= $pm === 'basico'              ? 'selected' : '' ?>>Básico</option>
+                                    <option value="intermedio"          <?= $pm === 'intermedio'          ? 'selected' : '' ?>>Intermedio</option>
+                                    <option value="avanzado"            <?= $pm === 'avanzado'            ? 'selected' : '' ?>>Avanzado</option>
+                                    <option value="certificado_externo" <?= $pm === 'certificado_externo' ? 'selected' : '' ?>>Certificado externo</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="compliance-form-row mt-4">
+                            <div class="compliance-form-cell">
+                                <label class="compliance-form-label">Fecha certificación</label>
+                                <input type="date" name="preventionModelDate" class="compliance-input" value="<?= h($config['preventionModelDate'] ?? '') ?>">
+                            </div>
+                            <div class="compliance-form-cell">
+                                <label class="compliance-form-label">Entidad certificadora</label>
+                                <input type="text" name="preventionModelCertifier" class="compliance-input" value="<?= h($config['preventionModelCertifier'] ?? '') ?>" placeholder="Nombre de la entidad">
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <!-- Checklist visual -->
+                    <div class="rounded-lg border border-border-theme bg-bg-base/40 p-4">
+                        <p class="text-[10px] font-semibold text-text-subtle uppercase tracking-wider mb-2.5">Verificación automática</p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-1.5">
+                            <?php
+                            $items = [
+                                ['DPD designado (Art. 28)', !empty($config['dpdName']) && !empty($config['dpdEmail'])],
+                                ['Contacto público (Art. 28.3)', !empty($config['dpdEmail']) || !empty($config['dpdPublicUrl'])],
+                                ['Registro APDP (Art. 31)', !empty($config['apdpRegistered']) && !empty($config['apdpRegistrationNumber'])],
+                                ['RUT empresa y DPD', !empty($config['companyRut']) && !empty($config['dpdRut'])],
+                                ['Nivel declarado', !empty($config['complianceLevel'])],
+                                ['Modelo de prevención', !empty($config['preventionModel'])],
+                            ];
+                            foreach ($items as $it): ?>
+                                <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border <?= $it[1] ? 'bg-emerald-500/[0.04] border-emerald-500/15' : 'bg-red-500/[0.03] border-red-500/15' ?>">
+                                    <span class="<?= $it[1] ? 'text-emerald-400' : 'text-red-400' ?>"><?= cIcon($it[1] ? 'check' : 'xmark', 'w-3 h-3') ?></span>
+                                    <span class="text-[10px] <?= $it[1] ? 'text-emerald-200/90' : 'text-red-200/80' ?>"><?= h($it[0]) ?></span>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-4 border-t border-border-theme/30">
+                        <p class="text-[10px] text-text-subtle">Los campos <span class="text-red-400">*</span> son obligatorios.</p>
+                        <button type="submit" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-[12px] font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white transition-all shadow-sm">
+                            <?= cIcon('check', 'w-4 h-4') ?>
+                            Guardar configuración DPD
                         </button>
                     </div>
                 </form>
