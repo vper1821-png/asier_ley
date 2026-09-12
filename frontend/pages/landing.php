@@ -72,7 +72,7 @@ if ($search !== '') {
                     <?= $s['label'] ?>
                 </button>
             <?php endforeach; ?>
-            <a href='/arco-solicitud' class='px-3 py-1.5 text-[12px] text-cyan-400 hover:text-cyan-300 hover:bg-white/[0.06] rounded-lg transition-all duration-200'>Derechos ARCO</a>
+            <a href='/mi-privacidad' class='px-3 py-1.5 text-[12px] text-cyan-400 hover:text-cyan-300 hover:bg-white/[0.06] rounded-lg transition-all duration-200'>Derechos ARCO</a>
         </nav>
 
         <div class='flex items-center gap-3'>
@@ -86,7 +86,7 @@ if ($search !== '') {
         <?php foreach ($sections as $s): ?>
             <button data-target='<?= $s['id'] ?>' class='scroll-link block w-full text-left px-3 py-2 text-[13px] text-text-muted hover:text-text-heading hover:bg-white/[0.06] rounded-lg'><?= $s['label'] ?></button>
         <?php endforeach; ?>
-        <a href='/arco-solicitud' class='block px-3 py-2 text-[13px] text-cyan-400 hover:text-cyan-300'>Derechos ARCO</a>
+        <a href='/mi-privacidad' class='block px-3 py-2 text-[13px] text-cyan-400 hover:text-cyan-300'>Derechos ARCO</a>
         <a href='/login' class='block px-3 py-2 text-[13px] text-text-body hover:text-text-heading'>Iniciar Sesión</a>
     </div>
 </header>
