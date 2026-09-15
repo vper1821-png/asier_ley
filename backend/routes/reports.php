@@ -1847,8 +1847,50 @@ function download() {
             array_column($subs, '_id')
         ))));
     }
-    $filter = $userIds === null ? [] : ['userId' => ['$in' => $userIds]];
-    $filterCompany = $userIds === null ? [] : ['companyId' => ['$in' => $userIds]];
+     $filter = $userIds === null ? [] : ['userId' => ['$in' => $userIds]];
+
+    // ✅ FIX ARCO: el campo `companyId` puede estar guardado como string O como ObjectId
+    // según cuándo se creó el registro. Se generan ambas formas y también se
+    // contempla el campo `userId` como fallback (algunos registros antiguos lo usan).
+    if ($userIds === null) {
+        $filterCompany = [];
+        $arcoOr = null;
+    } else {
+        $arcoOr = [];
+        $seenArco = [];
+        foreach ($userIds as $cid) {
+            $cidStr = (string)$cid;
+            if ($cidStr === '') continue;
+
+            // companyId como string
+            $key = 's:' . $cidStr;
+            if (!isset($seenArco[$key])) {
+                $arcoOr[] = ['companyId' => $cidStr];
+                $seenArco[$key] = true;
+            }
+
+            // companyId como ObjectId (si parece un ObjectId válido)
+            if (preg_match('/^[0-9a-fA-F]{24}$/', $cidStr) && class_exists('MongoDB\BSON\ObjectId')) {
+                $key = 'o:' . $cidStr;
+                if (!isset($seenArco[$key])) {
+                    try {
+                        $arcoOr[] = ['companyId' => new MongoDB\BSON\ObjectId($cidStr)];
+                        $seenArco[$key] = true;
+                    } catch (\Throwable $e) { /* ignorar */ }
+                }
+            }
+
+            // Fallback: algunos registros guardan el ID en `userId`
+            $key = 'u:' . $cidStr;
+            if (!isset($seenArco[$key])) {
+                $arcoOr[] = ['userId' => $cidStr];
+                $seenArco[$key] = true;
+            }
+        }
+        $filterCompany = empty($arcoOr)
+            ? ['companyId' => ['$in' => []]]   // array vacío: no matchea nada
+            : ['$or' => $arcoOr];
+    }
 
     // Recolectar data
     $config = $db->findOne('compliance_config', $filter) ?? [];
@@ -1867,7 +1909,15 @@ function download() {
     $invites          = $db->find('compliance_invites', $filter);
     $breachProtocol   = $db->findOne('compliance_breach_protocol', $filter) ?? [];
     $incidentResponse = $db->findOne('compliance_incident_response', $filter) ?? [];
-    $arcoRequests     = $db->find('arco_requests', $filterCompany);
+    if ($userIds === null) {
+        $arcoRequests = $db->find('arco_requests', []);
+    } else {
+        $arcoRequests = $db->find('arco_requests', $filterCompany);
+        // Fallback adicional: si aún no aparecen, intentar por userId de la empresa
+        if (empty($arcoRequests)) {
+            $arcoRequests = $db->find('arco_requests', ['userId' => ['$in' => $userIds]]);
+        }
+    }
     $auditLogs        = $db->find('audit_logs', $filter, ['limit' => 50]);
     $fileEvents       = $db->find('file_events', $filter, ['limit' => 100]);
     $dbLogs           = $db->find('database_logs', $filter, ['limit' => 100]);
