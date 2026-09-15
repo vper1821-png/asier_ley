@@ -1413,7 +1413,16 @@ function build_compliance_report_html(array $d, array $metrics, array $obligacio
         foreach (array_slice($d['arcoRequests'], 0, 15) as $i => $r) {
             $sol = bsonToArray($r['solicitante'] ?? null);
             $tipo = $typeLabels[$r['tipo'] ?? $r['type'] ?? ''] ?? ucfirst(bsonToString($r['tipo'] ?? $r['type'] ?? '—'));
-            $status = in_array($r['status'] ?? '', ['resolved','completed'], true) ? 'CUMPLE' : 'PENDIENTE VALIDACION';
+            $arcoStatus = (string)($r['status'] ?? '');
+            if (in_array($arcoStatus, ['resolved','completed','finished'], true)) {
+                $status = 'CUMPLE';
+            } elseif ($arcoStatus === 'rejected') {
+                $status = 'NO APLICA';         // rechazada fundadamente = cerrada, no cuenta como incumplimiento
+            } elseif ($arcoStatus === 'in_progress') {
+                $status = 'PARCIAL';           // en trámite
+            } else {
+                $status = 'PENDIENTE VALIDACION'; // pending
+            }
             $rows[] = [
                 'DSR-' . str_pad((string)($i + 1), 3, '0', STR_PAD_LEFT),
                 h_($tipo),
@@ -1941,7 +1950,9 @@ function download() {
     $approvedDpias      = count(array_filter($dpias, fn($d) => ($d['status'] ?? '') === 'approved'));
     $activeDpas         = count(array_filter($dpas, fn($d) => ($d['status'] ?? '') === 'active'));
     $executedPseudo     = count(array_filter($pseudoRules, fn($r) => ($r['status'] ?? '') === 'executed' || !empty($r['executed'])));
-    $resolvedArco       = count(array_filter($arcoRequests, fn($r) => in_array($r['status'] ?? '', ['resolved','completed'], true)));
+    $resolvedArco       = count(array_filter($arcoRequests, fn($r) =>
+        in_array($r['status'] ?? '', ['resolved','completed','finished'], true)
+    ));
 
     // Flags
     $hasDpd              = !empty($config['dpdEmail']) && !empty($config['dpdName']);
