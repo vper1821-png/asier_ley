@@ -217,35 +217,140 @@ func scanXML(path string) (map[string][]string, error) {
 	return result, nil
 }
 
-// scanPDF extrae el texto real del PDF (descomprimiendo los streams FlateDecode)
-// y aplica los patrones de PII sobre texto legible, no sobre bytes binarios.
+// scanPDF analiza un PDF en 6 niveles de fallback para cubrir todos los casos:
+//  1. PDF cifrado con contraseña → pdf_cifrado
+//  2. ledongthuc/pdf → PDFs estándar
+//  3. ExtractPDFText propio → Form XObjects, Identity-H, subsets SII
+//  4. DeShiftPDFText → encoding desplazado (DTEs con fuentes custom)
+//  5. Bytes crudos → RUT en claro en metadata o streams sin comprimir
+//  6. Estructura → pdf_escaneado si solo hay imágenes, documento_no_analizable en otro caso
 func scanPDF(path string) (map[string][]string, error) {
-	// 1) Detectar PDF cifrado ANTES de intentar abrirlo.
+	// 1) PDF cifrado con contraseña
 	if isEncryptedPDF(path) {
 		return map[string][]string{
 			"content": {"pdf_cifrado"},
 		}, nil
 	}
 
+	// 2) Analizar estructura del PDF para saber si tiene imágenes y/o texto
+	structure := analyzePDFStructure(path)
+
+	// 3) Intento 1: ledongthuc/pdf (rápido, bueno para PDFs estándar)
+	if text := extractPDFWithLedongthuc(path); len(text) > 50 {
+		result := detectFromText(text)
+		if len(result) > 0 {
+			return result, nil
+		}
+	}
+
+	// 4) Intento 2: extractor propio (maneja Form XObjects, Identity-H, subsets SII)
+	if text, err := ExtractPDFText(path); err == nil && len(text) > 20 {
+		// Intentar des-ofuscar texto con encoding desplazado (SII)
+		text = DeShiftPDFText(text)
+		result := detectFromText(text)
+		if len(result) > 0 {
+			return result, nil
+		}
+	}
+
+	// 5) Intento 3: bytes crudos (RUT en claro en metadata o streams sin comprimir)
+	if result := scanPDFRawBytes(path); len(result) > 0 {
+		return result, nil
+	}
+
+	// 6) No se pudo extraer texto. ¿Es un PDF escaneado?
+	if structure.hasImages && !structure.hasTextContent {
+		return map[string][]string{
+			"content": {"pdf_escaneado"},
+		}, nil
+	}
+
+	// 7) Fallback final: no auditable por razones desconocidas
+	return map[string][]string{
+		"content": {"documento_no_analizable"},
+	}, nil
+}
+
+// detectFromText aplica DetectPersonalData y devuelve el map en el formato
+// que espera scanFileAndReport.
+func detectFromText(text string) map[string][]string {
+	result := make(map[string][]string)
+	cats := DetectPersonalData(text)
+	for cat := range cats {
+		result["content"] = append(result["content"], cat)
+	}
+	return result
+}
+
+// pdfStructure describe las características del PDF que nos interesan
+// para decidir si es un escaneo o un PDF con texto.
+type pdfStructure struct {
+	hasImages      bool
+	hasFonts       bool
+	hasTextContent bool
+	imageCount     int
+	textStreams    int
+}
+
+// analyzePDFStructure lee los bytes crudos del PDF y busca marcadores
+// para determinar si es un escaneo (solo imágenes) o tiene texto real.
+func analyzePDFStructure(path string) pdfStructure {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return pdfStructure{}
+	}
+	s := string(raw)
+	var st pdfStructure
+
+	// Imágenes
+	st.imageCount = strings.Count(s, "/Subtype /Image") + strings.Count(s, "/Subtype/Image")
+	st.hasImages = st.imageCount > 0
+
+	// Filtros típicos de imágenes escaneadas
+	if strings.Contains(s, "/DCTDecode") ||
+		strings.Contains(s, "/CCITTFaxDecode") ||
+		strings.Contains(s, "/JBIG2Decode") ||
+		strings.Contains(s, "/JPXDecode") {
+		st.hasImages = true
+	}
+
+	// Fuentes
+	st.hasFonts = strings.Contains(s, "/Font") ||
+		strings.Contains(s, "/BaseFont") ||
+		strings.Contains(s, "/FontFile")
+
+	// Operadores de texto en streams sin comprimir
+	st.textStreams = strings.Count(s, " Tj") +
+		strings.Count(s, " TJ") +
+		strings.Count(s, " BT")
+	st.hasTextContent = st.textStreams > 0
+
+	return st
+}
+
+// scanPDFRawBytes lee el PDF completo como bytes y aplica los patrones
+// directamente sobre el binario.
+func scanPDFRawBytes(path string) map[string][]string {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	return detectFromText(string(raw))
+}
+
+// extractPDFWithLedongthuc encapsula la llamada a la librería externa.
+func extractPDFWithLedongthuc(path string) string {
 	f, r, err := pdf.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("abriendo PDF %s: %w", path, err)
+		return ""
 	}
 	defer f.Close()
 
-	var buf bytes.Buffer
-
-	const (
-		maxTotalBytes = 5 * 1024 * 1024 // 5 MB de texto acumulado
-		maxPages      = 100             // primeras 100 páginas
-		maxPageBytes  = 200 * 1024      // 200 KB por página
-	)
-
+	var buf strings.Builder
 	total := r.NumPage()
-	if total > maxPages {
-		total = maxPages
+	if total > 100 {
+		total = 100
 	}
-
 	for i := 1; i <= total; i++ {
 		p := r.Page(i)
 		if p.V.IsNull() {
@@ -255,26 +360,13 @@ func scanPDF(path string) (map[string][]string, error) {
 		if err != nil {
 			continue
 		}
-		if len(text) > maxPageBytes {
-			text = text[:maxPageBytes]
-		}
 		buf.WriteString(text)
 		buf.WriteString("\n")
-		if buf.Len() >= maxTotalBytes {
+		if buf.Len() >= 5*1024*1024 {
 			break
 		}
 	}
-
-	if buf.Len() == 0 {
-		return nil, nil
-	}
-
-	result := make(map[string][]string)
-	cats := DetectPersonalData(buf.String())
-	for cat := range cats {
-		result["content"] = append(result["content"], cat)
-	}
-	return result, nil
+	return buf.String()
 }
 
 // isEncryptedPDF busca /Encrypt en el archivo.

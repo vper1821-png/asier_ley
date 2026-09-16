@@ -357,9 +357,7 @@ func GetDetectedCategories(text string) []string {
 	return cats
 }
 
-// HasSensitiveData verifica si hay datos sensibles (categorías críticas).
-// Incluye tanto datos personales sensibles (Ley 21.719) como datos
-// identificatorios/contacto que obligan a reportar.
+// HasSensitiveData verifica si hay datos sensibles (categorías críticas)
 func HasSensitiveData(cats map[string]bool) bool {
 	sensitiveCats := map[string]bool{
 		// Datos sensibles en sentido estricto (Ley 21.719)
@@ -381,14 +379,16 @@ func HasSensitiveData(cats map[string]bool) bool {
 		"nombre": true, "razon_social": true,
 		"nacionalidad": true, "hijos": true, "seguro": true, "patrimonio": true,
 
-		// Vehicular y chofer (guías de despacho)
+		// Vehicular y chofer
 		"vehicular": true, "chofer": true,
 
-		// Documentos tributarios (por sí solos ya son sensibles por contener PII)
+		// Documentos tributarios
 		"documento_tributario": true,
 
-		// PDF cifrado (no auditable → se reporta por precaución)
-		"pdf_cifrado": true,
+		// PDFs especiales que requieren revisión
+		"pdf_cifrado":             true, // con contraseña, no auditable
+		"pdf_escaneado":           true, // solo imágenes, requiere OCR
+		"documento_no_analizable": true, // falló la extracción por otra razón
 	}
 	for cat := range cats {
 		if sensitiveCats[cat] {
