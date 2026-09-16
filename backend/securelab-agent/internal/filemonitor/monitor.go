@@ -284,34 +284,17 @@ func isScannableFile(path string) bool {
 	return false
 }
 
-// hasSensitiveData determina si los datos personales incluyen categorías sensibles
+// hasSensitiveData determina si los datos personales incluyen categorías sensibles.
+// Delegamos en scanner.HasSensitiveData para tener UNA SOLA fuente de verdad
+// entre el escaneo inicial y el monitor en tiempo real.
 func hasSensitiveData(data map[string][]string) bool {
-	sensitiveCategories := map[string]bool{
-		"salud":        true,
-		"biometrico":   true,
-		"bancario":     true,
-		"credencial":   true,
-		"genero":       true,
-		"religion":     true,
-		"politico":     true,
-		"sindical":     true,
-		"judicial":     true,
-		"conyuge":      true,
-		"hijos":        true,
-		"seguro":       true,
-		"foto":         true,
-		"nacionalidad": true,
-		"patrimonio":   true,
-		"financiero":   true,
-	}
-	for _, cats := range data {
-		for _, cat := range cats {
-			if sensitiveCategories[cat] {
-				return true
-			}
+	cats := make(map[string]bool)
+	for _, list := range data {
+		for _, c := range list {
+			cats[c] = true
 		}
 	}
-	return false
+	return scanner.HasSensitiveData(cats)
 }
 
 // Stop detiene el monitor y espera a que terminen todas las goroutines

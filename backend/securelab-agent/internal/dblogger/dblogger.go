@@ -11,34 +11,33 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/event"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // DBLogger captura todas las consultas de MongoDB incluyendo las del usuario root
 type DBLogger struct {
-	client     *mongo.Client
-	enabled    bool
-	bufferSize int
-	logs       []DBLog
-	mu         sync.Mutex
+	client      *mongo.Client
+	enabled     bool
+	bufferSize  int
+	logs        []DBLog
+	mu          sync.Mutex
 	apiEndpoint string
 	apiToken    string
 }
 
 // DBLog representa un log de consulta de base de datos
 type DBLog struct {
-	Timestamp   time.Time              `json:"timestamp"`
-	Operation   string                 `json:"operation"`   // find, insert, update, delete, etc.
-	Collection  string                 `json:"collection"`
-	Database    string                 `json:"database"`
-	Query       map[string]interface{} `json:"query,omitempty"`
-	Update      map[string]interface{} `json:"update,omitempty"`
-	Document    map[string]interface{} `json:"document,omitempty"`
-	Duration    int64                  `json:"duration_ms"` // Duración en milisegundos
-	Success     bool                   `json:"success"`
-	Error       string                 `json:"error,omitempty"`
-	User        string                 `json:"user,omitempty"` // Usuario que ejecutó la consulta
-	ConnectionID string                `json:"connection_id,omitempty"`
+	Timestamp    time.Time              `json:"timestamp"`
+	Operation    string                 `json:"operation"`
+	Collection   string                 `json:"collection"`
+	Database     string                 `json:"database"`
+	Query        map[string]interface{} `json:"query,omitempty"`
+	Update       map[string]interface{} `json:"update,omitempty"`
+	Document     map[string]interface{} `json:"document,omitempty"`
+	Duration     int64                  `json:"duration_ms"`
+	Success      bool                   `json:"success"`
+	Error        string                 `json:"error,omitempty"`
+	User         string                 `json:"user,omitempty"`
+	ConnectionID string                 `json:"connection_id,omitempty"`
 }
 
 // Config para configurar el DBLogger
@@ -54,7 +53,6 @@ func NewDBLogger(config Config) *DBLogger {
 	if config.BufferSize <= 0 {
 		config.BufferSize = 1000
 	}
-
 	return &DBLogger{
 		enabled:     config.Enabled,
 		bufferSize:  config.BufferSize,
@@ -64,33 +62,40 @@ func NewDBLogger(config Config) *DBLogger {
 	}
 }
 
-// MonitorClient configura el monitor de eventos en el cliente MongoDB
-func (db *DBLogger) MonitorClient(client *mongo.Client) error {
+// NewCommandMonitor devuelve el *event.CommandMonitor que debe pasarse a
+// options.Client().SetMonitor(...) al construir el cliente Mongo.
+// Esta es la forma correcta: NO se crea un cliente nuevo desde el DBLogger,
+// se engancha al cliente que ya tiene el agente.
+func (db *DBLogger) NewCommandMonitor() *event.CommandMonitor {
 	if !db.enabled {
 		return nil
 	}
 
-	db.client = client
-
-	// Configurar command started listener
 	cmdStarted := make(chan *event.CommandStartedEvent, 1000)
 	cmdSucceeded := make(chan *event.CommandSucceededEvent, 1000)
 	cmdFailed := make(chan *event.CommandFailedEvent, 1000)
 
-	// Configurar el monitor de comandos
-	opts := options.Client().
-		SetMonitor(&event.CommandMonitor{
-			Started:   func(ctx context.Context, evt *event.CommandStartedEvent) { cmdStarted <- evt },
-			Succeeded: func(ctx context.Context, evt *event.CommandSucceededEvent) { cmdSucceeded <- evt },
-			Failed:    func(ctx context.Context, evt *event.CommandFailedEvent) { cmdFailed <- evt },
-		})
-
-	// Iniciar goroutines para procesar eventos
 	go db.processCommandStarted(cmdStarted)
 	go db.processCommandSucceeded(cmdSucceeded)
 	go db.processCommandFailed(cmdFailed)
 
-	log.Println("[DBLogger] MongoDB monitoring enabled")
+	log.Println("[DBLogger] MongoDB command monitor ready")
+	return &event.CommandMonitor{
+		Started:   func(_ context.Context, evt *event.CommandStartedEvent) { cmdStarted <- evt },
+		Succeeded: func(_ context.Context, evt *event.CommandSucceededEvent) { cmdSucceeded <- evt },
+		Failed:    func(_ context.Context, evt *event.CommandFailedEvent) { cmdFailed <- evt },
+	}
+}
+
+// MonitorClient deja el cliente registrado y (si no se usó NewCommandMonitor)
+// avisa por log que hay que enganchar el monitor manualmente con
+// options.Client().SetMonitor(db.NewCommandMonitor()).
+func (db *DBLogger) MonitorClient(client *mongo.Client) error {
+	if !db.enabled {
+		return nil
+	}
+	db.client = client
+	log.Println("[DBLogger] client registrado. Asegúrate de pasar NewCommandMonitor() a options.Client().SetMonitor(...)")
 	return nil
 }
 
@@ -98,37 +103,67 @@ func (db *DBLogger) MonitorClient(client *mongo.Client) error {
 func (db *DBLogger) processCommandStarted(ch <-chan *event.CommandStartedEvent) {
 	for evt := range ch {
 		logEntry := DBLog{
-			Timestamp:   time.Now(),
-			Operation:   evt.CommandName,
-			Database:    evt.DatabaseName,
+			Timestamp:    time.Now(),
+			Operation:    evt.CommandName,
+			Database:     evt.DatabaseName,
 			ConnectionID: evt.ConnectionID,
 		}
 
-		// Extraer colección y query del comando
-		if collection, ok := evt.Command["insert"].(string); ok {
-			logEntry.Collection = collection
-		}
-		if collection, ok := evt.Command["find"].(string); ok {
-			logEntry.Collection = collection
-		}
-		if collection, ok := evt.Command["update"].(string); ok {
-			logEntry.Collection = collection
-		}
-		if collection, ok := evt.Command["delete"].(string); ok {
-			logEntry.Collection = collection
+		// evt.Command es bson.Raw en versiones modernas → hay que deserializar.
+		// También soportamos el caso antiguo donde ya es bson.M.
+		var cmd bson.M
+		switch raw := interface{}(evt.Command).(type) {
+		case bson.M:
+			cmd = raw
+		case bson.Raw:
+			if err := bson.Unmarshal(raw, &cmd); err != nil {
+				// no se pudo deserializar, aún así registramos la operación básica
+				db.addLog(logEntry)
+				continue
+			}
+		case []byte:
+			if err := bson.Unmarshal(raw, &cmd); err != nil {
+				db.addLog(logEntry)
+				continue
+			}
+		default:
+			db.addLog(logEntry)
+			continue
 		}
 
-		// Extraer query si existe
-		if query, ok := evt.Command["filter"].(bson.M); ok {
-			logEntry.Query = bsonToMap(query)
+		// Extraer colección
+		for _, key := range []string{"insert", "find", "update", "delete", "aggregate", "count", "distinct", "findAndModify"} {
+			if coll, ok := cmd[key].(string); ok && coll != "" {
+				logEntry.Collection = coll
+				break
+			}
 		}
 
-		// Extraer update si existe
-		if update, ok := evt.Command["updates"].(bson.A); ok && len(update) > 0 {
-			if u, ok := update[0].(bson.M); ok {
-				if upd, ok := u["u"].(bson.M); ok {
-					logEntry.Update = bsonToMap(upd)
+		// Extraer filtro de find / delete / update
+		if filter, ok := cmd["filter"].(bson.M); ok {
+			logEntry.Query = bsonToMap(filter)
+		} else if filter, ok := cmd["filter"].(bson.D); ok {
+			logEntry.Query = bsonDToMap(filter)
+		}
+
+		// Extraer updates[0].u (update document)
+		if updates, ok := cmd["updates"].(bson.A); ok && len(updates) > 0 {
+			if u, ok := updates[0].(bson.M); ok {
+				if doc, ok := u["u"].(bson.M); ok {
+					logEntry.Update = bsonToMap(doc)
+				} else if doc, ok := u["u"].(bson.D); ok {
+					logEntry.Update = bsonDToMap(doc)
 				}
+			}
+		}
+
+		// Extraer documents (insert)
+		if documents, ok := cmd["documents"].(bson.A); ok && len(documents) > 0 {
+			switch d := documents[0].(type) {
+			case bson.M:
+				logEntry.Document = bsonToMap(d)
+			case bson.D:
+				logEntry.Document = bsonDToMap(d)
 			}
 		}
 
@@ -136,14 +171,13 @@ func (db *DBLogger) processCommandStarted(ch <-chan *event.CommandStartedEvent) 
 	}
 }
 
-// processCommandSucceeded procesa eventos de comando exitoso
+// processCommandSucceeded actualiza duración y marca éxito
 func (db *DBLogger) processCommandSucceeded(ch <-chan *event.CommandSucceededEvent) {
 	for evt := range ch {
 		db.mu.Lock()
-		// Buscar el log correspondiente y actualizar duración
 		for i := len(db.logs) - 1; i >= 0; i-- {
 			if db.logs[i].ConnectionID == evt.ConnectionID && db.logs[i].Duration == 0 {
-				db.logs[i].Duration = evt.Duration.Nanoseconds() / 1e6 // Convertir a milisegundos
+				db.logs[i].Duration = evt.Duration.Nanoseconds() / 1e6
 				db.logs[i].Success = true
 				break
 			}
@@ -152,16 +186,26 @@ func (db *DBLogger) processCommandSucceeded(ch <-chan *event.CommandSucceededEve
 	}
 }
 
-// processCommandFailed procesa eventos de comando fallido
+// processCommandFailed marca fallo. En versiones recientes Failure es string,
+// en otras es error → usamos un type switch defensivo.
 func (db *DBLogger) processCommandFailed(ch <-chan *event.CommandFailedEvent) {
 	for evt := range ch {
+		var failureMsg string
+		switch f := interface{}(evt.Failure).(type) {
+		case string:
+			failureMsg = f
+		case error:
+			failureMsg = f.Error()
+		default:
+			failureMsg = fmt.Sprintf("%v", f)
+		}
+
 		db.mu.Lock()
-		// Buscar el log correspondiente y marcar como fallido
 		for i := len(db.logs) - 1; i >= 0; i-- {
 			if db.logs[i].ConnectionID == evt.ConnectionID && db.logs[i].Duration == 0 {
 				db.logs[i].Duration = evt.Duration.Nanoseconds() / 1e6
 				db.logs[i].Success = false
-				db.logs[i].Error = evt.Failure.Error()
+				db.logs[i].Error = failureMsg
 				break
 			}
 		}
@@ -170,13 +214,10 @@ func (db *DBLogger) processCommandFailed(ch <-chan *event.CommandFailedEvent) {
 }
 
 // addLog agrega un log al buffer
-func (db *DBLogger) addLog(log DBLog) {
+func (db *DBLogger) addLog(entry DBLog) {
 	db.mu.Lock()
 	defer db.mu.Unlock()
-
-	db.logs = append(db.logs, log)
-
-	// Si el buffer está lleno, enviar al servidor
+	db.logs = append(db.logs, entry)
 	if len(db.logs) >= db.bufferSize {
 		go db.sendLogs()
 	}
@@ -189,59 +230,59 @@ func (db *DBLogger) sendLogs() error {
 		db.mu.Unlock()
 		return nil
 	}
-
 	logsCopy := make([]DBLog, len(db.logs))
 	copy(logsCopy, db.logs)
 	db.logs = make([]DBLog, 0, db.bufferSize)
 	db.mu.Unlock()
 
 	if db.apiEndpoint == "" {
-		log.Printf("[DBLogger] No API endpoint configured, skipping log upload")
+		log.Printf("[DBLogger] No API endpoint configured, skipping log upload (%d entries)", len(logsCopy))
 		return nil
 	}
-
-	// Aquí se implementaría el envío al servidor
-	// Por ahora solo logueamos
 	log.Printf("[DBLogger] Would send %d logs to %s", len(logsCopy), db.apiEndpoint)
-
 	return nil
 }
 
-// Flush envía todos los logs pendientes
-func (db *DBLogger) Flush() error {
-	return db.sendLogs()
-}
+func (db *DBLogger) Flush() error { return db.sendLogs() }
 
-// GetLogs retorna una copia de los logs actuales
 func (db *DBLogger) GetLogs() []DBLog {
 	db.mu.Lock()
 	defer db.mu.Unlock()
-
-	logsCopy := make([]DBLog, len(db.logs))
-	copy(logsCopy, db.logs)
-	return logsCopy
+	out := make([]DBLog, len(db.logs))
+	copy(out, db.logs)
+	return out
 }
 
-// bsonToMap convierte bson.M a map[string]interface{}
+// ---- Helpers de conversión BSON ----
+
 func bsonToMap(m bson.M) map[string]interface{} {
-	result := make(map[string]interface{})
+	result := make(map[string]interface{}, len(m))
 	for k, v := range m {
 		result[k] = convertBSONValue(v)
 	}
 	return result
 }
 
-// convertBSONValue convierte valores BSON a tipos JSON serializables
+func bsonDToMap(d bson.D) map[string]interface{} {
+	result := make(map[string]interface{}, len(d))
+	for _, e := range d {
+		result[e.Key] = convertBSONValue(e.Value)
+	}
+	return result
+}
+
 func convertBSONValue(v interface{}) interface{} {
 	switch val := v.(type) {
 	case bson.M:
 		return bsonToMap(val)
+	case bson.D:
+		return bsonDToMap(val)
 	case bson.A:
-		result := make([]interface{}, len(val))
+		out := make([]interface{}, len(val))
 		for i, item := range val {
-			result[i] = convertBSONValue(item)
+			out[i] = convertBSONValue(item)
 		}
-		return result
+		return out
 	case primitive.DateTime:
 		return val.Time()
 	case primitive.Timestamp:
@@ -251,19 +292,6 @@ func convertBSONValue(v interface{}) interface{} {
 	}
 }
 
-// Enable habilita el logging
-func (db *DBLogger) Enable() {
-	db.enabled = true
-	log.Println("[DBLogger] Enabled")
-}
-
-// Disable deshabilita el logging
-func (db *DBLogger) Disable() {
-	db.enabled = false
-	log.Println("[DBLogger] Disabled")
-}
-
-// IsEnabled retorna si el logging está habilitado
-func (db *DBLogger) IsEnabled() bool {
-	return db.enabled
-}
+func (db *DBLogger) Enable()         { db.enabled = true; log.Println("[DBLogger] Enabled") }
+func (db *DBLogger) Disable()        { db.enabled = false; log.Println("[DBLogger] Disabled") }
+func (db *DBLogger) IsEnabled() bool { return db.enabled }

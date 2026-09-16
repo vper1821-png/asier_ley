@@ -10,9 +10,9 @@ import (
 var PersonalDataPatterns = map[string][]string{
 	// Identificación
 	"rut": {
-		`\b\d{1,2}\.\d{3}\.\d{3}[-][0-9kK]\b`,                              // RUT estándar: 12.345.678-9
-		`\b\d{7,8}[-][0-9kK]\b`,                                             // RUT sin puntos: 12345678-9
-		`\b\d{1,2}\.\d{3}\.\d{3}\.\d{3}[-][0-9kK]\b`,                        // RUT con 4 grupos
+		`\b\d{1,2}\.\d{3}\.\d{3}[-][0-9kK]\b`,        // RUT estándar: 12.345.678-9
+		`\b\d{7,8}[-][0-9kK]\b`,                      // RUT sin puntos: 12345678-9
+		`\b\d{1,2}\.\d{3}\.\d{3}\.\d{3}[-][0-9kK]\b`, // RUT con 4 grupos
 		`(?i)\brut\b`, `(?i)\brun\b`, `(?i)\bdni\b`, `(?i)\bcedula\b`, `(?i)\bdocumento\b`, `(?i)\bid_number\b`,
 	},
 	"pasaporte": {
@@ -30,9 +30,9 @@ var PersonalDataPatterns = map[string][]string{
 		`(?i)\bemail\b`, `(?i)\bmail\b`, `(?i)\bcorreo\b`, `(?i)\bemail_address\b`,
 	},
 	"telefono_chile": {
-		`\b(\+56|0056)?\s*9\s*\d{4}\s*\d{4}\b`,      // Celular: +56 9 XXXX XXXX
-		`\b(\+56|0056)?\s*[2-7]\s*\d{3}\s*\d{4}\b`,   // Fijo: +56 2 XXXX XXXX
-		`\b\d{4}[-\s]\d{4}\b`,                         // XXXX-XXXX
+		`\b(\+56|0056)?\s*9\s*\d{4}\s*\d{4}\b`,     // Celular: +56 9 XXXX XXXX
+		`\b(\+56|0056)?\s*[2-7]\s*\d{3}\s*\d{4}\b`, // Fijo: +56 2 XXXX XXXX
+		`\b\d{4}[-\s]\d{4}\b`,                      // XXXX-XXXX
 		`(?i)\btelefono\b`, `(?i)\bphone\b`, `(?i)\bmobile\b`, `(?i)\bcelular\b`,
 	},
 
@@ -40,10 +40,10 @@ var PersonalDataPatterns = map[string][]string{
 	"direccion": {
 		`(?i)\b(calle|av|avenida|pasaje|pje|pasaje)\s+[a-záéíóúñ]+\s+\d+\b`,
 		`(?i)\b(calle|av|avenida|pasaje|pje)\s+\d+\s+[a-záéíóúñ]+\b`,
-		`\b\d{3,5}\s+[a-záéíóúñ\s]{5,}\b`,            // Número + nombre calle
+		`\b\d{3,5}\s+[a-záéíóúñ\s]{5,}\b`, // Número + nombre calle
 		`(?i)\b(region|región|comuna|ciudad)\s+[a-záéíóúñ]+\b`,
 		`(?i)\bdireccion\b`, `(?i)\baddress\b`, `(?i)\bdomicilio\b`,
-		`(?i)\bcp\b\s*\d{7}`,                          // Código postal Chile: 7 dígitos
+		`(?i)\bcp\b\s*\d{7}`, // Código postal Chile: 7 dígitos
 		`\b\d{7}\b`,
 	},
 
@@ -69,8 +69,8 @@ var PersonalDataPatterns = map[string][]string{
 	// Financiero
 	"bancario": {
 		`\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b`, // Tarjeta 16 dígitos
-		`\b\d{4}[-\s]?\d{6}[-\s]?\d{5}\b`,             // AMEX
-		`\b(?:4|5|3[47]|6)\d{12,15}\b`,                // Visa/MC/Amex/Discover
+		`\b\d{4}[-\s]?\d{6}[-\s]?\d{5}\b`,            // AMEX
+		`\b(?:4|5|3[47]|6)\d{12,15}\b`,               // Visa/MC/Amex/Discover
 		`(?i)\bcuenta\b.*\bcorriente\b`, `(?i)\bcuenta\b.*\bvista\b`,
 		`(?i)\bbanco\b`, `(?i)\bbank\b`, `(?i)\bcredit_card\b`, `(?i)\btarjeta\b`,
 		`(?i)\biban\b`, `(?i)\bswift\b`, `(?i)\bclabe\b`,
@@ -116,8 +116,8 @@ var PersonalDataPatterns = map[string][]string{
 
 	// Vehicular
 	"vehicular": {
-		`\b[A-Z]{2}[-\s]\d{2}[-\s][A-Z]{2}\b`,   // Patente antigua: AA-12-BB
-		`\b[A-Z]{4}[-\s]\d{2}\b`,                  // Patente nueva: ABCD-12
+		`\b[A-Z]{2}[-\s]\d{2}[-\s][A-Z]{2}\b`, // Patente antigua: AA-12-BB
+		`\b[A-Z]{4}[-\s]\d{2}\b`,              // Patente nueva: ABCD-12
 		`(?i)\bpatente\b`, `(?i)\bvehiculo\b`, `(?i)\bauto\b`, `(?i)\bmoto\b`,
 	},
 
@@ -218,11 +218,20 @@ func GetDetectedCategories(text string) []string {
 // HasSensitiveData verifica si hay datos sensibles (categorías críticas)
 func HasSensitiveData(cats map[string]bool) bool {
 	sensitiveCats := map[string]bool{
-		"rut": true, "pasaporte": true, "licencia_conducir": true,
-		"email": true, "telefono_chile": true, "direccion": true,
+		// Datos sensibles en sentido estricto (Ley 21.719)
 		"salud": true, "biometrico": true,
+		// Identificación directa (permiten identificar a la persona)
+		"rut": true, "pasaporte": true, "licencia_conducir": true,
+		// Contacto (permiten localizar/acosar)
+		"email": true, "telefono_chile": true, "direccion": true,
+		// Financiero y credenciales
 		"bancario": true, "credencial": true,
+		// Judicial (dato sensible en la práctica)
 		"legal": true,
+		// Cobertura previa: mantener categorías que ya se consideraban sensibles
+		"hijos": true, "seguro": true, "nacionalidad": true, "patrimonio": true,
+		// PDF cifrado (no podemos auditar su contenido → se reporta por precaución)
+		"pdf_cifrado": true,
 	}
 	for cat := range cats {
 		if sensitiveCats[cat] {

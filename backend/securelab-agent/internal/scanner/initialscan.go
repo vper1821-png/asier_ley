@@ -41,7 +41,7 @@ func DefaultInitialScanConfig() *InitialScanConfig {
 		MaxDepth:          10,
 		ScanTimeout:       30 * time.Minute,
 		FileTimeout:       30 * time.Second,
-		MinFileSize:       10,              // 10 bytes mínimo
+		MinFileSize:       10,                // 10 bytes mínimo
 		MaxFileSize:       100 * 1024 * 1024, // 100 MB
 		Extensions:        []string{".xlsx", ".xls", ".csv", ".txt", ".json", ".xml", ".pdf", ".doc", ".docx"},
 		SkipHidden:        true,
@@ -52,17 +52,17 @@ func DefaultInitialScanConfig() *InitialScanConfig {
 
 // ScanResult contiene el resultado de un archivo escaneado
 type ScanResult struct {
-	Path          string
-	RelativePath  string
-	Size          int64
-	Extension     string
-	Categories    map[string]bool
-	HasSensitive  bool
-	PersonalData  map[string][]string
-	Hash          string
-	Error         string
-	ScannedAt     time.Time
-	ModifiedAt    time.Time
+	Path         string
+	RelativePath string
+	Size         int64
+	Extension    string
+	Categories   map[string]bool
+	HasSensitive bool
+	PersonalData map[string][]string
+	Hash         string
+	Error        string
+	ScannedAt    time.Time
+	ModifiedAt   time.Time
 }
 
 // InitialInventoryItem representa un archivo en el inventario de la empresa
@@ -306,7 +306,7 @@ func walkAndSend(scanCtx context.Context, scanDirs []string, config *InitialScan
 				}
 
 				// Saltar directorios del sistema/ocultos
-				if shouldSkipDir(path, d, config) {
+				if shouldSkipDir(path, config) {
 					return fs.SkipDir
 				}
 
@@ -375,11 +375,10 @@ func isHidden(path string) bool {
 	return false
 }
 
-func shouldSkipDir(path string, d fs.DirEntry, config *InitialScanConfig) bool {
+func shouldSkipDir(path string, config *InitialScanConfig) bool {
 	name := strings.ToLower(filepath.Base(path))
 
 	if config.SkipSystem {
-		// Directorios comunes del sistema o sin interés
 		systemDirs := map[string]bool{
 			"windows": true, "winnt": true, "program files": true, "program files (x86)": true,
 			"system32": true, "syswow64": true, "config": true, "appdata": true,
@@ -556,7 +555,7 @@ func computeScanDirectories(log *logger.Logger) []string {
 }
 
 // Funciones auxiliares (deben estar en config.go o agente)
-func getAgentID() string { return "unknown" }
-func getUserID() string       { return "unknown" }
-func getCompanyID() string    { return "unknown" }
-func getHostname() string     { return "unknown" }
+func getAgentID() string   { return "unknown" }
+func getUserID() string    { return "unknown" }
+func getCompanyID() string { return "unknown" }
+func getHostname() string  { return "unknown" }

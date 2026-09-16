@@ -3,6 +3,7 @@ package scanner
 import (
 	"archive/zip"
 	"bufio"
+	"bytes"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ledongthuc/pdf"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -215,42 +217,106 @@ func scanXML(path string) (map[string][]string, error) {
 	return result, nil
 }
 
+// scanPDF extrae el texto real del PDF (descomprimiendo los streams FlateDecode)
+// y aplica los patrones de PII sobre texto legible, no sobre bytes binarios.
 func scanPDF(path string) (map[string][]string, error) {
-	// Leer como texto plano (limitado - PDF binario)
-	f, err := os.Open(path)
+	// 1) Detectar PDF cifrado ANTES de intentar abrirlo.
+	if isEncryptedPDF(path) {
+		return map[string][]string{
+			"content": {"pdf_cifrado"},
+		}, nil
+	}
+
+	f, r, err := pdf.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("abriendo PDF %s: %w", path, err)
 	}
 	defer f.Close()
 
-	// Leer primeros 10KB para detectar PII en metadata o texto plano
-	buf := make([]byte, 10240)
-	n, err := f.Read(buf)
-	if err != nil && err != io.EOF {
-		return nil, err
+	var buf bytes.Buffer
+
+	const (
+		maxTotalBytes = 5 * 1024 * 1024 // 5 MB de texto acumulado
+		maxPages      = 100             // primeras 100 páginas
+		maxPageBytes  = 200 * 1024      // 200 KB por página
+	)
+
+	total := r.NumPage()
+	if total > maxPages {
+		total = maxPages
 	}
-	
-	content := string(buf[:n])
-	result := make(map[string][]string)
-	cats := DetectPersonalData(content)
-	for cat := range cats {
-		key := "metadata"
-		if !stringInSlice(cat, result[key]) {
-			result[key] = append(result[key], cat)
+
+	for i := 1; i <= total; i++ {
+		p := r.Page(i)
+		if p.V.IsNull() {
+			continue
+		}
+		text, err := p.GetPlainText(nil)
+		if err != nil {
+			continue
+		}
+		if len(text) > maxPageBytes {
+			text = text[:maxPageBytes]
+		}
+		buf.WriteString(text)
+		buf.WriteString("\n")
+		if buf.Len() >= maxTotalBytes {
+			break
 		}
 	}
+
+	if buf.Len() == 0 {
+		return nil, nil
+	}
+
+	result := make(map[string][]string)
+	cats := DetectPersonalData(buf.String())
+	for cat := range cats {
+		result["content"] = append(result["content"], cat)
+	}
 	return result, nil
+}
+
+// isEncryptedPDF busca /Encrypt en el archivo.
+func isEncryptedPDF(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	size := info.Size()
+
+	readSize := size
+	if readSize > 2*1024*1024 {
+		readSize = 2 * 1024 * 1024
+	}
+	buf := make([]byte, readSize)
+	if _, err := io.ReadFull(f, buf); err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		return false
+	}
+
+	if size > 2*1024*1024 {
+		tail := make([]byte, 4096)
+		if _, err := f.ReadAt(tail, size-int64(len(tail))); err == nil {
+			buf = append(buf, tail...)
+		}
+	}
+
+	return bytes.Contains(buf, []byte("/Encrypt"))
 }
 
 func scanDOC(path string) (map[string][]string, error) {
 	ext := strings.ToLower(filepath.Ext(path))
 
-	// .docx es un ZIP con XML - extraer texto del word/document.xml
 	if ext == ".docx" {
 		return scanDOCX(path)
 	}
 
-	// .doc binario antiguo - leer bytes crudos y buscar patrones
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -278,7 +344,6 @@ func scanDOC(path string) (map[string][]string, error) {
 func scanDOCX(path string) (map[string][]string, error) {
 	r, err := zip.OpenReader(path)
 	if err != nil {
-		// Si no es un ZIP válido, intentar como binario
 		return scanDOC(path)
 	}
 	defer r.Close()
@@ -287,7 +352,6 @@ func scanDOCX(path string) (map[string][]string, error) {
 	allText := ""
 
 	for _, f := range r.File {
-		// Leer solo archivos de documento XML y metadatos
 		name := strings.ToLower(f.Name)
 		if !strings.Contains(name, "document.xml") &&
 			!strings.Contains(name, "comments.xml") &&
@@ -305,7 +369,6 @@ func scanDOCX(path string) (map[string][]string, error) {
 			continue
 		}
 
-		// Leer contenido (limitado a 50KB por archivo XML)
 		limitedReader := io.LimitReader(rc, 51200)
 		buf, readErr := io.ReadAll(limitedReader)
 		rc.Close()
@@ -319,7 +382,6 @@ func scanDOCX(path string) (map[string][]string, error) {
 		return result, nil
 	}
 
-	// Detectar PII en el texto extraído
 	cats := DetectPersonalData(allText)
 	for cat := range cats {
 		if !stringInSlice(cat, result["content"]) {
