@@ -18,7 +18,7 @@
 !endif
 
 !ifndef API_BASE
-  !define API_BASE "https://leysecurelab.sytes.net/api/agents"
+  !define API_BASE "https://ley.securelab.cl/api/agents"
 !endif
 
 !ifndef WS_URL

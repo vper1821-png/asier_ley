@@ -127,7 +127,7 @@ func defaultConfig() *Config {
 	}
 
 	return &Config{
-		APIBase:           "https://leysecurelab.sytes.net/api/agents",
+		APIBase:           "https://ley.securelab.cl/api/agents",
 		HeartbeatInterval: 5,
 		AgentVersion:      "2.0.0",
 		LogLevel:          "debug",

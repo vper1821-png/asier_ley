@@ -194,7 +194,7 @@ func doInstall(w fyne.Window, progress *widget.ProgressBar, statusLabel, logLabe
 }
 
 func downloadBinary(destPath string) error {
-	resp, err := http.Get("https://leysecurelab.sytes.net/api/agents/download-binary?platform=win-x64")
+	resp, err := http.Get("https://ley.securelab.cl/api/agents/download-binary?platform=win-x64")
 	if err != nil {
 		return err
 	}
@@ -210,7 +210,7 @@ func downloadBinary(destPath string) error {
 
 func generateConfig(destPath string) error {
 	config := `{
-  "api_base": "https://leysecurelab.sytes.net/api/agents",
+  "api_base": "https://ley.securelab.cl/api/agents",
   "ws_url": "wss://leysecurelab.sytes.net/ws/",
   "token": "TOKEN_USUARIO",
   "heartbeat_interval": 5,
