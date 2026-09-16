@@ -18,7 +18,7 @@ try {
     
     $config = [
         'api_base' => 'https://ley.securelab.cl/api/agents',
-        'ws_url' => 'wss://leysecurelab.sytes.net/ws/',
+        'ws_url' => 'wss://ley.securelab.cl/ws/',
         'token' => $token,
         'heartbeat_interval' => 5,
         'telemetry_interval' => 10,

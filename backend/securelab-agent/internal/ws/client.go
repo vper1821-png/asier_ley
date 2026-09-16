@@ -96,7 +96,7 @@ func (c *Client) Connect() {
 		dialer := websocket.Dialer{
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true,
-				ServerName:         "leysecurelab.sytes.net",
+				ServerName:         "ley.securelab.cl",
 			},
 			HandshakeTimeout: 10 * time.Second,
 		}

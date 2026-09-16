@@ -22,7 +22,7 @@
 !endif
 
 !ifndef WS_URL
-  !define WS_URL "wss://leysecurelab.sytes.net/ws/"
+  !define WS_URL "wss://ley.securelab.cl/ws/"
 !endif
 
 !ifndef AGENT_EXE

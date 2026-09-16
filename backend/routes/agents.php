@@ -1138,7 +1138,7 @@ function linuxInstall() {
         'platform' => 'linux',
     ]);
 
-    $host = $_SERVER['HTTP_HOST'] ?? ($_SERVER['SERVER_NAME'] ?? 'leysecurelab.sytes.net');
+    $host = $_SERVER['HTTP_HOST'] ?? ($_SERVER['SERVER_NAME'] ?? 'ley.securelab.cl');
     $baseUrl = 'https://' . $host;
     $apiBase = rtrim($baseUrl, '/') . '/api/agents';
     $wsBase = 'wss://' . $host . '/ws/';

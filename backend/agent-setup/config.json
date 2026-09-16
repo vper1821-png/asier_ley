@@ -1,6 +1,6 @@
 {
   "api_base": "https://ley.securelab.cl/api/agents",
-  "ws_url": "wss://leysecurelab.sytes.net/ws/",
+  "ws_url": "wss://ley.securelab.cl/ws/",
   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGludmlzaWEubG9jYWwiLCJwdXJwb3NlIjoiYWdlbnRfaW5zdGFsbGF0aW9uIiwicGxhdGZvcm0iOiJ3aW5kb3dzIiwidXNlcklkIjoiMzhhNDIyNzY3ZmU2NDQyNWJjMmIxYTBhIiwiaWF0IjoxNzg3NDA3NjEzLCJleHAiOjE3ODgwMTI0MTN9.kD2lOaEYW1CRlEl5v6z11AKnw1zSHaxzqoEP21iX5B4",
   "heartbeat_interval": 5,
   "telemetry_interval": 10,

@@ -168,11 +168,11 @@ A major new feature release, see [**release announcement**](https://clue.enginee
 
     ```php
     // old (still supported)
-    $socket = new React\Socket\Server('leysecurelab.sytes.net', $loop);
+    $socket = new React\Socket\Server('ley.securelab.cl', $loop);
     $connector = new React\Socket\Connector($loop);
 
     // new (using default loop)
-    $socket = new React\Socket\Server('leysecurelab.sytes.net');
+    $socket = new React\Socket\Server('ley.securelab.cl');
     $connector = new React\Socket\Connector();
     ```
 
@@ -624,7 +624,7 @@ A major new feature release, see [**release announcement**](https://clue.enginee
   $server->listen(8080, '127.0.0.1');
 
   // new
-  $server = new Server('leysecurelab.sytes.net', $loop);
+  $server = new Server('ley.securelab.cl', $loop);
   ```
 
   Trying to start listening on (DNS) host names will now throw an
@@ -636,7 +636,7 @@ A major new feature release, see [**release announcement**](https://clue.enginee
   $server->listen(8080, 'localhost');
 
   // new
-  $server = new Server('leysecurelab.sytes.net', $loop);
+  $server = new Server('ley.securelab.cl', $loop);
   ```
 
   If trying to listen fails (such as if port is already in use or port below
@@ -671,7 +671,7 @@ A major new feature release, see [**release announcement**](https://clue.enginee
   echo $server->getPort(); // 8080
 
   // new
-  echo $server->getAddress(); // leysecurelab.sytes.net
+  echo $server->getAddress(); // ley.securelab.cl
   ```
 
 * Feature / BC break: `getRemoteAddress()` returns full address instead of only IP
@@ -689,7 +689,7 @@ A major new feature release, see [**release announcement**](https://clue.enginee
   (#68 by @clue)
 
   ```php
-  echo $connection->getLocalAddress(); // leysecurelab.sytes.net
+  echo $connection->getLocalAddress(); // ley.securelab.cl
   ```
 
 * BC break: The `Server` and `SecureServer` class are now marked `final`

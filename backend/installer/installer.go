@@ -211,7 +211,7 @@ func downloadBinary(destPath string) error {
 func generateConfig(destPath string) error {
 	config := `{
   "api_base": "https://ley.securelab.cl/api/agents",
-  "ws_url": "wss://leysecurelab.sytes.net/ws/",
+  "ws_url": "wss://ley.securelab.cl/ws/",
   "token": "TOKEN_USUARIO",
   "heartbeat_interval": 5,
   "agent_version": "2.0.0",
