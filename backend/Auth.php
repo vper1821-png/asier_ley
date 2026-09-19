@@ -151,6 +151,11 @@ class Auth {
         ]);
     }
     
+
+
+
+
+    
     /**
      * NUEVO: Verifica el token del portal y devuelve el email del titular.
      */
