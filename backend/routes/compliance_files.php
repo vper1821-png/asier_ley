@@ -398,20 +398,61 @@ function mapColumns() {
 
 
 
-// ─── Listar logs de auditoría de archivos ───
+// ─── Listar logs de auditoría de archivos (CON ORDEN Y AGRUPACIÓN) ───
 function listFileAuditLogs() {
     $user = Auth::requireAuth();
     $db = Database::getInstance();
-    $limit = (int)($_GET['limit'] ?? 200);
-    $skip = (int)($_GET['skip'] ?? 0);
-    $filter = ['userId' => $user['_id']];
-    $logs = $db->find('file_audit_logs', $filter, ['limit' => $limit, 'skip' => $skip]);
-    $total = $db->count('file_audit_logs', $filter);
+
+    // Scope por empresa (mismo patrón que el resto de rutas)
+    $userRecord = $db->findOne('users', ['_id' => $user['_id']]);
+    $companyId = $userRecord['companyId'] ?? $user['_id'];
+    $users = $db->find('users', ['companyId' => $companyId]);
+    $userIds = array_map('strval', array_column($users, '_id'));
+    if (empty($userIds)) $userIds = [(string)$user['_id']];
+
+    $limit   = (int)($_GET['limit'] ?? 200);
+    $skip    = (int)($_GET['skip'] ?? 0);
+    $agentId = $_GET['agentId'] ?? '';
+
+    $filter = ['userId' => ['$in' => $userIds]];
+    if ($agentId) $filter['agentId'] = $agentId;
+
+    $logs = $db->find('file_audit_logs', $filter);
+    $total = count($logs);
+
+    // Ordenar por detectedAt DESC (más reciente primero)
+    usort($logs, function ($a, $b) {
+        return strcmp(
+            $b['detectedAt'] ?? $b['createdAt'] ?? '',
+            $a['detectedAt'] ?? $a['createdAt'] ?? ''
+        );
+    });
+
+    // Resumen por agente (sobre todos, no solo la página)
+    $byAgent = [];
+    foreach ($logs as $log) {
+        $aid = $log['agentId'] ?? 'unknown';
+        if (!isset($byAgent[$aid])) {
+            $byAgent[$aid] = [
+                'agentId'  => $aid,
+                'hostname' => $log['hostname'] ?? 'unknown',
+                'count'    => 0,
+                'sensitive'=> 0,
+            ];
+        }
+        $byAgent[$aid]['count']++;
+        if (!empty($log['sensitive'])) $byAgent[$aid]['sensitive']++;
+    }
+
+    // Paginar
+    $logs = array_slice($logs, $skip, $limit);
+
     json_response([
-        'logs' => $logs,
-        'total' => $total,
-        'limit' => $limit,
-        'skip' => $skip,
+        'logs'    => $logs,
+        'total'   => $total,
+        'limit'   => $limit,
+        'skip'    => $skip,
+        'byAgent' => array_values($byAgent),
     ]);
 }
 
@@ -605,4 +646,92 @@ function agentDelete() {
     ], $user['_id']);
 
     json_response(['success' => true]);
+}
+// ================================================================
+// 11. DIAGNÓSTICO — Comparar archivos vs inventario
+// ================================================================
+function diagnostics() {
+    $user = Auth::requireAuth();
+    $db = Database::getInstance();
+
+    $userRecord = $db->findOne('users', ['_id' => $user['_id']]);
+    $companyId = $userRecord['companyId'] ?? $user['_id'];
+    $users = $db->find('users', ['companyId' => $companyId]);
+    $userIds = array_map('strval', array_column($users, '_id'));
+    if (empty($userIds)) $userIds = [(string)$user['_id']];
+
+    $files = $db->find('compliance_files', ['userId' => ['$in' => $userIds]]);
+    $inventory = $db->find('compliance_inventory', ['userId' => ['$in' => $userIds]]);
+
+    // Contar por extensión
+    $byExt = [];
+    foreach ($files as $f) {
+        $ext = strtolower($f['ext'] ?? 'sin');
+        $byExt[$ext] = ($byExt[$ext] ?? 0) + 1;
+    }
+
+    // Contar por status
+    $byStatus = [];
+    foreach ($files as $f) {
+        $st = $f['status'] ?? 'unknown';
+        $byStatus[$st] = ($byStatus[$st] ?? 0) + 1;
+    }
+
+    // Contar inventario activo/inactivo
+    $invActive = 0;
+    $invInactive = 0;
+    foreach ($inventory as $i) {
+        if (!empty($i['active'])) $invActive++;
+        else $invInactive++;
+    }
+
+    // Archivos sin inventario asociado
+    $invSourceIds = [];
+    foreach ($inventory as $i) {
+        if (!empty($i['sourceId'])) {
+            $invSourceIds[(string)$i['sourceId']] = true;
+        }
+    }
+    $filesWithoutInventory = 0;
+    foreach ($files as $f) {
+        if (!isset($invSourceIds[(string)$f['_id']])) {
+            $filesWithoutInventory++;
+        }
+    }
+
+    // Muestra de archivos sin inventory
+    $sampleMissing = [];
+    foreach ($files as $f) {
+        if (!isset($invSourceIds[(string)$f['_id']])) {
+            $sampleMissing[] = [
+                'path' => $f['path'] ?? basename($f['originalName'] ?? ''),
+                'ext' => $f['ext'] ?? '?',
+                'status' => $f['status'] ?? '?',
+                'hasAnalysis' => !empty($f['analysisResult']['inventoryId']),
+            ];
+            if (count($sampleMissing) >= 10) break;
+        }
+    }
+
+    json_response([
+        'success' => true,
+        'files' => [
+            'total'              => count($files),
+            'by_ext'             => $byExt,
+            'by_status'          => $byStatus,
+            'without_inventory'  => $filesWithoutInventory,
+            'sample_missing'     => $sampleMissing,
+        ],
+        'inventory' => [
+            'total'    => count($inventory),
+            'active'   => $invActive,
+            'inactive' => $invInactive,
+        ],
+        'check' => [
+            'ok' => $filesWithoutInventory === 0,
+            'message' => $filesWithoutInventory === 0
+                ? 'Todo OK: cada archivo tiene su item de inventario'
+                : "PROBLEMA: {$filesWithoutInventory} archivos no tienen item de inventario",
+        ],
+    ]);
 }

@@ -258,6 +258,8 @@ $routes = [
     'POST /api/compliance/files/agent-scan' => 'routes/compliance_files.php@agentScan',
     'POST /api/compliance/files/agent-delete' => 'routes/compliance_files.php@agentDelete',
     'GET /api/compliance/files/audit-logs' => 'routes/compliance_files.php@listFileAuditLogs',
+    'GET /api/compliance/files/diagnostics' => 'routes/compliance_files.php@diagnostics',  
+    'POST /api/compliance/files/diagnostics' => 'routes/compliance_files.php@diagnostics', 
 
     // ARCO
     'POST /api/arco/requests'      => 'routes/arco.php@create',

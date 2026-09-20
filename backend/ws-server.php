@@ -25,7 +25,6 @@ class AgentWebSocket implements MessageComponentInterface {
         try {
             $this->db = Database::getInstance();
             echo "✅ Base de datos inicializada correctamente\n";
-            // Verificar si está usando MongoDB o archivos JSON
             $reflection = new \ReflectionClass($this->db);
             $property = $reflection->getProperty('useMongo');
             $property->setAccessible(true);
@@ -44,7 +43,6 @@ class AgentWebSocket implements MessageComponentInterface {
         try {
             $this->clients->attach($conn);
             echo "✅ Nueva conexión: {$conn->resourceId} desde " . $conn->remoteAddress . "\n";
-            // Mensaje de bienvenida
             $conn->send(json_encode([
                 'type' => 'welcome',
                 'payload' => [
@@ -60,11 +58,9 @@ class AgentWebSocket implements MessageComponentInterface {
 
     public function onMessage(ConnectionInterface $from, $msg) {
         try {
-            // 📥 Log del mensaje RAW (útil para depurar)
             $rawLength = strlen($msg);
-            echo "📥 Mensaje RAW ({$rawLength} bytes): " . $msg . "\n";
+            echo "📥 Mensaje RAW ({$rawLength} bytes)\n";
 
-            // Decodificar JSON
             $data = json_decode($msg, true);
             if (!$data) {
                 echo "⚠️ Mensaje no es JSON válido\n";
@@ -75,24 +71,15 @@ class AgentWebSocket implements MessageComponentInterface {
                 return;
             }
 
-            // 📦 Log del mensaje decodificado (pretty print)
-            echo "📦 Mensaje decodificado:\n" . json_encode($data, JSON_PRETTY_PRINT) . "\n";
-
-            // Extraer type y payload
             $type = $data['type'] ?? '';
-            
-            // Si existe 'payload', úsalo; si no, usa todo el objeto (compatibilidad)
+
             if (isset($data['payload']) && is_array($data['payload'])) {
                 $payload = $data['payload'];
             } else {
                 $payload = $data;
-                unset($payload['type']); // Quitamos 'type' para no confundir
+                unset($payload['type']);
             }
 
-            echo "📨 Tipo: {$type}\n";
-            echo "📦 Payload: " . json_encode($payload) . "\n";
-
-            // ─── Router de mensajes ──────────────────────────────────
             switch ($type) {
                 case 'register':
                     $this->handleRegister($from, $payload);
@@ -108,7 +95,7 @@ class AgentWebSocket implements MessageComponentInterface {
                     break;
                 case 'file_deleted':
                     $this->handleFileDeleted($from, $payload);
-                    break;    
+                    break;
                 case 'db_query':
                     $this->handleDBQuery($from, $payload);
                     break;
@@ -129,7 +116,6 @@ class AgentWebSocket implements MessageComponentInterface {
                         'type' => 'pong',
                         'payload' => ['ts' => microtime(true)]
                     ]));
-                    echo "🏓 Ping recibido, enviando pong\n";
                     break;
                 case 'sync':
                     $this->handleSync($from);
@@ -154,7 +140,6 @@ class AgentWebSocket implements MessageComponentInterface {
     }
 
     public function onClose(ConnectionInterface $conn) {
-        // Buscar el agentId asociado a esta conexión
         $agentId = null;
         foreach ($this->agentSessions as $id => $c) {
             if ($c === $conn) {
@@ -182,18 +167,10 @@ class AgentWebSocket implements MessageComponentInterface {
     // ─── HANDLER: REGISTER ──────────────────────────────────────────
 
     private function handleRegister(ConnectionInterface $conn, $data) {
-        echo "🔍 handleRegister llamado con datos: " . json_encode($data) . "\n";
-
-        // Extraer token y agentId (soporta tanto 'token' como 'accessToken' para compatibilidad)
         $token = $data['token'] ?? $data['accessToken'] ?? '';
         $agentId = $data['agentId'] ?? '';
 
-        echo "🔎 Token: '{$token}' (longitud: " . strlen($token) . ")\n";
-        echo "🔎 AgentId: '{$agentId}'\n";
-
-        // Validar campos requeridos
         if (empty($token)) {
-            echo "❌ Token vacío\n";
             $conn->send(json_encode([
                 'type' => 'error',
                 'payload' => ['message' => 'Token requerido']
@@ -203,7 +180,6 @@ class AgentWebSocket implements MessageComponentInterface {
         }
 
         if (empty($agentId)) {
-            echo "❌ AgentId vacío\n";
             $conn->send(json_encode([
                 'type' => 'error',
                 'payload' => ['message' => 'AgentId requerido']
@@ -212,10 +188,8 @@ class AgentWebSocket implements MessageComponentInterface {
             return;
         }
 
-        // Verificar token JWT
         $decoded = Auth::verifyToken($token);
         if (!$decoded) {
-            echo "❌ Token inválido o expirado\n";
             $conn->send(json_encode([
                 'type' => 'error',
                 'payload' => ['message' => 'Token inválido o expirado']
@@ -225,15 +199,11 @@ class AgentWebSocket implements MessageComponentInterface {
         }
 
         $userId = $decoded['userId'] ?? '';
-        echo "✅ Token válido para usuario: {$userId}\n";
 
-        // Asignar el agente a esta conexión
         $conn->userId = $userId;
         $conn->agentId = $agentId;
         $this->agentSessions[$agentId] = $conn;
 
-        // Actualizar/insertar estado en la base de datos
-        echo "🔍 Verificando db: " . ($this->db ? "DB inicializada" : "DB es NULL") . "\n";
         if ($this->db) {
             $existing = $this->db->findOne('agents', ['agentId' => $agentId, 'userId' => $userId]);
             if (!$existing) {
@@ -244,14 +214,12 @@ class AgentWebSocket implements MessageComponentInterface {
                     'lastSeen' => date('c'),
                     'createdAt' => date('c'),
                 ]);
-                echo "📝 Agente insertado en BD: {$agentId}\n";
             } else {
                 $this->db->updateOne('agents', ['agentId' => $agentId, 'userId' => $userId], [
                     'status' => 'online',
                     'lastSeen' => date('c'),
                     'userId' => $userId
                 ]);
-                echo "📝 Agente actualizado en BD: {$agentId}\n";
             }
         }
 
@@ -264,17 +232,13 @@ class AgentWebSocket implements MessageComponentInterface {
             ]
         ]));
 
-        // Enviar comandos pendientes
         $this->sendPendingCommands($agentId);
     }
 
     // ─── HANDLER: FILE_DETECTED ─────────────────────────────────────
 
     private function handleFileDetected(ConnectionInterface $from, $data) {
-        // Soporta formato directo o con wrapper 'detectedFile'
         $fileData = $data['detectedFile'] ?? $data;
-        
-        echo "📄 file_detected recibido: " . json_encode($fileData) . "\n";
 
         $agentId = $from->agentId ?? $fileData['agentId'] ?? '';
         $userId = $from->userId ?? '';
@@ -284,7 +248,6 @@ class AgentWebSocket implements MessageComponentInterface {
                 'type' => 'error',
                 'payload' => ['message' => 'Agente no registrado']
             ]));
-            echo "❌ file_detected: agente no registrado\n";
             return;
         }
 
@@ -293,7 +256,6 @@ class AgentWebSocket implements MessageComponentInterface {
                 'type' => 'error',
                 'payload' => ['message' => 'Faltan datos del archivo (path, hash)']
             ]));
-            echo "❌ file_detected: datos incompletos\n";
             return;
         }
 
@@ -307,7 +269,7 @@ class AgentWebSocket implements MessageComponentInterface {
                     'message' => 'Archivo procesado correctamente'
                 ]
             ]));
-            echo "✅ Archivo procesado: {$fileData['path']}\n";
+            echo "✅ file_detected OK: {$fileData['path']}\n";
         } catch (\Throwable $e) {
             $from->send(json_encode([
                 'type' => 'file_response',
@@ -316,12 +278,20 @@ class AgentWebSocket implements MessageComponentInterface {
                     'message' => 'Error: ' . $e->getMessage()
                 ]
             ]));
-            echo "❌ Error procesando archivo: " . $e->getMessage() . "\n";
+            echo "❌ Error procesando file_detected: " . $e->getMessage() . "\n";
         }
     }
 
-    // ─── HANDLER: INVENTORY_ITEM ────────────────────────────────────
+    // ─── HANDLER: INVENTORY_ITEM (FIX CRÍTICO) ──────────────────────
 
+    /**
+     * Antes: este handler tenía una implementación propia que SOBRESCRIBÍA
+     * analysisResult (perdiendo inventoryId) y no creaba el item de inventario.
+     * Resultado: solo ~13% de los archivos aparecían en el RAT.
+     *
+     * Ahora: delega a processFileDetection(), el mismo método que usa
+     * handleFileDetected. Un solo flujo, un solo lugar para arreglar bugs.
+     */
     private function handleInventoryItem(ConnectionInterface $from, $data) {
         $agentId = $from->agentId ?? $data['agentId'] ?? '';
         $userId = $from->userId ?? '';
@@ -334,85 +304,39 @@ class AgentWebSocket implements MessageComponentInterface {
         $path = $data['path'] ?? '';
         $hash = $data['hash'] ?? '';
         if (!$path || !$hash) {
-            echo "⚠️ inventory_item: path y hash requeridos\n";
+            echo "⚠️ inventory_item DESCARTADO: falta " . (!$path ? 'path' : 'hash') . " (agent={$agentId})\n";
             return;
         }
 
-        $db = $this->db;
-        $existing = $db->findOne('compliance_files', ['agentId' => $agentId, 'path' => $path, 'sourceType' => 'agent']);
-
-        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-        $sensitive = !empty($data['sensitive']);
-        $categories = $data['categories'] ?? [];
-        $personalData = $data['personalData'] ?? [];
-
-        $doc = [
-            'userId'        => $userId,
-            'sourceType'    => 'agent',
-            'agentId'       => $agentId,
-            'hostname'      => $data['hostname'] ?? 'unknown',
-            'path'          => $path,
-            'originalName'  => basename($path),
-            'ext'           => $ext,
-            'size'          => (int)($data['size'] ?? 0),
-            'hash'          => $hash,
-            'status'        => 'scanned',
-            'analysisResult' => [
-                'sensitive'   => $sensitive,
-                'patterns'    => $personalData,
-                'categories'  => $categories,
-                'analyzedAt'  => date('c'),
-                'analyzedBy'  => 'agent',
-            ],
-            'createdAt'     => $data['firstSeen'] ?? date('c'),
-            'updatedAt'     => date('c'),
+        // Adaptar el formato del inventory_item al de file_detected
+        $fileData = [
+            'path'         => $path,
+            'hash'         => $hash,
+            'fileType'     => $data['extension'] ?? $data['fileType'] ?? 'unknown',
+            'hostname'     => $data['hostname'] ?? 'unknown',
+            'user'         => $data['user'] ?? null,
+            'size'         => (int)($data['size'] ?? 0),
+            'rowCount'     => (int)($data['scanCount'] ?? $data['rowCount'] ?? 0),
+            'sensitive'    => !empty($data['sensitive']),
+            'personalData' => $data['personalData'] ?? [],
+            'categories'   => $data['categories'] ?? [],
         ];
 
-        if ($existing) {
-            $db->updateOne('compliance_files', ['_id' => $existing['_id']], $doc);
-            $fileId = $existing['_id'];
-            $inventoryId = $existing['analysisResult']['inventoryId'] ?? null;
-        } else {
-            $inserted = $db->insertOne('compliance_files', $doc);
-            $fileId = $inserted['_id'];
-            $inventoryId = null;
+        try {
+            $result = $this->processFileDetection($userId, $agentId, $fileData);
+            echo "🗂️  inventory_item OK: {$path} (agent={$agentId}, sensitive="
+                . ($fileData['sensitive'] ? 'true' : 'false')
+                . ", fileId=" . ($result['fileId'] ?? '?') . ")\n";
+        } catch (\Throwable $e) {
+            echo "❌ inventory_item ERROR: {$path} - " . $e->getMessage() . "\n";
         }
-
-        $inventoryData = [
-            'userId'         => $userId,
-            'sourceType'     => 'file',
-            'sourceId'       => $fileId,
-            'name'           => '📄 Archivo: ' . basename($path),
-            'dataCategories' => implode(', ', $categories),
-            'records'        => (int)($data['scanCount'] ?? 0),
-            'sensitive'      => $sensitive,
-            'legalBasis'     => 'Pendiente de definir',
-            'active'         => true,
-            'storage'        => $data['hostname'] ?? 'Agente',
-            'updatedAt'      => date('c'),
-        ];
-
-        if ($inventoryId) {
-            $db->updateOne('compliance_inventory', ['_id' => $inventoryId], $inventoryData);
-        } else {
-            $inventoryData['createdAt'] = $data['firstSeen'] ?? date('c');
-            $inv = $db->insertOne('compliance_inventory', $inventoryData);
-            $db->updateOne('compliance_files', ['_id' => $fileId], [
-                'analysisResult.inventoryId' => $inv['_id']
-            ]);
-        }
-
-        echo "🗂️  Inventario recibido: {$path} (sensitive=" . ($sensitive ? 'true' : 'false') . ")\n";
     }
 
     // ─── HANDLERS: FILE_EVENT, DB_QUERY, HOST_EVENT, TELEMETRY, EVENT ──
 
     private function handleFileEvent(ConnectionInterface $from, $data) {
         $agentId = $from->agentId ?? $data['agentId'] ?? '';
-        if (!$agentId || !$this->db) {
-            echo "⚠️ file_event ignorado (agente no registrado o BD no disponible)\n";
-            return;
-        }
+        if (!$agentId || !$this->db) return;
         $doc = [
             'agentId' => $agentId,
             'userId' => $from->userId ?? '',
@@ -428,15 +352,11 @@ class AgentWebSocket implements MessageComponentInterface {
             'createdAt' => date('c'),
         ];
         $this->db->insertOne('file_events', $doc);
-        echo "📄 File event: {$data['path']} ({$data['eventType']})\n";
     }
 
     private function handleDBQuery(ConnectionInterface $from, $data) {
         $agentId = $from->agentId ?? $data['agentId'] ?? '';
-        if (!$agentId || !$this->db) {
-            echo "⚠️ db_query ignorado\n";
-            return;
-        }
+        if (!$agentId || !$this->db) return;
         $doc = [
             'agentId' => $agentId,
             'userId' => $from->userId ?? '',
@@ -468,7 +388,6 @@ class AgentWebSocket implements MessageComponentInterface {
                 'createdAt' => date('c'),
             ]);
         }
-        echo "📊 DB query: {$data['database']} - {$data['user']}\n";
     }
 
     private function handleHostEvent(ConnectionInterface $from, $data) {
@@ -500,14 +419,10 @@ class AgentWebSocket implements MessageComponentInterface {
             'createdAt' => $doc['createdAt'],
         ]);
         $this->db->insertOne('host_events', $doc);
-        echo "🖥️ Host event: {$doc['title']} ({$doc['severity']})\n";
     }
 
     private function handleTelemetry(ConnectionInterface $from, $data) {
         $agentId = $from->agentId ?? $data['agentId'] ?? '';
-        echo "📊 Telemetría recibida de agente: {$agentId}\n";
-        echo "📊 Datos: " . json_encode($data) . "\n";
-        
         if (!$agentId || !$this->db) {
             echo "⚠️ telemetry ignorado (sin agentId o db)\n";
             return;
@@ -518,7 +433,7 @@ class AgentWebSocket implements MessageComponentInterface {
         $doc = [
             'userId' => $from->userId ?? '',
             'agentId' => $agentId,
-            'hostname' => $data['hostname'] ?? $this->db->findOne('agents', ['agentId' => $agentId])['hostname'] ?? $agentId,
+            'hostname' => $data['hostname'] ?? $agentId,
             'cpu' => (float)($data['cpu'] ?? 0),
             'ram' => (float)($data['memory'] ?? 0),
             'disk' => max(0, min(100, $diskPct)),
@@ -538,22 +453,18 @@ class AgentWebSocket implements MessageComponentInterface {
         $userId = $from->userId ?? '';
         $agent = $this->db->findOne('agents', ['agentId' => $agentId, 'userId' => $userId]);
         if (!$agent) {
-            echo "📊 Telemetría ignorada de agente inexistente: {$agentId}\n";
             return;
         }
         $existing = $this->db->findOne('host_monitor', ['agentId' => $agentId, 'userId' => $userId]);
         if ($existing) {
             $this->db->updateOne('host_monitor', ['_id' => $existing['_id']], $doc);
-            echo "📊 host_monitor actualizado para agente: {$agentId}\n";
         } else {
             $doc['createdAt'] = date('c');
             $this->db->insertOne('host_monitor', $doc);
         }
-        // Mantener sync de estado de bloqueo en el agente
         if (isset($agent['lockdown'])) {
             $this->db->updateOne('host_monitor', ['agentId' => $agentId, 'userId' => $userId], ['lockdown' => $agent['lockdown']]);
         }
-        echo "📊 Telemetría recibida de {$agentId}\n";
     }
 
     private function handleGenericEvent(ConnectionInterface $from, $data) {
@@ -573,15 +484,15 @@ class AgentWebSocket implements MessageComponentInterface {
             'resolved' => false,
             'createdAt' => date('c'),
         ]);
-        echo "📢 Evento genérico: {$data['title']}\n";
     }
 
-    // ─── SYNC (comandos pendientes + estado de bloqueo) ──────────────
+    // ─── DATA RESPONSE (FIX: no borrar el más nuevo) ────────────────
 
     private function handleDataResponse(ConnectionInterface $conn, $data) {
         $agentId = $conn->agentId ?? $data['agentId'] ?? '';
         $type = $data['type'] ?? '';
         if (!$agentId || !$type || !$this->db) return;
+
         $this->db->insertOne('agent_data', [
             'agentId' => $agentId,
             'type' => $type,
@@ -589,14 +500,26 @@ class AgentWebSocket implements MessageComponentInterface {
             'ts' => (int)($data['ts'] ?? time()),
             'createdAt' => date('c'),
         ]);
-        // Mantener solo los últimos 20 por agente
+
+        // Limpiar viejos: ordenar por ts desc, luego pop del final (los viejos)
         $all = $this->db->find('agent_data', ['agentId' => $agentId, 'type' => $type]);
+        usort($all, function ($a, $b) {
+            $ta = (int)($a['ts'] ?? 0);
+            $tb = (int)($b['ts'] ?? 0);
+            if ($ta === $tb) {
+                return strcmp($b['createdAt'] ?? '', $a['createdAt'] ?? '');
+            }
+            return $tb - $ta;
+        });
         while (count($all) > 20) {
             $oldest = array_pop($all);
-            if (isset($oldest['_id'])) $this->db->deleteOne('agent_data', ['_id' => $oldest['_id']]);
+            if (isset($oldest['_id'])) {
+                $this->db->deleteOne('agent_data', ['_id' => $oldest['_id']]);
+            }
         }
-        echo "📡 Data response: {$agentId} / {$type}\n";
     }
+
+    // ─── SYNC ──────────────────────────────────────────────────────
 
     private function handleSync(ConnectionInterface $from) {
         $agentId = $from->agentId ?? '';
@@ -618,19 +541,17 @@ class AgentWebSocket implements MessageComponentInterface {
                 'commandId' => $cmd['_id'],
             ];
         }
-        
-        // Obtener conexiones de BD configuradas para este agente
+
         $dbConns = $this->db->find('agent_db_connections', [
             'agentId' => $agentId,
             'enabled' => true,
         ]);
-        
-        // Incluir también las BBDD conectadas desde el dashboard
+
         $dashboardConns = $this->db->find('databases', [
             'userId' => $from->userId,
             'status' => 'connected',
         ]);
-        
+
         $connections = [];
         $seen = [];
         foreach (array_merge($dbConns, $dashboardConns) as $dbConn) {
@@ -641,18 +562,17 @@ class AgentWebSocket implements MessageComponentInterface {
             $username = $dbConn['username'] ?? $dbConn['user'] ?? '';
             $password = $dbConn['password'] ?? '';
             $ssl = (bool)($dbConn['ssl'] ?? false);
-            
-            // Normalizar tipo a motor del agente
+
             if (in_array($engine, ['mariadb', 'mysql'])) {
                 $engine = 'mysql';
             } elseif (in_array($engine, ['postgresql', 'postgres'])) {
                 $engine = 'postgres';
             }
-            
+
             $key = "$engine|$host|$port|$database|$username";
             if (isset($seen[$key])) continue;
             $seen[$key] = true;
-            
+
             $connections[] = [
                 'engine'   => $engine,
                 'host'     => $host,
@@ -663,7 +583,7 @@ class AgentWebSocket implements MessageComponentInterface {
                 'ssl'      => $ssl,
             ];
         }
-        
+
         $from->send(json_encode([
             'type' => 'sync_response',
             'payload' => [
@@ -672,9 +592,6 @@ class AgentWebSocket implements MessageComponentInterface {
                 'connections' => $connections,
             ]
         ]));
-        if (count($pending) > 0 || count($connections) > 0) {
-            echo "🔄 Sync a {$agentId}: " . count($pending) . " comandos, " . count($connections) . " conexiones BD\n";
-        }
     }
 
     private function handleCommandResponse(ConnectionInterface $from, $data) {
@@ -689,7 +606,6 @@ class AgentWebSocket implements MessageComponentInterface {
                     'result' => $result,
                     'status' => $status,
                 ]);
-                echo "📨 Command response: {$commandId} - {$status}\n";
             } catch (\Throwable $e) {
                 echo "❌ Error guardando respuesta: " . $e->getMessage() . "\n";
             }
@@ -706,10 +622,7 @@ class AgentWebSocket implements MessageComponentInterface {
         ]);
         foreach ($commands as $cmd) {
             $conn = $this->agentSessions[$agentId] ?? null;
-            if (!$conn) {
-                echo "⚠️ No se puede enviar comando, agente desconectado: {$agentId}\n";
-                break;
-            }
+            if (!$conn) break;
             try {
                 $conn->send(json_encode([
                     'type' => 'command',
@@ -719,41 +632,68 @@ class AgentWebSocket implements MessageComponentInterface {
                         'commandId' => $cmd['_id'],
                     ]
                 ]));
-                echo "📨 Comando enviado a {$agentId}: " . json_encode($cmd['command']) . "\n";
             } catch (\Throwable $e) {
                 echo "⚠️ No se pudo enviar comando a {$agentId}: " . $e->getMessage() . "\n";
             }
         }
     }
 
-    // ─── PROCESAMIENTO DE DETECCIÓN DE ARCHIVO ──────────────────
-
+    // ═══════════════════════════════════════════════════════════════
+    // PROCESAMIENTO DE DETECCIÓN DE ARCHIVO (FIX CRÍTICO)
+    // ═══════════════════════════════════════════════════════════════
+    //
+    // Este método es el ÚNICO lugar que crea/actualiza el inventario.
+    // Tanto handleFileDetected como handleInventoryItem lo llaman.
+    //
+    // FIX 1: Preserva inventoryId al actualizar (evita duplicados)
+    // FIX 2: Añade agentId, hostname, path al inventario (agrupación)
+    //
     private function processFileDetection($userId, $agentId, $fileData) {
         if (!$this->db) {
             throw new \Exception('Base de datos no disponible');
         }
         $db = $this->db;
 
-        // Validar campos requeridos
-        $required = ['path', 'hash', 'fileType'];
+        $required = ['path', 'hash'];
         foreach ($required as $field) {
             if (empty($fileData[$field])) {
                 throw new \Exception("Campo '$field' requerido");
             }
         }
 
-        // 1. Guardar en compliance_files
+        // 1. Buscar si ya existe
         $existing = $db->findOne('compliance_files', [
             'agentId' => $agentId,
             'path' => $fileData['path'],
             'sourceType' => 'agent'
         ]);
 
+        // ── FIX: preservar inventoryId ──
+        $existingInventoryId = $existing['analysisResult']['inventoryId'] ?? null;
+
+        $hostname = $fileData['hostname'] ?? 'unknown';
+        $sensitive = !empty($fileData['sensitive']);
+        $personalData = $fileData['personalData'] ?? [];
+
+        // 2. Construir documento del archivo
+        $analysisResult = [
+            'rowCount'    => (int)($fileData['rowCount'] ?? 0),
+            'headers'     => array_keys($personalData),
+            'patterns'    => $personalData,
+            'sensitive'   => $sensitive,
+            'analyzedAt'  => date('c'),
+            'analyzedBy'  => 'agent',
+            'user'        => $fileData['user'] ?? null,
+        ];
+        if ($existingInventoryId) {
+            $analysisResult['inventoryId'] = $existingInventoryId;
+        }
+
         $doc = [
             'userId'        => $userId,
             'sourceType'    => 'agent',
             'agentId'       => $agentId,
-            'hostname'      => $fileData['hostname'] ?? 'unknown',
+            'hostname'      => $hostname,
             'path'          => $fileData['path'],
             'originalName'  => basename($fileData['path']),
             'ext'           => strtolower(pathinfo($fileData['path'], PATHINFO_EXTENSION)),
@@ -762,78 +702,84 @@ class AgentWebSocket implements MessageComponentInterface {
             'mimeType'      => $fileData['mimeType'] ?? 'application/octet-stream',
             'status'        => 'analyzed',
             'user'          => $fileData['user'] ?? null,
-            'analysisResult' => [
-                'rowCount'    => (int)($fileData['rowCount'] ?? 0),
-                'headers'     => array_keys($fileData['personalData'] ?? []),
-                'patterns'    => $fileData['personalData'] ?? [],
-                'sensitive'   => !empty($fileData['sensitive']),
-                'analyzedAt'  => date('c'),
-                'analyzedBy'  => 'agent',
-                'user'        => $fileData['user'] ?? null,
-            ],
-            'createdAt'     => date('c'),
+            'analysisResult' => $analysisResult,
+            'createdAt'     => $existing['createdAt'] ?? date('c'),
             'updatedAt'     => date('c'),
         ];
 
         if ($existing) {
             $db->updateOne('compliance_files', ['_id' => $existing['_id']], $doc);
             $fileId = $existing['_id'];
-            $inventoryId = $existing['analysisResult']['inventoryId'] ?? null;
+            $inventoryId = $existingInventoryId;
         } else {
             $inserted = $db->insertOne('compliance_files', $doc);
             $fileId = $inserted['_id'];
             $inventoryId = null;
         }
 
-        // 2. Inventario (RAT)
+        // 3. Categorías únicas (de personalData + categories directas)
         $categories = [];
-        foreach ($fileData['personalData'] ?? [] as $col => $types) {
-            $categories = array_merge($categories, $types);
+        foreach ($personalData as $col => $types) {
+            if (is_array($types)) {
+                $categories = array_merge($categories, $types);
+            } elseif (is_string($types)) {
+                $categories[] = $types;
+            }
         }
-        $categories = array_unique($categories);
+        if (!empty($fileData['categories']) && is_array($fileData['categories'])) {
+            $categories = array_merge($categories, $fileData['categories']);
+        }
+        $categories = array_values(array_unique(array_filter($categories)));
 
+        // 4. Inventario (RAT) — INCLUYE agentId y hostname para agrupar
         $inventoryData = [
             'userId'         => $userId,
             'sourceType'     => 'file',
             'sourceId'       => $fileId,
-            'name'           => '📄 Archivo: ' . basename($fileData['path']),
+            'agentId'        => $agentId,
+            'hostname'       => $hostname,
+            'path'           => $fileData['path'],
+            'name'           => '📄 ' . basename($fileData['path']),
             'dataCategories' => implode(', ', $categories),
             'records'        => (int)($fileData['rowCount'] ?? 0),
-            'sensitive'      => !empty($fileData['sensitive']),
+            'sensitive'      => $sensitive,
             'legalBasis'     => 'Pendiente de definir',
             'active'         => true,
-            'storage'        => $fileData['hostname'] ?? 'Agente',
+            'storage'        => $hostname,
             'user'           => $fileData['user'] ?? null,
             'updatedAt'      => date('c'),
         ];
 
         if ($inventoryId) {
+            // Actualizar el existente
             $db->updateOne('compliance_inventory', ['_id' => $inventoryId], $inventoryData);
         } else {
+            // Crear nuevo
             $inventoryData['createdAt'] = date('c');
             $inv = $db->insertOne('compliance_inventory', $inventoryData);
+            // Enlazar el inventario al file
             $db->updateOne('compliance_files', ['_id' => $fileId], [
                 'analysisResult.inventoryId' => $inv['_id']
             ]);
         }
 
-        // 3. Auditoría de archivos
+        // 5. Auditoría de archivos
         $db->insertOne('file_audit_logs', [
             'userId' => $userId,
             'agentId' => $agentId,
-            'hostname' => $fileData['hostname'] ?? 'unknown',
+            'hostname' => $hostname,
             'path' => $fileData['path'],
             'user' => $fileData['user'] ?? null,
             'detectedAt' => date('c'),
-            'categories' => array_keys($fileData['personalData'] ?? []),
-            'sensitive' => !empty($fileData['sensitive']),
+            'categories' => $categories,
+            'sensitive' => $sensitive,
             'rowCount' => (int)($fileData['rowCount'] ?? 0),
             'fileType' => $fileData['fileType'] ?? 'unknown',
             'hash' => $fileData['hash'],
             'status' => 'processed',
         ]);
 
-        // 4. Auditoría general
+        // 6. Auditoría general
         $db->insertOne('audit_logs', [
             'userId' => $userId,
             'action' => 'file_detected_by_agent',
@@ -841,105 +787,97 @@ class AgentWebSocket implements MessageComponentInterface {
                 'agentId' => $agentId,
                 'path' => $fileData['path'],
                 'user' => $fileData['user'] ?? null,
-                'sensitive' => !empty($fileData['sensitive']),
-                'categories' => array_keys($fileData['personalData'] ?? []),
+                'sensitive' => $sensitive,
+                'categories' => $categories,
             ],
             'createdAt' => date('c'),
         ]);
 
         return ['fileId' => $fileId];
     }
-    /**
-    * Maneja la notificación de un archivo eliminado.
-    * NO borra el registro; lo marca como "deleted" para mantener trazabilidad.
-    */
+
+    // ─── HANDLER: FILE_DELETED ─────────────────────────────────────
+
     private function handleFileDeleted(ConnectionInterface $from, $data) {
-    $agentId = $from->agentId ?? $data['agentId'] ?? '';
-    $userId  = $from->userId ?? '';
-    $path    = $data['path'] ?? '';
-    $hash    = $data['hash'] ?? '';
+        $agentId = $from->agentId ?? $data['agentId'] ?? '';
+        $userId  = $from->userId ?? '';
+        $path    = $data['path'] ?? '';
+        $hash    = $data['hash'] ?? '';
 
-    if (!$agentId || !$userId || !$path) {
-        echo "⚠️ file_deleted ignorado: datos incompletos\n";
-        return;
-    }
+        if (!$agentId || !$userId || !$path) {
+            echo "⚠️ file_deleted ignorado: datos incompletos\n";
+            return;
+        }
 
-    if (!$this->db) {
-        echo "⚠️ file_deleted: sin BD disponible\n";
-        return;
-    }
+        if (!$this->db) {
+            echo "⚠️ file_deleted: sin BD disponible\n";
+            return;
+        }
 
-    $db = $this->db;
-    $now = date('c');
+        $db = $this->db;
+        $now = date('c');
 
-    // 1. Marcar el archivo como eliminado (sin borrarlo)
-    $existing = $db->findOne('compliance_files', [
-        'agentId' => $agentId,
-        'path'    => $path,
-        'userId'  => $userId,
-    ]);
-
-    if (!$existing) {
-        echo "ℹ️  file_deleted: archivo no encontrado en BD, nada que marcar: {$path}\n";
-        return;
-    }
-
-    $db->updateOne('compliance_files', ['_id' => $existing['_id']], [
-        'status'      => 'deleted',
-        'deletedAt'   => $now,
-        'deletedHash' => $hash,
-        'updatedAt'   => $now,
-    ]);
-
-    // 2. Marcar inventario asociado como inactivo
-    $inventoryId = $existing['analysisResult']['inventoryId'] ?? null;
-    if ($inventoryId) {
-        $db->updateOne('compliance_inventory', ['_id' => $inventoryId], [
-            'active'    => false,
-            'deletedAt' => $now,
-            'updatedAt' => $now,
-        ]);
-        echo "🗑️  Inventario marcado como inactivo: {$inventoryId}\n";
-    }
-
-    // 3. Registro de auditoría de archivos
-    $db->insertOne('file_audit_logs', [
-        'userId'       => $userId,
-        'agentId'      => $agentId,
-        'hostname'     => $data['hostname'] ?? 'unknown',
-        'path'         => $path,
-        'user'         => $data['user'] ?? null,
-        'detectedAt'   => $now,
-        'categories'   => array_keys($data['personalData'] ?? []),
-        'sensitive'    => !empty($data['sensitive']),
-        'fileType'     => 'unknown',
-        'hash'         => $hash,
-        'status'       => 'deleted',
-        'eventType'    => 'deleted',
-    ]);
-
-    // 4. Auditoría general
-    $db->insertOne('audit_logs', [
-        'userId'  => $userId,
-        'action'  => 'file_deleted_by_agent',
-        'details' => [
+        $existing = $db->findOne('compliance_files', [
             'agentId' => $agentId,
             'path'    => $path,
-            'hash'    => $hash,
-            'user'    => $data['user'] ?? null,
-        ],
-        'createdAt' => $now,
-    ]);
+            'userId'  => $userId,
+        ]);
 
-    echo "🗑️  Archivo sensible marcado como eliminado: {$path}\n";
+        if (!$existing) {
+            echo "ℹ️  file_deleted: archivo no encontrado en BD: {$path}\n";
+            return;
+        }
+
+        $db->updateOne('compliance_files', ['_id' => $existing['_id']], [
+            'status'      => 'deleted',
+            'deletedAt'   => $now,
+            'deletedHash' => $hash,
+            'updatedAt'   => $now,
+        ]);
+
+        $inventoryId = $existing['analysisResult']['inventoryId'] ?? null;
+        if ($inventoryId) {
+            $db->updateOne('compliance_inventory', ['_id' => $inventoryId], [
+                'active'    => false,
+                'deletedAt' => $now,
+                'updatedAt' => $now,
+            ]);
+        }
+
+        $db->insertOne('file_audit_logs', [
+            'userId'       => $userId,
+            'agentId'      => $agentId,
+            'hostname'     => $data['hostname'] ?? 'unknown',
+            'path'         => $path,
+            'user'         => $data['user'] ?? null,
+            'detectedAt'   => $now,
+            'categories'   => array_keys($data['personalData'] ?? []),
+            'sensitive'    => !empty($data['sensitive']),
+            'fileType'     => 'unknown',
+            'hash'         => $hash,
+            'status'       => 'deleted',
+            'eventType'    => 'deleted',
+        ]);
+
+        $db->insertOne('audit_logs', [
+            'userId'  => $userId,
+            'action'  => 'file_deleted_by_agent',
+            'details' => [
+                'agentId' => $agentId,
+                'path'    => $path,
+                'hash'    => $hash,
+                'user'    => $data['user'] ?? null,
+            ],
+            'createdAt' => $now,
+        ]);
+
+        echo "🗑️  Archivo marcado como eliminado: {$path}\n";
     }
-    
 }
 
 // ─── INICIAR SERVIDOR ──────────────────────────────────────────
 
 echo "🚀 Iniciando servidor WebSocket en el puerto 3839...\n";
-echo "Presiona Ctrl+C para detener.\n";
 
 $server = IoServer::factory(
     new HttpServer(
@@ -950,8 +888,6 @@ $server = IoServer::factory(
     3839
 );
 
-// ─── PUSH DIRECTO: Polling MongoDB cada 1s para comandos pendientes de agentes conectados ───
-// Elimina la dependencia de archivos trigger (inestables) y consulta BD directamente
 $agentWsRef = $agentWs;
 $server->loop->addPeriodicTimer(1.0, function () use ($agentWsRef) {
     $sessions = $agentWsRef->getAgentSessions();
@@ -978,13 +914,12 @@ $server->loop->addPeriodicTimer(1.0, function () use ($agentWsRef) {
                         'commandId' => $cmd['_id'],
                     ]
                 ]));
-                echo "⚡ PUSH DIRECTO -> {$agentId}: " . $cmd['command'] . " (ID: {$cmd['_id']})\n";
             } catch (\Throwable $e) {
                 echo "⚠️ No se pudo enviar PUSH a {$agentId}: " . $e->getMessage() . "\n";
             }
         }
         if ($count > 0) {
-            echo "📤 Enviados {$count} comandos pendientes a {$agentId}\n";
+            echo "⚡ PUSH: {$count} comandos a {$agentId}\n";
         }
     }
 });
