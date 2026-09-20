@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"time"
 
-	// build refresh 2026-08-31 to force new agent binary
 	"securelab-agent/internal/api"
 	"securelab-agent/internal/assistant"
 	"securelab-agent/internal/audit"
@@ -24,7 +23,6 @@ import (
 )
 
 func main() {
-	// ── Subcommands ──
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "install":
@@ -52,14 +50,11 @@ func main() {
 			}
 			os.Exit(0)
 		case "--overlay-ui":
-			// Modo overlay: se ejecuta dentro de la sesión de usuario.
-			// Lee el mensaje del archivo de estado y muestra el bloqueo.
 			security.RunOverlayUI()
 			os.Exit(0)
 		}
 	}
 
-	// ── Run as platform service or foreground process ──
 	if err := runPlatformService(func(ctx context.Context) {
 		runAgent(ctx)
 	}); err != nil {
@@ -88,7 +83,6 @@ func runAgent(ctx context.Context) {
 	store := audit.NewStore(cfg.AuditDBPath)
 	defer store.Close()
 
-	// ── Cola de sincronización ──
 	pendingDB := filepath.Join(filepath.Dir(cfg.AuditDBPath), "pending.db")
 	queueInstance, err := queue.NewQueue(pendingDB)
 	if err != nil {
@@ -101,51 +95,44 @@ func runAgent(ctx context.Context) {
 		}
 	}()
 
-	// ── API REST ──
 	apiClient := api.NewClient(cfg.APIBase, cfg.Token, log)
 
-	// ── 1. REGISTRAR (no fatal: reintentar en background) ──
 	agentID := getOrRegisterAgent(apiClient, log)
 	log.Info("Agent ID obtenido: %s", agentID)
 	log.Flush()
 
-	// ── 2. CREAR CLIENTE WS y asignar agentID ──
 	wsClient := ws.NewClient(cfg.WSURL, cfg.Token, log, queueInstance)
 	wsClient.SetAgentID(agentID)
 
-	// ── Iniciar telemetría inmediatamente ──
 	log.Info("Iniciando telemetría con intervalo: %d segundos", cfg.TelemetryInterval)
 	telemetry.Start(wsClient, time.Duration(cfg.TelemetryInterval)*time.Second)
 	defer telemetry.Stop()
 
-	// ── 3. CONECTAR WS ──
 	go wsClient.Connect()
 	defer wsClient.Close()
 
-	// Re-aplicar bloqueo persistente si estaba activo
 	security.ApplyLockdownIfFlagged()
 	security.StartLockdownMonitor()
 
-	// ── 3.1 Sync loop: comandos pendientes + estado de bloqueo ──
 	syncInterval := time.Duration(cfg.SyncInterval) * time.Millisecond
 	if syncInterval < 100*time.Millisecond {
 		syncInterval = 100 * time.Millisecond
 	}
 	wsClient.StartSyncLoop(syncInterval)
 
-	// ── ESCANEO INICIAL MASIVO DE DATOS SENSIBLES ──
-	// Ejecutar en background para no bloquear el arranque
+	// ══════════════════════════════════════════════════════════════
+	// ESCANEO INICIAL MASIVO — usa cfg.FileWatchDirs como fuente
+	// ══════════════════════════════════════════════════════════════
 	go func() {
 		time.Sleep(10 * time.Second)
 
 		scanCfg := scanner.DefaultInitialScanConfig()
-		if cfg.HeartbeatInterval > 0 {
-			scanCfg.ScanTimeout = time.Duration(cfg.HeartbeatInterval) * time.Minute
-		}
+		scanCfg.CustomDirs = cfg.FileWatchDirs // ← fuente única de verdad
 
-		// Log explícito de lo que va a escanear, para auditar en agent.log
 		log.Info("🚀 Iniciando escaneo masivo inicial de datos sensibles...")
-		log.Info("   Directorios configurados en cfg.FileWatchDirs: %v", cfg.FileWatchDirs)
+		log.Info("   Timeout: %v | MaxFiles: %d | MaxDepth: %d",
+			scanCfg.ScanTimeout, scanCfg.MaxFiles, scanCfg.MaxDepth)
+		log.Info("   CustomDirs: %v", scanCfg.CustomDirs)
 
 		scanned, sensitive, err := scanner.RunInitialMassiveScan(ctx, log, store, wsClient, scanCfg)
 		if err != nil && err != context.Canceled {
@@ -155,7 +142,6 @@ func runAgent(ctx context.Context) {
 		}
 	}()
 
-	// ── Resto de servicios ──
 	assistant := assistant.NewAssistant(cfg.KnowledgeDBPath, log)
 	_ = assistant
 
@@ -164,7 +150,6 @@ func runAgent(ctx context.Context) {
 	dbMonitor := monitors.NewActivityMonitor(store, wsClient, piiScanner, log)
 	dbMonitor.AutoDiscoverAndConnect()
 
-	// Conectar canal de conexiones de BD del WS client al ActivityMonitor
 	wsClient.SetDBConnectionsChan(dbMonitor.GetDBConnectionsChan())
 	dbMonitor.StartDBConnectionsListener()
 	defer dbMonitor.Stop()
@@ -174,7 +159,6 @@ func runAgent(ctx context.Context) {
 	go fileMon.Start()
 	defer fileMon.Stop()
 
-	// Ejecutar hardening en goroutine para no bloquear
 	go func() {
 		hard := hardening.NewHardener(store, wsClient, log)
 		if err := hard.ApplyAll(); err != nil {
@@ -188,7 +172,6 @@ func runAgent(ctx context.Context) {
 		persistenceInstaller(cfg, log)
 	}
 
-	// ── Esperar señal de apagado ──
 	<-ctx.Done()
 
 	log.Info("Shutting down...")
@@ -212,7 +195,6 @@ func getOrRegisterAgent(apiClient *api.Client, log *logger.Logger) string {
 		time.Sleep(2 * time.Second)
 	}
 
-	// Si todo falla, generar uno local para que el servicio pueda iniciar
 	agentID = config.GenerateAgentID()
 	config.SetAgentID(agentID)
 	log.Warn("Registro offline. Usando Agent ID local: %s", agentID)

@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 
-	"securelab-agent/internal/audit"
-	"securelab-agent/internal/logger"
 	"os/exec"
 	"runtime"
+	"securelab-agent/internal/audit"
+	"securelab-agent/internal/logger"
 	"securelab-agent/internal/models"
 	"securelab-agent/internal/queue"
 	"securelab-agent/internal/scanner"
@@ -44,16 +44,16 @@ type Client struct {
 func NewClient(url, token string, log *logger.Logger, q *queue.Queue) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Client{
-		url:                url,
-		token:              token,
-		log:                log,
-		sendChan:           make(chan interface{}, 5000),
-		priorityChan:       make(chan interface{}, 1000),
-		done:               make(chan struct{}),
-		queue:              q,
-		ctx:                ctx,
-		cancel:             cancel,
-		dbConnectionsChan:  make(chan []map[string]interface{}, 10),
+		url:               url,
+		token:             token,
+		log:               log,
+		sendChan:          make(chan interface{}, 5000),
+		priorityChan:      make(chan interface{}, 1000),
+		done:              make(chan struct{}),
+		queue:             q,
+		ctx:               ctx,
+		cancel:            cancel,
+		dbConnectionsChan: make(chan []map[string]interface{}, 10),
 	}
 }
 
@@ -387,23 +387,23 @@ func (c *Client) SendEvent(title, description, source, severity string) {
 
 func (c *Client) SendInitialInventory(item scanner.InitialInventoryItem) {
 	payload := map[string]interface{}{
-		"agentId":       c.agentID,
-		"userId":        item.UserID,
-		"companyId":     item.CompanyID,
-		"hostname":      item.Hostname,
-		"path":          item.Path,
-		"relativePath":  item.RelativePath,
-		"size":          item.Size,
-		"extension":     item.Extension,
-		"categories":    item.Categories,
-		"sensitive":     item.Sensitive,
-		"personalData":  item.PersonalData,
-		"hash":          item.Hash,
-		"firstSeen":     item.FirstSeen.Format(time.RFC3339),
-		"lastScanned":   item.LastScanned.Format(time.RFC3339),
-		"lastModified":  item.LastModified.Format(time.RFC3339),
-		"scanCount":     item.ScanCount,
-		"status":        item.Status,
+		"agentId":      c.agentID,
+		"userId":       item.UserID,
+		"companyId":    item.CompanyID,
+		"hostname":     item.Hostname,
+		"path":         item.Path,
+		"relativePath": item.RelativePath,
+		"size":         item.Size,
+		"extension":    item.Extension,
+		"categories":   item.Categories,
+		"sensitive":    item.Sensitive,
+		"personalData": item.PersonalData,
+		"hash":         item.Hash,
+		"firstSeen":    item.FirstSeen.Format(time.RFC3339),
+		"lastScanned":  item.LastScanned.Format(time.RFC3339),
+		"lastModified": item.LastModified.Format(time.RFC3339),
+		"scanCount":    item.ScanCount,
+		"status":       item.Status,
 	}
 	c.send("inventory_item", payload)
 }
@@ -756,4 +756,22 @@ func getFileType(path string) string {
 func getHostname() string {
 	h, _ := os.Hostname()
 	return h
+}
+
+// SendFileDeleted notifica al backend que un archivo con PII fue eliminado.
+// El backend marca el registro como "deleted" sin borrarlo, manteniendo
+// trazabilidad (Art. 10 y 14.1.e Ley 21.719).
+func (c *Client) SendFileDeleted(ev audit.FileEvent) {
+	payload := map[string]interface{}{
+		"agentId":      c.agentID,
+		"timestamp":    time.Now(),
+		"path":         ev.Path,
+		"hash":         ev.Hash,
+		"hostname":     getHostname(),
+		"user":         ev.User,
+		"sensitive":    ev.Sensitive,
+		"personalData": ev.PersonalData,
+		"deletedAt":    time.Now(),
+	}
+	c.send("file_deleted", payload)
 }

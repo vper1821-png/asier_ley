@@ -22,27 +22,31 @@ type InventorySender interface {
 
 // InitialScanConfig configura el escaneo inicial masivo
 type InitialScanConfig struct {
-	MaxFiles          int           // Límite de archivos a escanear (0 = sin límite)
-	MaxDepth          int           // Profundidad máxima de directorios
-	ScanTimeout       time.Duration // Timeout total
-	FileTimeout       time.Duration // Timeout por archivo
-	MinFileSize       int64         // Tamaño mínimo (bytes)
-	MaxFileSize       int64         // Tamaño máximo (bytes)
-	Extensions        []string      // Extensiones a escanear (vacío = todas soportadas)
-	SkipHidden        bool          // Saltar archivos/directorios ocultos
-	SkipSystem        bool          // Saltar directorios del sistema
-	ConcurrentWorkers int           // Workers concurrentes
+	MaxFiles          int
+	MaxDepth          int
+	ScanTimeout       time.Duration
+	FileTimeout       time.Duration
+	MinFileSize       int64
+	MaxFileSize       int64
+	Extensions        []string
+	SkipHidden        bool
+	SkipSystem        bool
+	ConcurrentWorkers int
+
+	// CustomDirs: rutas explícitas. Si están seteadas, tienen prioridad
+	// sobre el auto-descubrimiento.
+	CustomDirs []string
 }
 
-// DefaultInitialScanConfig retorna configuración por defecto agresiva
+// DefaultInitialScanConfig retorna configuración por defecto
 func DefaultInitialScanConfig() *InitialScanConfig {
 	return &InitialScanConfig{
-		MaxFiles:          50000,
-		MaxDepth:          10,
+		MaxFiles:          200000,
+		MaxDepth:          30,
 		ScanTimeout:       30 * time.Minute,
-		FileTimeout:       30 * time.Second,
-		MinFileSize:       10,                // 10 bytes mínimo
-		MaxFileSize:       100 * 1024 * 1024, // 100 MB
+		FileTimeout:       60 * time.Second,
+		MinFileSize:       10,
+		MaxFileSize:       500 * 1024 * 1024,
 		Extensions:        []string{".xlsx", ".xls", ".csv", ".txt", ".json", ".xml", ".pdf", ".doc", ".docx"},
 		SkipHidden:        true,
 		SkipSystem:        true,
@@ -83,10 +87,9 @@ type InitialInventoryItem struct {
 	LastScanned  time.Time           `json:"lastScanned"`
 	LastModified time.Time           `json:"lastModified"`
 	ScanCount    int                 `json:"scanCount"`
-	Status       string              `json:"status"` // "active", "deleted", "moved", "modified"
+	Status       string              `json:"status"`
 }
 
-// supportedExts son las extensiones que realmente puede escanear ScanFile
 var supportedExts = []string{".xlsx", ".xls", ".csv", ".txt", ".json", ".xml", ".pdf", ".doc", ".docx"}
 
 // RunInitialMassiveScan ejecuta el escaneo inicial masivo al arrancar el agente
@@ -102,24 +105,20 @@ func RunInitialMassiveScan(
 	log.Info("Config: MaxFiles=%d, MaxDepth=%d, Workers=%d, Timeout=%v",
 		config.MaxFiles, config.MaxDepth, config.ConcurrentWorkers, config.ScanTimeout)
 
-	// Obtener directorios a escanear
-	scanDirs := getScanDirectories(log)
+	// ── Resolver directorios ──
+	scanDirs := resolveScanDirs(config, log)
 	if len(scanDirs) == 0 {
 		log.Warn("No hay directorios válidos para escanear")
 		return 0, 0, nil
 	}
+	log.Info("Directorios a escanear (%d): %v", len(scanDirs), scanDirs)
 
-	log.Info("Directorios a escanear: %v", scanDirs)
-
-	// Canales de trabajo
 	jobs := make(chan string, config.ConcurrentWorkers*2)
 	results := make(chan *ScanResult, config.ConcurrentWorkers*2)
 
-	// Contexto con timeout
 	scanCtx, cancel := context.WithTimeout(ctx, config.ScanTimeout)
 	defer cancel()
 
-	// Workers
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, config.ConcurrentWorkers)
 
@@ -145,19 +144,16 @@ func RunInitialMassiveScan(
 		}(i)
 	}
 
-	// Colector de resultados: cierra results cuando todos los workers terminen
 	go func() {
 		wg.Wait()
 		close(results)
 	}()
 
-	// Caminata por directorios: llena jobs y los cierra al terminar
 	go func() {
 		walkAndSend(scanCtx, scanDirs, config, log, jobs)
 		close(jobs)
 	}()
 
-	// Procesar resultados
 	var (
 		totalScanned   int
 		totalSensitive int
@@ -179,7 +175,6 @@ func RunInitialMassiveScan(
 		if result.HasSensitive {
 			totalSensitive++
 
-			// Crear item de inventario
 			item := InitialInventoryItem{
 				AgentID:      getAgentID(),
 				UserID:       getUserID(),
@@ -200,7 +195,6 @@ func RunInitialMassiveScan(
 				Status:       "active",
 			}
 
-			// Guardar en base de datos local
 			if store != nil {
 				auditItem := audit.SensitiveInventoryItem{
 					AgentID:      item.AgentID,
@@ -226,7 +220,6 @@ func RunInitialMassiveScan(
 				}
 			}
 
-			// Enviar al backend
 			if sender != nil {
 				sender.SendInitialInventory(item)
 			}
@@ -234,7 +227,6 @@ func RunInitialMassiveScan(
 			inventoryItems = append(inventoryItems, item)
 			log.Info("📁 DATOS SENSIBLES ENCONTRADOS: %s (cats: %v)", result.RelativePath, getCategoriesList(result.Categories))
 		} else {
-			// Enviar tambien archivos no sensibles para completar el inventario
 			if sender != nil {
 				sender.SendInitialInventory(InitialInventoryItem{
 					AgentID:      getAgentID(),
@@ -259,7 +251,6 @@ func RunInitialMassiveScan(
 		}
 	}
 
-	// Resumen final
 	log.Info("============================================")
 	log.Info("ESCANEO INICIAL COMPLETADO")
 	log.Info("Total archivos escaneados: %d", totalScanned)
@@ -268,6 +259,43 @@ func RunInitialMassiveScan(
 	log.Info("============================================")
 
 	return totalScanned, totalSensitive, scanCtx.Err()
+}
+
+// resolveScanDirs decide qué directorios escanear, priorizando CustomDirs.
+func resolveScanDirs(cfg *InitialScanConfig, log *logger.Logger) []string {
+	// 1. CustomDirs (prioridad)
+	if len(cfg.CustomDirs) > 0 {
+		var valid []string
+		seen := make(map[string]bool)
+		for _, d := range cfg.CustomDirs {
+			d = filepath.Clean(d)
+			if d == "" {
+				continue
+			}
+			key := d
+			if runtime.GOOS == "windows" {
+				key = strings.ToLower(key)
+			}
+			if seen[key] {
+				continue
+			}
+			if info, err := os.Stat(d); err == nil && info.IsDir() {
+				seen[key] = true
+				valid = append(valid, d)
+			} else if log != nil {
+				log.Warn("CustomDir no accesible: %s (%v)", d, err)
+			}
+		}
+		if len(valid) > 0 {
+			return valid
+		}
+		if log != nil {
+			log.Warn("Ninguno de los %d CustomDirs existe; usando auto-descubrimiento", len(cfg.CustomDirs))
+		}
+	}
+
+	// 2. Auto-descubrimiento
+	return getScanDirectories(log)
 }
 
 func walkAndSend(scanCtx context.Context, scanDirs []string, config *InitialScanConfig, log *logger.Logger, jobs chan<- string) {
@@ -294,43 +322,34 @@ func walkAndSend(scanCtx context.Context, scanDirs []string, config *InitialScan
 			}
 
 			if err != nil {
-				// No se pudo acceder a este elemento; seguimos
 				return nil
 			}
 
 			if d.IsDir() {
-				// Profundidad máxima
 				depth := strings.Count(path, string(filepath.Separator)) - baseDepth
 				if depth > config.MaxDepth {
 					return fs.SkipDir
 				}
-
-				// Saltar directorios del sistema/ocultos
 				if shouldSkipDir(path, config) {
 					return fs.SkipDir
 				}
-
 				return nil
 			}
 
-			// Si ya alcanzamos el máximo de archivos, detenemos todo
 			if config.MaxFiles > 0 && sentFiles >= config.MaxFiles {
 				stopAll = true
 				return filepath.SkipAll
 			}
 
-			// Saltar archivos ocultos
 			if config.SkipHidden && isHidden(path) {
 				return nil
 			}
 
-			// Extensión soportada
 			ext := strings.ToLower(filepath.Ext(path))
 			if !isSupportedExt(ext) {
 				return nil
 			}
 
-			// Tamaño
 			info, err := d.Info()
 			if err != nil {
 				return nil
@@ -339,7 +358,6 @@ func walkAndSend(scanCtx context.Context, scanDirs []string, config *InitialScan
 				return nil
 			}
 
-			// Enviar a jobs
 			select {
 			case jobs <- path:
 				sentFiles++
@@ -375,28 +393,112 @@ func isHidden(path string) bool {
 	return false
 }
 
+// shouldSkipDir decide si un directorio debe excluirse del escaneo.
+//
+// FIX CRÍTICO: se excluye por PATH ABSOLUTO, no por basename.
+// Nombres como "dev", "env", "admin", "bin", "config", "build", "default"
+// son usernames válidos en Windows y Linux. Excluirlos por basename
+// hace que se pierdan usuarios reales (ej: usuario llamado "env" o "DEV").
 func shouldSkipDir(path string, config *InitialScanConfig) bool {
-	name := strings.ToLower(filepath.Base(path))
+	if !config.SkipSystem && !config.SkipHidden {
+		return false
+	}
 
-	if config.SkipSystem {
-		systemDirs := map[string]bool{
-			"windows": true, "winnt": true, "program files": true, "program files (x86)": true,
-			"system32": true, "syswow64": true, "config": true, "appdata": true,
-			"local settings": true, "application data": true, "$recycle.bin": true,
-			"$windows.~bt": true, "$windows.~ws": true, "recycler": true,
-			"pagefile.sys": true, "hiberfil.sys": true, "swapfile.sys": true,
-			"documents and settings": true, "default": true, "all users": true,
-			"proc": true, "sys": true, "dev": true, "run": true, "boot": true,
-			"node_modules": true, "vendor": true, "target": true, ".git": true,
-			"__pycache__": true, "venv": true, ".venv": true, "dist": true, "build": true,
+	base := filepath.Base(path)
+	lowerBase := strings.ToLower(base)
+	lowerPath := strings.ToLower(filepath.Clean(path))
+
+	// Ocultos (empiezan con punto)
+	if config.SkipHidden && strings.HasPrefix(base, ".") {
+		return true
+	}
+
+	if !config.SkipSystem {
+		return false
+	}
+
+	if runtime.GOOS == "windows" {
+		p := lowerPath
+		if !strings.HasSuffix(p, `\`) {
+			p += `\`
 		}
-		if systemDirs[name] {
+
+		systemPrefixes := []string{
+			`c:\windows\`,
+			`c:\winnt\`,
+			`c:\program files\`,
+			`c:\program files (x86)\`,
+			`c:\program files (arm)\`,
+			`c:\programdata\`,
+			`c:\$recycle.bin\`,
+			`c:\system volume information\`,
+			`c:\recovery\`,
+			`c:\perflogs\`,
+		}
+		for _, prefix := range systemPrefixes {
+			if strings.HasPrefix(p, prefix) {
+				return true
+			}
+		}
+
+		// AppData: solo si estamos dentro de C:\Users\<algo>\
+		if strings.HasPrefix(p, `c:\users\`) {
+			if strings.Contains(p, `\appdata\`) {
+				return true
+			}
+			if strings.Contains(p, `\configuración local\`) ||
+				strings.Contains(p, `\configuracion local\`) ||
+				strings.Contains(p, `\datos de programa\`) {
+				return true
+			}
+		}
+
+		switch lowerBase {
+		case "node_modules",
+			"__pycache__",
+			"system volume information",
+			"$recycle.bin",
+			"$windows.~bt",
+			"$windows.~ws",
+			"$sysreset",
+			"windows.old":
 			return true
+		}
+
+		// Junctions del sistema dentro de C:\Users\
+		if strings.HasPrefix(p, `c:\users\`) {
+			switch lowerBase {
+			case "all users", "default user", "defaultaccount", "wdagutilityaccount":
+				return true
+			}
 		}
 	}
 
-	if config.SkipHidden && strings.HasPrefix(name, ".") {
-		return true
+	if runtime.GOOS != "windows" {
+		p := lowerPath
+		if !strings.HasSuffix(p, "/") {
+			p += "/"
+		}
+
+		systemPrefixes := []string{
+			"/proc/",
+			"/sys/",
+			"/dev/",
+			"/run/",
+			"/boot/",
+			"/var/lib/docker/",
+			"/var/lib/containers/",
+		}
+		for _, prefix := range systemPrefixes {
+			if strings.HasPrefix(p, prefix) {
+				return true
+			}
+		}
+
+		switch lowerBase {
+		case "node_modules", "__pycache__", "snap", "lost+found":
+			return true
+		}
 	}
 
 	return false
@@ -427,31 +529,25 @@ func scanSingleFile(path string) *ScanResult {
 		return &ScanResult{Path: path, Error: err.Error()}
 	}
 
-	// Verificar tamaño
-	if info.Size() < 10 || info.Size() > 100*1024*1024 {
+	if info.Size() < 10 || info.Size() > 500*1024*1024 {
 		return &ScanResult{Path: path, Error: "tamaño fuera de rango"}
 	}
 
-	// Verificar extensión soportada antes de hacer hash
 	ext := strings.ToLower(filepath.Ext(path))
 	if !isSupportedExt(ext) {
 		return &ScanResult{Path: path, Error: "extensión no soportada"}
 	}
 
-	// Calcular hash
 	hash, _ := utils.HashFile(path)
 
-	// Escanear contenido
 	personalData, err := ScanFile(path)
 	if err != nil {
 		return &ScanResult{Path: path, Error: err.Error(), Hash: hash}
 	}
 
-	// Detectar categorías
 	cats := DetectPersonalDataFromMap(personalData)
 	hasSensitive := HasSensitiveData(cats)
 
-	// Obtener directorio base para ruta relativa
 	relPath := path
 	for _, base := range getScanDirectories(nil) {
 		if rel, err := filepath.Rel(base, path); err == nil && !strings.HasPrefix(rel, "..") {
@@ -493,54 +589,45 @@ func getCategoriesList(cats map[string]bool) []string {
 	return list
 }
 
-var (
-	cachedScanDirs     []string
-	cachedScanDirsOnce sync.Once
-)
-
-// getScanDirectories retorna directorios a escanear según SO (cacheado)
+// getScanDirectories retorna directorios a escanear según SO.
+// SIN caché (se recalcula cada vez) para evitar que el primer resultado
+// quede congelado para siempre.
 func getScanDirectories(log *logger.Logger) []string {
-	cachedScanDirsOnce.Do(func() { cachedScanDirs = computeScanDirectories(log) })
-	return cachedScanDirs
+	return computeScanDirectories(log)
 }
 
 func computeScanDirectories(log *logger.Logger) []string {
-	var dirs []string
+	var baseDirs []string
 
 	home, _ := os.UserHomeDir()
-	baseDirs := []string{
-		filepath.Join(home, "Documents"),
-		filepath.Join(home, "Desktop"),
-		filepath.Join(home, "Downloads"),
-		filepath.Join(home, "OneDrive"),
-		filepath.Join(home, "Google Drive"),
-		filepath.Join(home, "Dropbox"),
+
+	if home != "" && !isSystemProfilePath(home) {
+		baseDirs = append(baseDirs,
+			filepath.Join(home, "Documents"),
+			filepath.Join(home, "Desktop"),
+			filepath.Join(home, "Downloads"),
+			filepath.Join(home, "OneDrive"),
+			filepath.Join(home, "Google Drive"),
+			filepath.Join(home, "Dropbox"),
+		)
 	}
 
 	if runtime.GOOS == "windows" {
-		if userProfile := os.Getenv("USERPROFILE"); userProfile != "" {
+		if up := os.Getenv("USERPROFILE"); up != "" && !isSystemProfilePath(up) {
 			baseDirs = append(baseDirs,
-				filepath.Join(userProfile, "Documents"),
-				filepath.Join(userProfile, "Desktop"),
-				filepath.Join(userProfile, "Downloads"),
+				filepath.Join(up, "Documents"),
+				filepath.Join(up, "Desktop"),
+				filepath.Join(up, "Downloads"),
 			)
 		}
-		if publicProfile := os.Getenv("PUBLIC"); publicProfile != "" {
+		if pub := os.Getenv("PUBLIC"); pub != "" {
 			baseDirs = append(baseDirs,
-				filepath.Join(publicProfile, "Documents"),
-				filepath.Join(publicProfile, "Downloads"),
+				filepath.Join(pub, "Documents"),
+				filepath.Join(pub, "Downloads"),
 			)
 		}
-		// ══════════════════════════════════════════════════════
-		// FIX: mismo fallback que config.go.
-		// Sin esto, bajo LocalSystem, os.UserHomeDir() devuelve
-		// C:\Windows\system32\config\systemprofile (vacío) y no
-		// se escanea ningún archivo real del usuario.
-		// C:\Users\ cubre TODOS los perfiles: Alonso, María, etc.
-		// incluyendo OneDrive, Google Drive, Dropbox y todo lo
-		// que viva bajo el perfil.
-		// ══════════════════════════════════════════════════════
-		baseDirs = append(baseDirs, `C:\Users\`)
+		// Fallback universal: cubre todos los perfiles
+		baseDirs = append(baseDirs, `C:\Users`)
 	} else {
 		baseDirs = append(baseDirs,
 			"/opt",
@@ -550,18 +637,24 @@ func computeScanDirectories(log *logger.Logger) []string {
 		)
 	}
 
-	// Filtrar existentes y legibles + deduplicar
 	seen := make(map[string]bool)
+	var dirs []string
 	for _, d := range baseDirs {
 		if d == "" {
 			continue
 		}
 		d = filepath.Clean(d)
-		if seen[d] {
+
+		key := d
+		if runtime.GOOS == "windows" {
+			key = strings.ToLower(key)
+		}
+		if seen[key] {
 			continue
 		}
+
 		if info, err := os.Stat(d); err == nil && info.IsDir() {
-			seen[d] = true
+			seen[key] = true
 			dirs = append(dirs, d)
 		} else if log != nil {
 			log.Debug("Directorio no accesible: %s", d)
@@ -571,7 +664,14 @@ func computeScanDirectories(log *logger.Logger) []string {
 	return dirs
 }
 
-// Funciones auxiliares (deben estar en config.go o agente)
+func isSystemProfilePath(p string) bool {
+	l := strings.ToLower(p)
+	return strings.Contains(l, "systemprofile") ||
+		strings.Contains(l, `windows\system32\config`) ||
+		strings.Contains(l, `windows\syswow64`)
+}
+
+// Funciones auxiliares
 func getAgentID() string   { return "unknown" }
 func getUserID() string    { return "unknown" }
 func getCompanyID() string { return "unknown" }

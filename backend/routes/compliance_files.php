@@ -540,4 +540,69 @@ function agentScan() {
         'message' => 'Archivo reportado por agente y registrado en inventario'
     ]);
 }
+// ================================================================
+// 9. ELIMINAR ARCHIVO REPORTADO POR AGENTE (marcar como deleted)
+// ================================================================
+function agentDelete() {
+    $user = Auth::requireAuth();
+    $body = get_body();
 
+    $required = ['agentId', 'path'];
+    foreach ($required as $field) {
+        if (empty($body[$field])) json_error("Campo '$field' requerido");
+    }
+
+    $db = Database::getInstance();
+    $now = date('c');
+    $agentId = $body['agentId'];
+    $path = $body['path'];
+    $hash = $body['hash'] ?? '';
+
+    $existing = $db->findOne('compliance_files', [
+        'agentId' => $agentId,
+        'path'    => $path,
+        'userId'  => $user['_id'],
+    ]);
+
+    if (!$existing) {
+        json_response(['success' => true, 'message' => 'Archivo no estaba registrado']);
+    }
+
+    $db->updateOne('compliance_files', ['_id' => $existing['_id']], [
+        'status'      => 'deleted',
+        'deletedAt'   => $now,
+        'deletedHash' => $hash,
+        'updatedAt'   => $now,
+    ]);
+
+    $inventoryId = $existing['analysisResult']['inventoryId'] ?? null;
+    if ($inventoryId) {
+        $db->updateOne('compliance_inventory', ['_id' => $inventoryId], [
+            'active'    => false,
+            'deletedAt' => $now,
+            'updatedAt' => $now,
+        ]);
+    }
+
+    $db->insertOne('file_audit_logs', [
+        'userId'     => $user['_id'],
+        'agentId'    => $agentId,
+        'hostname'   => $body['hostname'] ?? 'unknown',
+        'path'       => $path,
+        'user'       => $body['user'] ?? null,
+        'detectedAt' => $now,
+        'categories' => array_keys($body['personalData'] ?? []),
+        'sensitive'  => !empty($body['sensitive']),
+        'fileType'   => $body['fileType'] ?? 'unknown',
+        'hash'       => $hash,
+        'status'     => 'deleted',
+        'eventType'  => 'deleted',
+    ]);
+
+    audit_log('file_deleted_by_agent', [
+        'agentId' => $agentId,
+        'path'    => $path,
+    ], $user['_id']);
+
+    json_response(['success' => true]);
+}

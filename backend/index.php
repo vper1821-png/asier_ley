@@ -256,6 +256,7 @@ $routes = [
     'DELETE /api/compliance/files'         => 'routes/compliance_files.php@deleteFile',
     'POST /api/compliance/files/map'       => 'routes/compliance_files.php@mapColumns',
     'POST /api/compliance/files/agent-scan' => 'routes/compliance_files.php@agentScan',
+    'POST /api/compliance/files/agent-delete' => 'routes/compliance_files.php@agentDelete',
     'GET /api/compliance/files/audit-logs' => 'routes/compliance_files.php@listFileAuditLogs',
 
     // ARCO

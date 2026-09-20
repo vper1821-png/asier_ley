@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"securelab-agent/internal/audit"
 	"securelab-agent/internal/logger"
@@ -14,7 +15,11 @@ import (
 	"securelab-agent/internal/ws"
 )
 
-// Monitor maneja la vigilancia y escaneo de archivos
+// scanDebounce es el tiempo de silencio requerido antes de procesar un archivo.
+// Durante un copy/paste, fsnotify dispara 3-10 eventos en <500ms. Con 2s de
+// espera, se procesan todos como uno solo.
+const scanDebounce = 2 * time.Second
+
 type Monitor struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
@@ -24,9 +29,14 @@ type Monitor struct {
 	log       *logger.Logger
 	watchers  []*fileWatcher
 	eventChan chan audit.FileEvent
+
+	// Dedupe y debounce
+	pending    map[string]*time.Timer
+	pendingMu  sync.Mutex
+	lastSent   map[string]string
+	lastSentMu sync.RWMutex
 }
 
-// NewMonitor crea un nuevo monitor de archivos
 func NewMonitor(store *audit.Store, wsClient *ws.Client, log *logger.Logger) *Monitor {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Monitor{
@@ -36,10 +46,11 @@ func NewMonitor(store *audit.Store, wsClient *ws.Client, log *logger.Logger) *Mo
 		wsClient:  wsClient,
 		log:       log,
 		eventChan: make(chan audit.FileEvent, 1000),
+		pending:   make(map[string]*time.Timer),
+		lastSent:  make(map[string]string),
 	}
 }
 
-// WatchDirectories añade directorios a vigilar
 func (m *Monitor) WatchDirectories(dirs []string) {
 	for _, dir := range dirs {
 		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
@@ -52,7 +63,6 @@ func (m *Monitor) WatchDirectories(dirs []string) {
 	}
 }
 
-// Start inicia la vigilancia y el procesamiento de eventos
 func (m *Monitor) Start() {
 	if len(m.watchers) == 0 {
 		m.log.Warn("FileMonitor: no hay directorios válidos para vigilar")
@@ -74,10 +84,8 @@ func (m *Monitor) Start() {
 	go m.processEvents()
 }
 
-// AddSensitiveFilePaths añade rutas específicas de archivos sensibles para monitoreo prioritario
 func (m *Monitor) AddSensitiveFilePaths(paths []string) {
 	for _, p := range paths {
-		// Verificar si ya está siendo vigilado
 		found := false
 		for _, w := range m.watchers {
 			if strings.HasPrefix(p, w.dir) {
@@ -86,7 +94,6 @@ func (m *Monitor) AddSensitiveFilePaths(paths []string) {
 			}
 		}
 		if !found {
-			// Añadir el directorio padre
 			dir := filepath.Dir(p)
 			if info, err := os.Stat(dir); err == nil && info.IsDir() {
 				m.WatchDirectories([]string{dir})
@@ -96,7 +103,6 @@ func (m *Monitor) AddSensitiveFilePaths(paths []string) {
 	}
 }
 
-// processEvents procesa los eventos entrantes y los guarda en la base de datos
 func (m *Monitor) processEvents() {
 	defer m.wg.Done()
 	for {
@@ -104,14 +110,43 @@ func (m *Monitor) processEvents() {
 		case ev := <-m.eventChan:
 			m.log.Debug("FileMonitor: evento recibido: %s - %s", ev.Path, ev.EventType)
 
-			// Guardar localmente
 			if err := m.store.SaveFileEvent(ev); err != nil {
 				m.log.Error("FileMonitor: error guardando evento local: %v", err)
 			} else {
 				m.log.Debug("FileMonitor: evento guardado localmente: %s", ev.Path)
 			}
 
-			// Determinar si el archivo es conocido como sensible (por inventario previo)
+			// ── Manejo de DELETE ──
+			if ev.EventType == "delete" {
+				var deletedItem *audit.SensitiveInventoryItem
+				if m.store != nil {
+					if item, err := m.store.GetSensitiveInventoryByPath(ev.Path); err == nil {
+						deletedItem = item
+					}
+				}
+
+				// Solo notificar al backend si teníamos registro sensible previo
+				if deletedItem != nil && deletedItem.Sensitive {
+					ev.Sensitive = true
+					ev.PersonalData = deletedItem.PersonalData
+					if ev.Hash == "" {
+						ev.Hash = deletedItem.Hash
+					}
+					m.wsClient.SendFileDeleted(ev)
+					m.log.Info("🗑️  Archivo sensible eliminado, notificando backend: %s (hash: %s)",
+						ev.Path, shortHash(ev.Hash))
+				} else {
+					m.log.Debug("FileMonitor: archivo eliminado (sin PII registrada): %s", ev.Path)
+				}
+
+				m.forgetHash(ev.Path)
+
+				if m.store != nil {
+					_ = m.store.UpdateInventoryOnFileEvent(ev)
+				}
+				continue
+			}
+
 			var knownItem *audit.SensitiveInventoryItem
 			if m.store != nil {
 				if item, err := m.store.GetSensitiveInventoryByPath(ev.Path); err == nil && item != nil {
@@ -119,11 +154,9 @@ func (m *Monitor) processEvents() {
 				}
 			}
 
-			// Decidir si el evento debe enviarse al panel
 			sendEvent := false
 			reason := ""
 
-			// 1. Archivo ya conocido como sensible en el inventario
 			if knownItem != nil && knownItem.Sensitive {
 				sendEvent = true
 				ev.Sensitive = true
@@ -131,38 +164,33 @@ func (m *Monitor) processEvents() {
 				reason = "inventario sensible"
 			}
 
-			// 2. Nombre/ruta contiene datos críticos/sensibles
 			if !sendEvent && matchesSensitiveKeywords(ev.Path) {
 				sendEvent = true
 				ev.Sensitive = true
 				reason = "ruta sensible"
 			}
 
-			// 3. Extensión crítica + evento crítico (copia/mover/borrar)
 			if !sendEvent && isCriticalEvent(ev) && hasCriticalExtension(ev.Path) {
 				sendEvent = true
 				ev.Sensitive = true
 				reason = "archivo crítico con operación crítica"
 			}
 
-			// Enviar inmediatamente si cumple criterios
 			if sendEvent {
 				m.wsClient.SendFileEvent(ev)
 				m.log.Info("FileMonitor: evento enviado al panel: %s (%s) - motivo: %s", ev.Path, ev.EventType, reason)
 			}
 
-			// Si es scaneable, analizar en background
+			// Agendar análisis con debounce
 			if isScannableFile(ev.Path) {
-				m.log.Debug("FileMonitor: archivo scaneable, iniciando análisis: %s", ev.Path)
-				go m.scanFileAndReport(ev, knownItem != nil)
+				m.log.Debug("FileMonitor: agendando análisis con debounce: %s", ev.Path)
+				m.scheduleScan(ev, knownItem != nil)
 			}
 
-			// Logs de eventos críticos (solo si es sensible o crítico)
 			if ev.Sensitive && (ev.EventType == "copy" || ev.EventType == "delete" || ev.EventType == "move") {
 				m.log.Warn("Archivo crítico/sensible %s: %s por %s (PID %d)", ev.Path, ev.EventType, ev.ProcessName, ev.PID)
 			}
 
-			// Si es un archivo sensible conocido, marcar como modificado en inventario
 			if m.store != nil {
 				if err := m.store.UpdateInventoryOnFileEvent(ev); err != nil {
 					m.log.Debug("FileMonitor: error actualizando inventario: %v", err)
@@ -171,12 +199,145 @@ func (m *Monitor) processEvents() {
 
 		case <-m.ctx.Done():
 			m.log.Info("FileMonitor: deteniendo procesamiento de eventos")
+			m.pendingMu.Lock()
+			for _, t := range m.pending {
+				t.Stop()
+			}
+			m.pending = make(map[string]*time.Timer)
+			m.pendingMu.Unlock()
 			return
 		}
 	}
 }
 
-// matchesSensitiveKeywords detecta si el nombre o ruta contiene palabras clave sensibles/críticas
+// ═══════════════════════════════════════════════════════════════════════
+// DEBOUNCE
+// ═══════════════════════════════════════════════════════════════════════
+
+func (m *Monitor) scheduleScan(ev audit.FileEvent, alreadySent bool) {
+	path := ev.Path
+
+	m.pendingMu.Lock()
+	defer m.pendingMu.Unlock()
+
+	if timer, exists := m.pending[path]; exists {
+		timer.Stop()
+	}
+
+	evCopy := ev
+	sent := alreadySent
+
+	m.pending[path] = time.AfterFunc(scanDebounce, func() {
+		m.pendingMu.Lock()
+		delete(m.pending, path)
+		m.pendingMu.Unlock()
+
+		m.scanFileAndReport(evCopy, sent)
+	})
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// DEDUP
+// ═══════════════════════════════════════════════════════════════════════
+
+func (m *Monitor) wasAlreadySentWithHash(path, hash string) bool {
+	if hash == "" {
+		return false
+	}
+	m.lastSentMu.RLock()
+	defer m.lastSentMu.RUnlock()
+	return m.lastSent[path] == hash
+}
+
+func (m *Monitor) rememberHash(path, hash string) {
+	if hash == "" {
+		return
+	}
+	m.lastSentMu.Lock()
+	m.lastSent[path] = hash
+	m.lastSentMu.Unlock()
+}
+
+func (m *Monitor) forgetHash(path string) {
+	m.lastSentMu.Lock()
+	delete(m.lastSent, path)
+	m.lastSentMu.Unlock()
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// SCAN + REPORT
+// ═══════════════════════════════════════════════════════════════════════
+
+func (m *Monitor) scanFileAndReport(ev audit.FileEvent, alreadySent bool) {
+	if _, err := os.Stat(ev.Path); os.IsNotExist(err) {
+		m.forgetHash(ev.Path)
+		m.log.Debug("FileMonitor: archivo eliminado antes de escanear: %s", ev.Path)
+		return
+	}
+
+	if ev.Hash == "" {
+		hash, err := utils.HashFile(ev.Path)
+		if err != nil {
+			m.log.Warn("FileMonitor: error calculando hash de %s: %v", ev.Path, err)
+			return
+		}
+		ev.Hash = hash
+		m.log.Debug("FileMonitor: hash calculado para %s: %s", ev.Path, shortHash(ev.Hash))
+	}
+
+	// DEDUP
+	if m.wasAlreadySentWithHash(ev.Path, ev.Hash) {
+		m.log.Debug("FileMonitor: hash sin cambios, omitiendo reenvío: %s", ev.Path)
+		return
+	}
+
+	result, err := scanner.ScanFile(ev.Path)
+	if err != nil {
+		m.log.Warn("FileMonitor: error escaneando %s: %v", ev.Path, err)
+		return
+	}
+
+	if len(result) == 0 {
+		m.rememberHash(ev.Path, ev.Hash)
+		return
+	}
+
+	ev.PersonalData = result
+	ev.Sensitive = hasSensitiveData(result)
+
+	if !ev.Sensitive {
+		m.rememberHash(ev.Path, ev.Hash)
+		return
+	}
+
+	if err := m.store.SaveFileEvent(ev); err != nil {
+		m.log.Error("FileMonitor: error guardando evento con PII local: %v", err)
+	} else {
+		m.log.Debug("FileMonitor: evento con PII guardado localmente: %s", ev.Path)
+	}
+
+	m.wsClient.SendFileDetection(ev)
+
+	if !alreadySent {
+		m.wsClient.SendFileEvent(ev)
+	}
+
+	m.rememberHash(ev.Path, ev.Hash)
+
+	m.log.Info("PII detectada en %s: %v (hash: %s)", ev.Path, result, shortHash(ev.Hash))
+}
+
+func shortHash(h string) string {
+	if len(h) >= 8 {
+		return h[:8] + "…"
+	}
+	return h
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════════════
+
 func matchesSensitiveKeywords(path string) bool {
 	sensitiveKeywords := []string{
 		"password", "passwd", "contrasena", "contraseña", "clave", "secret", "secrets",
@@ -199,12 +360,10 @@ func matchesSensitiveKeywords(path string) bool {
 	return false
 }
 
-// isCriticalEvent devuelve true para eventos que indican exfiltración o manipulación crítica
 func isCriticalEvent(ev audit.FileEvent) bool {
 	return ev.EventType == "copy" || ev.EventType == "delete" || ev.EventType == "move" || ev.EventType == "rename"
 }
 
-// hasCriticalExtension detecta extensiones de archivos que suelen contener datos críticos
 func hasCriticalExtension(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
 	criticalExts := map[string]bool{
@@ -218,63 +377,6 @@ func hasCriticalExtension(path string) bool {
 	return criticalExts[ext]
 }
 
-// scanFileAndReport escanea el archivo en busca de PII y guarda los resultados
-func (m *Monitor) scanFileAndReport(ev audit.FileEvent, alreadySent bool) {
-	// Verificar que el archivo aún existe
-	if _, err := os.Stat(ev.Path); os.IsNotExist(err) {
-		m.log.Debug("FileMonitor: archivo eliminado antes de escanear: %s", ev.Path)
-		return
-	}
-
-	// Calcular hash si es necesario
-	if ev.Hash == "" {
-		hash, err := utils.HashFile(ev.Path)
-		if err != nil {
-			m.log.Warn("FileMonitor: error calculando hash de %s: %v", ev.Path, err)
-		} else {
-			ev.Hash = hash
-			m.log.Debug("FileMonitor: hash calculado para %s: %s", ev.Path, hash[:8])
-		}
-	}
-
-	// Escanear contenido
-	result, err := scanner.ScanFile(ev.Path)
-	if err != nil {
-		m.log.Warn("FileMonitor: error escaneando %s: %v", ev.Path, err)
-		return
-	}
-
-	if len(result) == 0 {
-		return
-	}
-
-	// Actualizar evento con PII
-	ev.PersonalData = result
-	ev.Sensitive = hasSensitiveData(result)
-
-	if !ev.Sensitive {
-		return
-	}
-
-	// Guardar evento actualizado localmente
-	if err := m.store.SaveFileEvent(ev); err != nil {
-		m.log.Error("FileMonitor: error guardando evento con PII local: %v", err)
-	} else {
-		m.log.Debug("FileMonitor: evento con PII guardado localmente: %s", ev.Path)
-	}
-
-	// Enviar detección al backend
-	m.wsClient.SendFileDetection(ev)
-
-	// Enviar evento de archivo solo si aún no se envió por inventario conocido
-	if !alreadySent {
-		m.wsClient.SendFileEvent(ev)
-	}
-
-	m.log.Info("PII detectada en %s: %v", ev.Path, result)
-}
-
-// isScannableFile comprueba si el archivo puede contener PII según su extensión
 func isScannableFile(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
 	switch ext {
@@ -284,9 +386,6 @@ func isScannableFile(path string) bool {
 	return false
 }
 
-// hasSensitiveData determina si los datos personales incluyen categorías sensibles.
-// Delegamos en scanner.HasSensitiveData para tener UNA SOLA fuente de verdad
-// entre el escaneo inicial y el monitor en tiempo real.
 func hasSensitiveData(data map[string][]string) bool {
 	cats := make(map[string]bool)
 	for _, list := range data {
@@ -297,7 +396,6 @@ func hasSensitiveData(data map[string][]string) bool {
 	return scanner.HasSensitiveData(cats)
 }
 
-// Stop detiene el monitor y espera a que terminen todas las goroutines
 func (m *Monitor) Stop() {
 	m.cancel()
 	m.wg.Wait()

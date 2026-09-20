@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -49,41 +50,41 @@ type Config struct {
 }
 
 type fileConfig struct {
-	APIBase           *string  `json:"api_base"`
-	APIBaseAlt        *string  `json:"apiBase"`
-	Token             *string  `json:"token"`
-	HeartbeatInterval *int     `json:"heartbeat_interval"`
-	HeartbeatIntervalAlt *int  `json:"heartbeatInterval"`
-	AgentVersion      *string  `json:"agent_version"`
-	AgentVersionAlt   *string  `json:"agentVersion"`
-	LogFile           *string  `json:"log_file"`
-	LogFileAlt        *string  `json:"logFile"`
-	LogLevel          *string  `json:"log_level"`
-	LogLevelAlt       *string  `json:"logLevel"`
-	StateFile         *string  `json:"state_file"`
-	StateFileAlt      *string  `json:"stateFile"`
-	MaxLogSize        *int64   `json:"max_log_size"`
-	MaxLogSizeAlt     *int64   `json:"maxLogSize"`
-	AuditDBPath       *string  `json:"audit_db_path"`
-	AuditDBPathAlt    *string  `json:"auditDbPath"`
-	KnowledgeDBPath   *string  `json:"knowledge_db_path"`
-	KnowledgeDBPathAlt *string `json:"knowledgeDbPath"`
-	WSURL             *string  `json:"ws_url"`
-	WSURLAlt          *string  `json:"wsUrl"`
-	SyncInterval      *int     `json:"sync_interval"`
-	SyncIntervalAlt   *int     `json:"syncInterval"`
-	MaxPendingEvents  *int     `json:"max_pending_events"`
-	MaxPendingEventsAlt *int   `json:"maxPendingEvents"`
-	TelemetryInterval *int     `json:"telemetry_interval"`
-	TelemetryIntervalAlt *int  `json:"telemetryInterval"`
-	FileWatchDirs     []string `json:"file_watch_dirs"`
-	FileWatchDirsAlt  []string `json:"fileWatchDirs"`
-	PersistenceMode   *string  `json:"persistence_mode"`
-	PersistenceModeAlt *string `json:"persistenceMode"`
-	HardeningEnabled  *bool    `json:"hardening_enabled"`
-	HardeningEnabledAlt *bool  `json:"hardeningEnabled"`
-	Platform          *string  `json:"platform"`
-	PasswordPolicy    *struct {
+	APIBase              *string  `json:"api_base"`
+	APIBaseAlt           *string  `json:"apiBase"`
+	Token                *string  `json:"token"`
+	HeartbeatInterval    *int     `json:"heartbeat_interval"`
+	HeartbeatIntervalAlt *int     `json:"heartbeatInterval"`
+	AgentVersion         *string  `json:"agent_version"`
+	AgentVersionAlt      *string  `json:"agentVersion"`
+	LogFile              *string  `json:"log_file"`
+	LogFileAlt           *string  `json:"logFile"`
+	LogLevel             *string  `json:"log_level"`
+	LogLevelAlt          *string  `json:"logLevel"`
+	StateFile            *string  `json:"state_file"`
+	StateFileAlt         *string  `json:"stateFile"`
+	MaxLogSize           *int64   `json:"max_log_size"`
+	MaxLogSizeAlt        *int64   `json:"maxLogSize"`
+	AuditDBPath          *string  `json:"audit_db_path"`
+	AuditDBPathAlt       *string  `json:"auditDbPath"`
+	KnowledgeDBPath      *string  `json:"knowledge_db_path"`
+	KnowledgeDBPathAlt   *string  `json:"knowledgeDbPath"`
+	WSURL                *string  `json:"ws_url"`
+	WSURLAlt             *string  `json:"wsUrl"`
+	SyncInterval         *int     `json:"sync_interval"`
+	SyncIntervalAlt      *int     `json:"syncInterval"`
+	MaxPendingEvents     *int     `json:"max_pending_events"`
+	MaxPendingEventsAlt  *int     `json:"maxPendingEvents"`
+	TelemetryInterval    *int     `json:"telemetry_interval"`
+	TelemetryIntervalAlt *int     `json:"telemetryInterval"`
+	FileWatchDirs        []string `json:"file_watch_dirs"`
+	FileWatchDirsAlt     []string `json:"fileWatchDirs"`
+	PersistenceMode      *string  `json:"persistence_mode"`
+	PersistenceModeAlt   *string  `json:"persistenceMode"`
+	HardeningEnabled     *bool    `json:"hardening_enabled"`
+	HardeningEnabledAlt  *bool    `json:"hardeningEnabled"`
+	Platform             *string  `json:"platform"`
+	PasswordPolicy       *struct {
 		MinLength      int  `json:"min_length"`
 		RequireUpper   bool `json:"require_upper"`
 		RequireLower   bool `json:"require_lower"`
@@ -101,16 +102,15 @@ func defaultConfig() *Config {
 	dir := filepath.Dir(exe)
 	home, _ := os.UserHomeDir()
 
-	// Get actual user directories for file monitoring
+	// Directorios de escaneo por defecto
 	fileWatchDirs := []string{
 		filepath.Join(home, "Documents"),
 		filepath.Join(home, "Desktop"),
 		filepath.Join(home, "Downloads"),
 	}
 
-	// On Windows, try to get the actual logged-in user's directories
 	if runtime.GOOS == "windows" {
-		// Try to get the current user's profile from environment
+		// Intentar rutas del usuario real si corre en sesión interactiva
 		if userProfile := os.Getenv("USERPROFILE"); userProfile != "" && userProfile != home {
 			fileWatchDirs = []string{
 				filepath.Join(userProfile, "Documents"),
@@ -118,12 +118,16 @@ func defaultConfig() *Config {
 				filepath.Join(userProfile, "Downloads"),
 			}
 		}
-		// Also try common locations
 		if publicProfile := os.Getenv("PUBLIC"); publicProfile != "" {
 			fileWatchDirs = append(fileWatchDirs, filepath.Join(publicProfile, "Documents"))
 		}
-		// Also watch C:\Users\ to catch all user directories on Windows
-		fileWatchDirs = append(fileWatchDirs, `C:\Users\`)
+		// Fallback universal: cubre TODOS los perfiles de usuario
+		// (Alonso, DEV, env, admin, etc.) incluyendo OneDrive, Drive, Dropbox
+		fileWatchDirs = append(fileWatchDirs, `C:\Users`)
+	} else {
+		fileWatchDirs = append(fileWatchDirs,
+			"/opt", "/var/www", "/home", "/srv",
+		)
 	}
 
 	return &Config{
@@ -164,7 +168,6 @@ func GetConfigFilePath() string {
 }
 
 func findConfigFile() string {
-	// 1. CLI arguments: --config <path>, -config <path>, -c <path>, --config=<path>
 	for i := 1; i < len(os.Args); i++ {
 		arg := os.Args[i]
 		if (arg == "--config" || arg == "-config" || arg == "-c") && i+1 < len(os.Args) {
@@ -181,7 +184,6 @@ func findConfigFile() string {
 		}
 	}
 
-	// 2. Environment variables
 	for _, envKey := range []string{"CONFIG_FILE", "INVISIA_CONFIG", "AGENT_CONFIG"} {
 		if v := os.Getenv(envKey); v != "" {
 			if _, err := os.Stat(v); err == nil {
@@ -190,20 +192,16 @@ func findConfigFile() string {
 		}
 	}
 
-	// 3. Search in candidate locations
 	candidates := []string{}
 
-	// Executable directory
 	if exe, err := os.Executable(); err == nil {
 		exeDir := filepath.Dir(exe)
 		candidates = append(candidates, filepath.Join(exeDir, "config.json"))
 		candidates = append(candidates, filepath.Join(exeDir, "..", "config.json"))
 	}
 
-	// Current working directory
 	candidates = append(candidates, "config.json")
 
-	// Windows standard paths
 	if runtime.GOOS == "windows" {
 		if pf := os.Getenv("ProgramFiles"); pf != "" {
 			candidates = append(candidates, filepath.Join(pf, "SecureLab Agent", "config.json"))
@@ -216,7 +214,6 @@ func findConfigFile() string {
 		candidates = append(candidates, `C:\Program Files\SecureLab Agent\config.json`)
 		candidates = append(candidates, `C:\Program Files\SecureLab\SecureLab Agent\config.json`)
 	} else {
-		// Unix standard paths
 		candidates = append(candidates, "/etc/securelab-agent/config.json")
 		candidates = append(candidates, "/opt/securelab-agent/config.json")
 		candidates = append(candidates, "/var/lib/securelab-agent/config.json")
@@ -247,7 +244,6 @@ func loadConfigFile(cfg *Config) {
 
 	var f fileConfig
 	if err := json.Unmarshal(data, &f); err != nil {
-		// Try sanitizing unescaped Windows backslashes in JSON (e.g. C:\Program Files...)
 		sanitized := sanitizeJSON(data)
 		if err2 := json.Unmarshal(sanitized, &f); err2 != nil {
 			fmt.Fprintf(os.Stderr, "[WARN] Error parsing config.json (%s): %v\n", configPath, err)
@@ -382,7 +378,6 @@ func sanitizeJSON(data []byte) []byte {
 					continue
 				}
 			}
-			// Replace unescaped backslash with double backslash
 			out = append(out, '\\', '\\')
 			continue
 		}
@@ -409,7 +404,6 @@ func ensureValidWSURL(cfg *Config) {
 		base = "ws://" + base[7:]
 	}
 
-	// Strip trailing /api/agents or /api
 	if idx := len(base); idx > 0 {
 		for _, suffix := range []string{"/api/agents", "/api/agents/", "/api", "/api/"} {
 			if len(base) >= len(suffix) && base[len(base)-len(suffix):] == suffix {
@@ -476,6 +470,29 @@ func overrideFromEnv(cfg *Config) {
 	if v := os.Getenv("TELEMETRY_INTERVAL"); v != "" {
 		if i, err := strconv.Atoi(v); err == nil && i > 0 {
 			cfg.TelemetryInterval = i
+		}
+	}
+
+	// ══════════════════════════════════════════════════════════════
+	// NUEVO: override de file_watch_dirs vía env var, para pruebas.
+	// Separador: ';' (punto y coma). Windows-friendly.
+	//
+	// Ejemplo Windows (PowerShell):
+	//   $env:FILE_WATCH_DIRS="C:\Users\DEV\Documents;C:\Users\DEV\Desktop"
+	// Ejemplo Linux/macOS:
+	//   export FILE_WATCH_DIRS="/home/user/Documents;/home/user/Desktop"
+	// ══════════════════════════════════════════════════════════════
+	if v := os.Getenv("FILE_WATCH_DIRS"); v != "" {
+		parts := strings.Split(v, ";")
+		var dirs []string
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				dirs = append(dirs, p)
+			}
+		}
+		if len(dirs) > 0 {
+			cfg.FileWatchDirs = dirs
 		}
 	}
 }

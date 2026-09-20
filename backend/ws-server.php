@@ -106,6 +106,9 @@ class AgentWebSocket implements MessageComponentInterface {
                 case 'file_event':
                     $this->handleFileEvent($from, $payload);
                     break;
+                case 'file_deleted':
+                    $this->handleFileDeleted($from, $payload);
+                    break;    
                 case 'db_query':
                     $this->handleDBQuery($from, $payload);
                     break;
@@ -846,6 +849,91 @@ class AgentWebSocket implements MessageComponentInterface {
 
         return ['fileId' => $fileId];
     }
+    /**
+    * Maneja la notificación de un archivo eliminado.
+    * NO borra el registro; lo marca como "deleted" para mantener trazabilidad.
+    */
+    private function handleFileDeleted(ConnectionInterface $from, $data) {
+    $agentId = $from->agentId ?? $data['agentId'] ?? '';
+    $userId  = $from->userId ?? '';
+    $path    = $data['path'] ?? '';
+    $hash    = $data['hash'] ?? '';
+
+    if (!$agentId || !$userId || !$path) {
+        echo "⚠️ file_deleted ignorado: datos incompletos\n";
+        return;
+    }
+
+    if (!$this->db) {
+        echo "⚠️ file_deleted: sin BD disponible\n";
+        return;
+    }
+
+    $db = $this->db;
+    $now = date('c');
+
+    // 1. Marcar el archivo como eliminado (sin borrarlo)
+    $existing = $db->findOne('compliance_files', [
+        'agentId' => $agentId,
+        'path'    => $path,
+        'userId'  => $userId,
+    ]);
+
+    if (!$existing) {
+        echo "ℹ️  file_deleted: archivo no encontrado en BD, nada que marcar: {$path}\n";
+        return;
+    }
+
+    $db->updateOne('compliance_files', ['_id' => $existing['_id']], [
+        'status'      => 'deleted',
+        'deletedAt'   => $now,
+        'deletedHash' => $hash,
+        'updatedAt'   => $now,
+    ]);
+
+    // 2. Marcar inventario asociado como inactivo
+    $inventoryId = $existing['analysisResult']['inventoryId'] ?? null;
+    if ($inventoryId) {
+        $db->updateOne('compliance_inventory', ['_id' => $inventoryId], [
+            'active'    => false,
+            'deletedAt' => $now,
+            'updatedAt' => $now,
+        ]);
+        echo "🗑️  Inventario marcado como inactivo: {$inventoryId}\n";
+    }
+
+    // 3. Registro de auditoría de archivos
+    $db->insertOne('file_audit_logs', [
+        'userId'       => $userId,
+        'agentId'      => $agentId,
+        'hostname'     => $data['hostname'] ?? 'unknown',
+        'path'         => $path,
+        'user'         => $data['user'] ?? null,
+        'detectedAt'   => $now,
+        'categories'   => array_keys($data['personalData'] ?? []),
+        'sensitive'    => !empty($data['sensitive']),
+        'fileType'     => 'unknown',
+        'hash'         => $hash,
+        'status'       => 'deleted',
+        'eventType'    => 'deleted',
+    ]);
+
+    // 4. Auditoría general
+    $db->insertOne('audit_logs', [
+        'userId'  => $userId,
+        'action'  => 'file_deleted_by_agent',
+        'details' => [
+            'agentId' => $agentId,
+            'path'    => $path,
+            'hash'    => $hash,
+            'user'    => $data['user'] ?? null,
+        ],
+        'createdAt' => $now,
+    ]);
+
+    echo "🗑️  Archivo sensible marcado como eliminado: {$path}\n";
+    }
+    
 }
 
 // ─── INICIAR SERVIDOR ──────────────────────────────────────────
