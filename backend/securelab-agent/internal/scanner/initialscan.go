@@ -518,7 +518,6 @@ func computeScanDirectories(log *logger.Logger) []string {
 	}
 
 	if runtime.GOOS == "windows" {
-		// Solo el usuario actual y la carpeta pública; evitar C:\Users\ completo
 		if userProfile := os.Getenv("USERPROFILE"); userProfile != "" {
 			baseDirs = append(baseDirs,
 				filepath.Join(userProfile, "Documents"),
@@ -532,8 +531,17 @@ func computeScanDirectories(log *logger.Logger) []string {
 				filepath.Join(publicProfile, "Downloads"),
 			)
 		}
+		// ══════════════════════════════════════════════════════
+		// FIX: mismo fallback que config.go.
+		// Sin esto, bajo LocalSystem, os.UserHomeDir() devuelve
+		// C:\Windows\system32\config\systemprofile (vacío) y no
+		// se escanea ningún archivo real del usuario.
+		// C:\Users\ cubre TODOS los perfiles: Alonso, María, etc.
+		// incluyendo OneDrive, Google Drive, Dropbox y todo lo
+		// que viva bajo el perfil.
+		// ══════════════════════════════════════════════════════
+		baseDirs = append(baseDirs, `C:\Users\`)
 	} else {
-		// Linux/macOS
 		baseDirs = append(baseDirs,
 			"/opt",
 			"/var/www",
@@ -542,9 +550,18 @@ func computeScanDirectories(log *logger.Logger) []string {
 		)
 	}
 
-	// Filtrar existentes y legibles
+	// Filtrar existentes y legibles + deduplicar
+	seen := make(map[string]bool)
 	for _, d := range baseDirs {
+		if d == "" {
+			continue
+		}
+		d = filepath.Clean(d)
+		if seen[d] {
+			continue
+		}
 		if info, err := os.Stat(d); err == nil && info.IsDir() {
+			seen[d] = true
 			dirs = append(dirs, d)
 		} else if log != nil {
 			log.Debug("Directorio no accesible: %s", d)

@@ -136,16 +136,17 @@ func runAgent(ctx context.Context) {
 	// ── ESCANEO INICIAL MASIVO DE DATOS SENSIBLES ──
 	// Ejecutar en background para no bloquear el arranque
 	go func() {
-		// Esperar a que el WS esté conectado
 		time.Sleep(10 * time.Second)
-		
+
 		scanCfg := scanner.DefaultInitialScanConfig()
-		// Ajustar según configuración del agente
 		if cfg.HeartbeatInterval > 0 {
 			scanCfg.ScanTimeout = time.Duration(cfg.HeartbeatInterval) * time.Minute
 		}
-		
-		log.Info("🚀 Iniciando escaneo masivo inicial de datos sensibles en background...")
+
+		// Log explícito de lo que va a escanear, para auditar en agent.log
+		log.Info("🚀 Iniciando escaneo masivo inicial de datos sensibles...")
+		log.Info("   Directorios configurados en cfg.FileWatchDirs: %v", cfg.FileWatchDirs)
+
 		scanned, sensitive, err := scanner.RunInitialMassiveScan(ctx, log, store, wsClient, scanCfg)
 		if err != nil && err != context.Canceled {
 			log.Error("Error en escaneo inicial masivo: %v", err)
@@ -162,7 +163,7 @@ func runAgent(ctx context.Context) {
 
 	dbMonitor := monitors.NewActivityMonitor(store, wsClient, piiScanner, log)
 	dbMonitor.AutoDiscoverAndConnect()
-	
+
 	// Conectar canal de conexiones de BD del WS client al ActivityMonitor
 	wsClient.SetDBConnectionsChan(dbMonitor.GetDBConnectionsChan())
 	dbMonitor.StartDBConnectionsListener()
