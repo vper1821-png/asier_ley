@@ -563,6 +563,9 @@ func (c *Client) executeCommandAsync(command string, params map[string]interface
 }
 
 func (c *Client) executeCommand(command string, params map[string]interface{}, commandId string) (interface{}, error) {
+	if commandId != "" {
+		c.log.Debug("WS: ejecutando comando %q (id: %s)", command, commandId)
+	}
 	switch command {
 	case "test_db", "scan_db":
 		return c.executeDBCommand(command, params, c.log)

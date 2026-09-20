@@ -135,7 +135,7 @@ func (s *Store) migrateColumns() {
 		s.db.Exec("ALTER TABLE file_events ADD COLUMN sensitive INTEGER DEFAULT 0;")
 	}
 
-	// ── NUEVO: Migrar sensitive_inventory ──
+	// ── Migrar sensitive_inventory ──
 	s.migrateSensitiveInventory()
 }
 
@@ -290,7 +290,7 @@ func (s *Store) SaveInitialInventory(item SensitiveInventoryItem) error {
 		return err
 	}
 
-	// Insertar nuevo
+	// Insertar nuevo (19 columnas → 19 placeholders)
 	_, err = s.db.Exec(`
 		INSERT INTO sensitive_inventory (
 			agent_id, user_id, company_id, hostname, path, relative_path,
@@ -357,6 +357,10 @@ func (s *Store) FindSensitiveInventory(agentID, companyID, status string, limit 
 		item.CreatedAt, _ = time.Parse(time.RFC3339, createdStr)
 		item.UpdatedAt, _ = time.Parse(time.RFC3339, updatedStr)
 		items = append(items, item)
+	}
+	// ── FIX sqlrowserr: chequear error final del iterador ──
+	if err := rows.Err(); err != nil {
+		return items, err
 	}
 	return items, nil
 }
@@ -503,6 +507,11 @@ func (s *Store) FindFileEvents(filter FileEventFilter) []FileEvent {
 		}
 		ev.Sensitive = sens == 1
 		events = append(events, ev)
+	}
+	// ── FIX sqlrowserr: chequear error final del iterador ──
+	// La firma no permite devolver error, así que lo registramos en stderr.
+	if err := rows.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "[audit] FindFileEvents: error iterando rows: %v\n", err)
 	}
 	return events
 }
