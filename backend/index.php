@@ -239,6 +239,17 @@ $routes = [
     'POST /api/activity/logs' => 'routes/admin.php@activityLogs',
     'POST /api/logs' => 'routes/admin.php@auditLogs',
 
+    // ═══════ Admin Cleanup ═══════
+    'GET /api/admin/cleanup/diagnose' => 'routes/admin_cleanup.php@cleanupDiagnose',
+    'POST /api/admin/cleanup/diagnose' => 'routes/admin_cleanup.php@cleanupDiagnose',
+    'POST /api/admin/cleanup/preview' => 'routes/admin_cleanup.php@cleanupPreview',
+    'POST /api/admin/cleanup/apply' => 'routes/admin_cleanup.php@cleanupApply',
+    'POST /api/admin/cleanup/repair-links' => 'routes/admin_cleanup.php@cleanupRepairLinks',
+    'POST /api/admin/cleanup/purge-logs' => 'routes/admin_cleanup.php@cleanupPurgeLogs',
+    'POST /api/admin/cleanup/audit-log' => 'routes/admin_cleanup.php@cleanupAuditLog',
+    'GET /api/admin/cleanup/companies' => 'routes/admin_cleanup.php@cleanupListCompanies',
+    'POST /api/admin/cleanup/companies' => 'routes/admin_cleanup.php@cleanupListCompanies',
+
     // Compliance
     'POST /api/invisia/score'           => 'routes/compliance.php@score',
     'POST /api/invisia/checklist'       => 'routes/compliance.php@detailedChecklist',

@@ -19,6 +19,8 @@ function infoIcon($text, $cls = 'w-4 h-4') {
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Alpine.js para el panel de Limpieza y otros componentes reactivos -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -347,7 +349,6 @@ function infoIcon($text, $cls = 'w-4 h-4') {
         .toast-error { background: #7f1d1d; color: #fecaca; border: 1px solid #dc2626; }
         .toast-info { background: #1e3a5f; color: #bfdbfe; border: 1px solid #3b82f6; }
 
-        /* React theme matching utilities */
         .cyber-grid {
             background-image:
                 linear-gradient(rgba(59, 130, 246, 0.03) 1px, transparent 1px),
@@ -593,7 +594,6 @@ function infoIcon($text, $cls = 'w-4 h-4') {
             .professional-workspace .workspace-content { max-width: 1500px; margin-inline: auto; width: 100%; }
         }
 
-        /* Premium device card styling */
         .device-card-premium {
             background: rgba(15, 20, 28, 0.7);
             border: 1px solid rgba(255,255,255,0.06);
@@ -626,7 +626,6 @@ function infoIcon($text, $cls = 'w-4 h-4') {
             box-shadow: 0 16px 40px rgba(16,185,129,0.1);
         }
 
-        /* Admin panel premium panel headers */
         .admin-panel-header {
             background: linear-gradient(90deg, rgba(59,130,246,0.08), transparent);
             border-left: 3px solid var(--primary-500);
@@ -694,6 +693,7 @@ function infoIcon($text, $cls = 'w-4 h-4') {
             opacity: 1;
             visibility: visible;
         }
+        [x-cloak] { display: none !important; }
     </style>
     <script>
     document.addEventListener('DOMContentLoaded', function () {
@@ -713,20 +713,15 @@ function infoIcon($text, $cls = 'w-4 h-4') {
             var vh = window.innerHeight;
             var tt = tooltip.getBoundingClientRect();
 
-            // Prefer below the icon
             var top = rect.bottom + margin;
             var left = rect.left + rect.width / 2 - tt.width / 2;
 
-            // If it overflows the right edge, push it back
             if (left + tt.width > vw - margin) {
                 left = vw - tt.width - margin;
             }
-            // If it overflows the left edge
             if (left < margin) {
                 left = margin;
             }
-
-            // If it overflows the bottom, show it above
             if (top + tt.height > vh - margin) {
                 top = rect.top - tt.height - margin;
             }
