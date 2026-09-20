@@ -851,7 +851,7 @@ function download() {
             'platform' => 'windows'
         ]);
 
-        $baseUrl = API_BASE_URL !== '' ? API_BASE_URL : 'https://ley.securelab.cl';
+        $baseUrl = API_BASE_URL;
         $apiBase = rtrim($baseUrl, '/') . '/api/agents';
         $wsBase = preg_replace(['#^https://#', '#^http://#'], ['wss://', 'ws://'], rtrim($baseUrl, '/')) . '/ws/';
 
@@ -1138,7 +1138,7 @@ function linuxInstall() {
         'platform' => 'linux',
     ]);
 
-    $host = $_SERVER['HTTP_HOST'] ?? ($_SERVER['SERVER_NAME'] ?? 'ley.securelab.cl');
+    $host = $_SERVER['HTTP_HOST'] ?? ($_SERVER['SERVER_NAME'] ?? '');
     $baseUrl = 'https://' . $host;
     $apiBase = rtrim($baseUrl, '/') . '/api/agents';
     $wsBase = 'wss://' . $host . '/ws/';

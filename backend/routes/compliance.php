@@ -10,7 +10,8 @@ require_once __DIR__ . '/../lib/NotificationService.php';
 // Constantes portables (definidas también en public_portal.php; aquí por si se carga solo)
 if (!defined('PORTAL_DELIVERY_TTL_HOURS')) define('PORTAL_DELIVERY_TTL_HOURS', 48);
 if (!defined('PORTAL_ARCO_SLA_DAYS'))     define('PORTAL_ARCO_SLA_DAYS', 10);
-if (!defined('API_BASE_URL'))             define('API_BASE_URL', getenv('API_BASE_URL') ?: 'https://ley.securelab.cl');
+if (!defined('API_BASE_URL')) define('API_BASE_URL', getenv('API_BASE_URL') ?: '');
+
 
 // ─── Función auxiliar para obtener userIds de la empresa ───
 function getCompanyUserIds($user, $db) {

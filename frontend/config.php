@@ -8,9 +8,9 @@ header('Pragma: no-cache');
 header('Expires: 0');
 
 // API Base URL: backend local interno para llamadas PHP cURL rápidas
-define('API_BASE_URL', getenv('API_BASE_URL') ?: 'https://ley.securelab.cl');
-define('API_BASE_URL_BROWSER', getenv('API_BASE_URL_BROWSER') ?: 'https://ley.securelab.cl');
-define('SITE_URL', getenv('SITE_URL') ?: 'https://ley.securelab.cl');
+define('API_BASE_URL', getenv('API_BASE_URL') ?: '');
+define('API_BASE_URL_BROWSER', getenv('API_BASE_URL_BROWSER') ?: '');
+define('SITE_URL', getenv('SITE_URL') ?: '');
 define('SITE_NAME', 'SecureLab');
 define('SITE_SUBTITLE', 'Cumplimiento ley 21.719');
 define('TURNSTILE_SITE_KEY', getenv('TURNSTILE_SITE_KEY') ?: '');

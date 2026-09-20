@@ -10,7 +10,8 @@ define('CORS_ORIGIN', getenv('CORS_ORIGIN') ?: '*');
 define('OLLAMA_HOST', getenv('OLLAMA_HOST') ?: 'http://localhost:11434');
 define('AI_MODEL', getenv('AI_MODEL') ?: 'mistral');
 define('TURNSTILE_SECRET_KEY', getenv('TURNSTILE_SECRET_KEY') ?: '');
-define('API_BASE_URL', getenv('API_BASE_URL') ?: 'https://ley.securelab.cl');
+define('API_BASE_URL', getenv('API_BASE_URL') ?: '');
+
 
 // SMTP Configuration
 define('SMTP_HOST',       getenv('SMTP_HOST')       ?: 'mail.securelab.cl');

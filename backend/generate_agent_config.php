@@ -15,10 +15,12 @@ try {
         'platform' => 'windows'
     ];
     $token = Auth::createToken($userId, $payload);
+    $baseUrl = rtrim(API_BASE_URL, '/');
+    $wsUrl = preg_replace(['#^https://#', '#^http://#'], ['wss://', 'ws://'], $baseUrl) . '/ws/';
     
     $config = [
-        'api_base' => 'https://ley.securelab.cl/api/agents',
-        'ws_url' => 'wss://ley.securelab.cl/ws/',
+        'api_base' => $baseUrl . '/api/agents',
+        'ws_url' => $wsUrl,
         'token' => $token,
         'heartbeat_interval' => 5,
         'telemetry_interval' => 10,
