@@ -15,25 +15,25 @@ import (
 
 // DBTestResult represents the result of testing a database connection
 type DBTestResult struct {
-	Success   bool   `json:"success"`
-	Latency   int    `json:"latency"`
-	Error     string `json:"error,omitempty"`
-	Status    string `json:"status"`
+	Success bool   `json:"success"`
+	Latency int    `json:"latency"`
+	Error   string `json:"error,omitempty"`
+	Status  string `json:"status"`
 }
 
 // DBScanResult represents the result of scanning a database
 type DBScanResult struct {
-	Success   bool            `json:"success"`
-	Tables    int             `json:"tables"`
-	Records   int             `json:"records"`
-	TableList []DBTableInfo   `json:"tableList,omitempty"`
-	Error     string          `json:"error,omitempty"`
+	Success   bool          `json:"success"`
+	Tables    int           `json:"tables"`
+	Records   int           `json:"records"`
+	TableList []DBTableInfo `json:"tableList,omitempty"`
+	Error     string        `json:"error,omitempty"`
 }
 
 // DBTableInfo represents a table/collection with row count
 type DBTableInfo struct {
-	Name  string `json:"name"`
-	Rows  int    `json:"rows"`
+	Name string `json:"name"`
+	Rows int    `json:"rows"`
 }
 
 // executeDBCommand handles database test, scan and query commands

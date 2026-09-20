@@ -110,19 +110,35 @@ func defaultConfig() *Config {
 	}
 
 	if runtime.GOOS == "windows" {
-		// Intentar rutas del usuario real si corre en sesión interactiva
-		if userProfile := os.Getenv("USERPROFILE"); userProfile != "" && userProfile != home {
-			fileWatchDirs = []string{
-				filepath.Join(userProfile, "Documents"),
-				filepath.Join(userProfile, "Desktop"),
-				filepath.Join(userProfile, "Downloads"),
+		// Detectar si estamos bajo LocalSystem (systemprofile) y descartar el home
+		home, _ := os.UserHomeDir()
+		homeIsSystem := home == "" || strings.Contains(strings.ToLower(home), "systemprofile")
+
+		// Resetear lista si el home es basura
+		if homeIsSystem {
+			fileWatchDirs = []string{}
+		}
+
+		// Añadir USERPROFILE si es un usuario real
+		if up := os.Getenv("USERPROFILE"); up != "" {
+			if !strings.Contains(strings.ToLower(up), "systemprofile") {
+				fileWatchDirs = append(fileWatchDirs,
+					filepath.Join(up, "Documents"),
+					filepath.Join(up, "Desktop"),
+					filepath.Join(up, "Downloads"),
+				)
 			}
 		}
-		if publicProfile := os.Getenv("PUBLIC"); publicProfile != "" {
-			fileWatchDirs = append(fileWatchDirs, filepath.Join(publicProfile, "Documents"))
+
+		// Añadir carpeta pública
+		if pub := os.Getenv("PUBLIC"); pub != "" {
+			fileWatchDirs = append(fileWatchDirs,
+				filepath.Join(pub, "Documents"),
+				filepath.Join(pub, "Downloads"),
+			)
 		}
-		// Fallback universal: cubre TODOS los perfiles de usuario
-		// (Alonso, DEV, env, admin, etc.) incluyendo OneDrive, Drive, Dropbox
+
+		// Fallback universal: cubre todos los perfiles
 		fileWatchDirs = append(fileWatchDirs, `C:\Users`)
 	} else {
 		fileWatchDirs = append(fileWatchDirs,

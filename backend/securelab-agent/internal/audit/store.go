@@ -108,6 +108,7 @@ func (s *Store) init() {
 }
 
 func (s *Store) migrateColumns() {
+	// ── Migrar file_events ──
 	rows, err := s.db.Query("PRAGMA table_info(file_events)")
 	if err != nil {
 		return
@@ -132,6 +133,53 @@ func (s *Store) migrateColumns() {
 	}
 	if !columns["sensitive"] {
 		s.db.Exec("ALTER TABLE file_events ADD COLUMN sensitive INTEGER DEFAULT 0;")
+	}
+
+	// ── NUEVO: Migrar sensitive_inventory ──
+	s.migrateSensitiveInventory()
+}
+
+func (s *Store) migrateSensitiveInventory() {
+	rows, err := s.db.Query("PRAGMA table_info(sensitive_inventory)")
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	columns := make(map[string]bool)
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, ctype, dflt string
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			continue
+		}
+		columns[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return
+	}
+
+	// Columnas que pueden faltar en DBs antiguas
+	if !columns["personal_data"] {
+		s.db.Exec("ALTER TABLE sensitive_inventory ADD COLUMN personal_data TEXT;")
+	}
+	if !columns["hash"] {
+		s.db.Exec("ALTER TABLE sensitive_inventory ADD COLUMN hash TEXT;")
+	}
+	if !columns["relative_path"] {
+		s.db.Exec("ALTER TABLE sensitive_inventory ADD COLUMN relative_path TEXT;")
+	}
+	if !columns["extension"] {
+		s.db.Exec("ALTER TABLE sensitive_inventory ADD COLUMN extension TEXT;")
+	}
+	if !columns["scan_count"] {
+		s.db.Exec("ALTER TABLE sensitive_inventory ADD COLUMN scan_count INTEGER NOT NULL DEFAULT 1;")
+	}
+	if !columns["created_at"] {
+		s.db.Exec("ALTER TABLE sensitive_inventory ADD COLUMN created_at TEXT DEFAULT (datetime('now'));")
+	}
+	if !columns["updated_at"] {
+		s.db.Exec("ALTER TABLE sensitive_inventory ADD COLUMN updated_at TEXT DEFAULT (datetime('now'));")
 	}
 }
 
@@ -248,7 +296,7 @@ func (s *Store) SaveInitialInventory(item SensitiveInventoryItem) error {
 			agent_id, user_id, company_id, hostname, path, relative_path,
 			size, extension, categories, sensitive, personal_data, hash,
 			first_seen, last_scanned, last_modified, scan_count, status, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, item.AgentID, item.UserID, item.CompanyID, item.Hostname, item.Path, item.RelativePath,
 		item.Size, item.Extension, string(categoriesJSON), boolToInt(item.Sensitive),
 		string(personalDataJSON), item.Hash,
@@ -458,4 +506,3 @@ func (s *Store) FindFileEvents(filter FileEventFilter) []FileEvent {
 	}
 	return events
 }
-
