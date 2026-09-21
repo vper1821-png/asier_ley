@@ -9,8 +9,11 @@ type FileEvent struct {
 	ProcessName  string              `json:"process_name"`
 	PID          int                 `json:"pid"`
 	User         string              `json:"user"`
+	Hostname     string              `json:"hostname,omitempty"`
 	Size         int64               `json:"size,omitempty"`
 	Hash         string              `json:"hash,omitempty"`
+	Extension    string              `json:"extension,omitempty"`
+	RowCount     int                 `json:"row_count,omitempty"`
 	Destination  string              `json:"destination,omitempty"`
 	PersonalData map[string][]string `json:"personal_data,omitempty"`
 	Sensitive    bool                `json:"sensitive,omitempty"`

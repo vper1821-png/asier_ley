@@ -16,8 +16,6 @@ import (
 )
 
 // scanDebounce es el tiempo de silencio requerido antes de procesar un archivo.
-// Durante un copy/paste, fsnotify dispara 3-10 eventos en <500ms. Con 2s de
-// espera, se procesan todos como uno solo.
 const scanDebounce = 2 * time.Second
 
 type Monitor struct {
@@ -30,7 +28,6 @@ type Monitor struct {
 	watchers  []*fileWatcher
 	eventChan chan audit.FileEvent
 
-	// Dedupe y debounce
 	pending    map[string]*time.Timer
 	pendingMu  sync.Mutex
 	lastSent   map[string]string
@@ -125,7 +122,6 @@ func (m *Monitor) processEvents() {
 					}
 				}
 
-				// Solo notificar al backend si teníamos registro sensible previo
 				if deletedItem != nil && deletedItem.Sensitive {
 					ev.Sensitive = true
 					ev.PersonalData = deletedItem.PersonalData
@@ -181,7 +177,6 @@ func (m *Monitor) processEvents() {
 				m.log.Info("FileMonitor: evento enviado al panel: %s (%s) - motivo: %s", ev.Path, ev.EventType, reason)
 			}
 
-			// Agendar análisis con debounce
 			if isScannableFile(ev.Path) {
 				m.log.Debug("FileMonitor: agendando análisis con debounce: %s", ev.Path)
 				m.scheduleScan(ev, knownItem != nil)
@@ -265,7 +260,7 @@ func (m *Monitor) forgetHash(path string) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// SCAN + REPORT
+// SCAN + REPORT — FIX: completar RowCount, Hostname, Extension
 // ═══════════════════════════════════════════════════════════════════════
 
 func (m *Monitor) scanFileAndReport(ev audit.FileEvent, alreadySent bool) {
@@ -285,7 +280,6 @@ func (m *Monitor) scanFileAndReport(ev audit.FileEvent, alreadySent bool) {
 		m.log.Debug("FileMonitor: hash calculado para %s: %s", ev.Path, shortHash(ev.Hash))
 	}
 
-	// DEDUP
 	if m.wasAlreadySentWithHash(ev.Path, ev.Hash) {
 		m.log.Debug("FileMonitor: hash sin cambios, omitiendo reenvío: %s", ev.Path)
 		return
@@ -310,6 +304,24 @@ func (m *Monitor) scanFileAndReport(ev audit.FileEvent, alreadySent bool) {
 		return
 	}
 
+	// ══════════════════════════════════════════════════════════════
+	// FIX: completar campos que el watcher no siempre rellena.
+	// RowCount: contar filas reales del archivo (xlsx, csv).
+	// Hostname: obtener del SO si no viene en el evento.
+	// Extension: derivar del path si no viene.
+	// ══════════════════════════════════════════════════════════════
+	if ev.RowCount == 0 {
+		ev.RowCount = scanner.CountRows(ev.Path)
+	}
+	if ev.Hostname == "" {
+		if h, err := os.Hostname(); err == nil {
+			ev.Hostname = h
+		}
+	}
+	if ev.Extension == "" {
+		ev.Extension = strings.ToLower(filepath.Ext(ev.Path))
+	}
+
 	if err := m.store.SaveFileEvent(ev); err != nil {
 		m.log.Error("FileMonitor: error guardando evento con PII local: %v", err)
 	} else {
@@ -324,7 +336,8 @@ func (m *Monitor) scanFileAndReport(ev audit.FileEvent, alreadySent bool) {
 
 	m.rememberHash(ev.Path, ev.Hash)
 
-	m.log.Info("PII detectada en %s: %v (hash: %s)", ev.Path, result, shortHash(ev.Hash))
+	m.log.Info("PII detectada en %s: %v (hash: %s, rows: %d)",
+		ev.Path, result, shortHash(ev.Hash), ev.RowCount)
 }
 
 func shortHash(h string) string {

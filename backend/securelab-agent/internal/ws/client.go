@@ -264,7 +264,17 @@ func (c *Client) send(typ string, payload interface{}) {
 	}
 }
 
+// ─── FIX: SendFileEvent con hostname, extension y row_count ───
 func (c *Client) SendFileEvent(ev audit.FileEvent) {
+	hostname := ev.Hostname
+	if hostname == "" {
+		hostname = getHostname()
+	}
+	extension := ev.Extension
+	if extension == "" {
+		extension = getFileType(ev.Path)
+	}
+
 	payload := map[string]interface{}{
 		"agentId":      c.agentID,
 		"timestamp":    ev.Timestamp,
@@ -273,8 +283,11 @@ func (c *Client) SendFileEvent(ev audit.FileEvent) {
 		"process":      ev.ProcessName,
 		"pid":          ev.PID,
 		"user":         ev.User,
+		"hostname":     hostname,
+		"extension":    extension,
 		"size":         ev.Size,
 		"hash":         ev.Hash,
+		"rowCount":     ev.RowCount,
 		"destination":  ev.Destination,
 		"sensitive":    ev.Sensitive,
 		"personalData": ev.PersonalData,
@@ -282,7 +295,19 @@ func (c *Client) SendFileEvent(ev audit.FileEvent) {
 	c.send("file_event", payload)
 }
 
+// ─── FIX: SendFileDetection con hostname/user/rowCount reales ───
+// Antes: mandaba "rowCount": 0 fijo y usaba os.Hostname() como user.
+// Ahora: usa los campos del FileEvent que el watcher/monitor ya rellenan.
 func (c *Client) SendFileDetection(ev audit.FileEvent) {
+	hostname := ev.Hostname
+	if hostname == "" {
+		hostname = getHostname()
+	}
+	extension := ev.Extension
+	if extension == "" {
+		extension = getFileType(ev.Path)
+	}
+
 	payload := map[string]interface{}{
 		"agentId":      c.agentID,
 		"timestamp":    ev.Timestamp,
@@ -292,12 +317,12 @@ func (c *Client) SendFileDetection(ev audit.FileEvent) {
 		"process":      ev.ProcessName,
 		"pid":          ev.PID,
 		"user":         ev.User,
+		"hostname":     hostname,
 		"size":         ev.Size,
 		"personalData": ev.PersonalData,
 		"sensitive":    ev.Sensitive,
-		"fileType":     getFileType(ev.Path),
-		"hostname":     getHostname(),
-		"rowCount":     0,
+		"fileType":     extension,
+		"rowCount":     ev.RowCount,
 	}
 	c.send("file_detected", payload)
 }
@@ -385,6 +410,7 @@ func (c *Client) SendEvent(title, description, source, severity string) {
 	c.send("event", payload)
 }
 
+// ─── FIX: SendInitialInventory con rowCount ───
 func (c *Client) SendInitialInventory(item scanner.InitialInventoryItem) {
 	payload := map[string]interface{}{
 		"agentId":      c.agentID,
@@ -399,6 +425,7 @@ func (c *Client) SendInitialInventory(item scanner.InitialInventoryItem) {
 		"sensitive":    item.Sensitive,
 		"personalData": item.PersonalData,
 		"hash":         item.Hash,
+		"rowCount":     item.RowCount,
 		"firstSeen":    item.FirstSeen.Format(time.RFC3339),
 		"lastScanned":  item.LastScanned.Format(time.RFC3339),
 		"lastModified": item.LastModified.Format(time.RFC3339),
@@ -507,7 +534,6 @@ func (c *Client) handleSyncResponse(msg map[string]interface{}) {
 		}
 	}
 
-	// Recibir conexiones de BD incluidas en sync_response
 	if conns, ok := payload["connections"].([]interface{}); ok {
 		dbMsg := map[string]interface{}{
 			"type":    "db_connections",
@@ -621,15 +647,15 @@ func (c *Client) executeCommand(command string, params map[string]interface{}, c
 		}
 		return fmt.Sprintf("Proceso %d terminado", pid), nil
 	case "shell_exec":
-		command, _ := params["command"].(string)
-		if command == "" {
+		commandStr, _ := params["command"].(string)
+		if commandStr == "" {
 			return nil, fmt.Errorf("comando vacío")
 		}
 		var cmd *exec.Cmd
 		if runtime.GOOS == "windows" {
-			cmd = exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", command)
+			cmd = exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", commandStr)
 		} else {
-			cmd = exec.Command("bash", "-c", command)
+			cmd = exec.Command("bash", "-c", commandStr)
 		}
 		output, err := cmd.CombinedOutput()
 		result := strings.TrimSpace(string(output))
@@ -761,17 +787,21 @@ func getHostname() string {
 	return h
 }
 
-// SendFileDeleted notifica al backend que un archivo con PII fue eliminado.
-// El backend marca el registro como "deleted" sin borrarlo, manteniendo
-// trazabilidad (Art. 10 y 14.1.e Ley 21.719).
+// ─── FIX: SendFileDeleted usa hostname del evento cuando está disponible ───
 func (c *Client) SendFileDeleted(ev audit.FileEvent) {
+	hostname := ev.Hostname
+	if hostname == "" {
+		hostname = getHostname()
+	}
+
 	payload := map[string]interface{}{
 		"agentId":      c.agentID,
 		"timestamp":    time.Now(),
 		"path":         ev.Path,
 		"hash":         ev.Hash,
-		"hostname":     getHostname(),
+		"hostname":     hostname,
 		"user":         ev.User,
+		"extension":    ev.Extension,
 		"sensitive":    ev.Sensitive,
 		"personalData": ev.PersonalData,
 		"deletedAt":    time.Now(),

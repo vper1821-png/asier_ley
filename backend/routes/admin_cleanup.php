@@ -670,3 +670,342 @@ function cleanupPurgeLogs() {
 
     json_response(['success' => true, 'deleted' => $deleted]);
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// 8. RESET PREVIEW — Ver qué se va a borrar
+// ─────────────────────────────────────────────────────────────────────
+function cleanupResetPreview() {
+    $user = _cleanup_requireAccess();
+    $db = Database::getInstance();
+    $body = get_body();
+    $targetCompanyId = $body['companyId'] ?? $_GET['companyId'] ?? null;
+
+    if (!$targetCompanyId) json_error('companyId requerido para reset', 400);
+
+    $scope = _cleanup_resolveScope($user, $db, $targetCompanyId);
+    if (!$scope['ok']) json_error($scope['error'], 403);
+
+    $userIds = $scope['userIds'];
+    if ($userIds === null) json_error('selecciona una empresa específica', 400);
+
+    $preserve = $body['preserve'] ?? [];
+    $preserveConfig  = !isset($preserve['config'])  || $preserve['config'];
+    $preservePayments = !empty($preserve['payments']);
+    $preserveCerts   = !empty($preserve['certifications']);
+    $preserveAudit   = !isset($preserve['audit'])   || $preserve['audit'];
+
+    $collections = _cleanup_dataCollections($preserveConfig, $preservePayments, $preserveCerts, $preserveAudit);
+
+    $counts = [];
+    $total = 0;
+    foreach ($collections as $col) {
+        $count = _cleanup_countCompanyDocs($db, $col, $userIds, $targetCompanyId);
+        if ($count > 0) {
+            $counts[$col] = $count;
+            $total += $count;
+        }
+    }
+
+    json_response([
+        'success' => true,
+        'dry_run' => true,
+        'scope' => [
+            'companyId' => $targetCompanyId,
+            'userIdsCount' => count($userIds),
+        ],
+        'summary' => [
+            'collections_affected' => count($counts),
+            'documents_to_delete' => $total,
+        ],
+        'counts' => $counts,
+        'preserved' => [
+            'users'          => count($userIds),
+            'config'         => $preserveConfig,
+            'payments'       => $preservePayments,
+            'certifications' => $preserveCerts,
+            'audit_logs'     => $preserveAudit,
+        ],
+        'warning' => 'Esta operación eliminará TODOS los datos de la empresa excepto los usuarios y lo que marques como preservado. NO se puede deshacer.',
+    ]);
+}
+
+// Helper: lista de colecciones a procesar según qué se preserva
+function _cleanup_dataCollections($preserveConfig, $preservePayments, $preserveCerts, $preserveAudit) {
+    $cols = [
+        // Compliance
+        'compliance_files', 'compliance_inventory', 'compliance_consents',
+        'compliance_breaches', 'compliance_dpia', 'compliance_dpa',
+        'compliance_pseudonymization', 'compliance_processors', 'compliance_transfers',
+        'compliance_trainings', 'compliance_invites', 'compliance_checklist',
+        'compliance_breach_protocol', 'compliance_incident_response',
+        'compliance_policy_versions', 'compliance_templates',
+        // ARCO
+        'arco_requests',
+        // Agentes
+        'agents', 'host_monitor', 'host_events',
+        'agent_commands', 'agent_data', 'agent_db_connections', 'agent_deploys',
+        // Archivos y auditoría técnica
+        'file_events', 'file_audit_logs',
+        // Bases de datos
+        'databases', 'database_logs', 'db_queries',
+        // Inventario
+        'sensitive_inventory',
+        // Operativos
+        'alerts', 'notifications', 'activity_logs', 'folders', 'reports', 'tickets',
+        // SMTP/OTP/Sesiones
+        'smtp_settings', 'smtp_jobs', 'otp_codes',
+        'portal_sessions', 'portal_check_log',
+    ];
+
+    if (!$preserveConfig) $cols[] = 'compliance_config';
+    if (!$preservePayments) $cols[] = 'payments';
+    if (!$preserveCerts) {
+        $cols[] = 'certifications';
+        $cols[] = 'certification_documents';
+    }
+    if (!$preserveAudit) {
+        $cols[] = 'audit_logs';
+    }
+
+    return $cols;
+}
+
+// Helper: cuenta documentos de una colección filtrando por empresa
+function _cleanup_countCompanyDocs($db, $col, $userIds, $companyId) {
+    $orConds = [];
+    if (!empty($userIds)) {
+        $orConds[] = ['userId' => ['$in' => $userIds]];
+    }
+    if ($companyId) {
+        $orConds[] = ['companyId' => $companyId];
+    }
+    if (empty($orConds)) return 0;
+
+    $filter = count($orConds) === 1 ? $orConds[0] : ['$or' => $orConds];
+
+    try {
+        return (int)$db->count($col, $filter);
+    } catch (\Throwable $e) {
+        return 0;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 9. BACKUP COMPANY — Descargar todos los datos en JSON
+// ─────────────────────────────────────────────────────────────────────
+function cleanupBackupCompany() {
+    $user = _cleanup_requireAccess();
+    $db = Database::getInstance();
+    $body = get_body();
+    $targetCompanyId = $body['companyId'] ?? $_GET['companyId'] ?? null;
+
+    if (!$targetCompanyId) json_error('companyId requerido', 400);
+
+    $scope = _cleanup_resolveScope($user, $db, $targetCompanyId);
+    if (!$scope['ok']) json_error($scope['error'], 403);
+
+    $userIds = $scope['userIds'];
+    if ($userIds === null) json_error('selecciona una empresa específica', 400);
+
+    // Incluir TODO en el backup (incluso lo que se va a preservar)
+    $collections = _cleanup_dataCollections(false, false, false, false);
+    $collections[] = 'users';
+    $collections[] = 'compliance_config';
+    $collections[] = 'payments';
+    $collections[] = 'certifications';
+    $collections[] = 'certification_documents';
+    $collections = array_values(array_unique($collections));
+
+    $backup = [
+        'meta' => [
+            'companyId' => $targetCompanyId,
+            'exportedAt' => date('c'),
+            'exportedBy' => $user['email'] ?? $user['_id'],
+            'totalCollections' => count($collections),
+        ],
+        'collections' => [],
+    ];
+
+    foreach ($collections as $col) {
+        $orConds = [];
+        if ($col === 'users') {
+            $orConds = [['_id' => ['$in' => $userIds]]];
+        } else {
+            if (!empty($userIds)) $orConds[] = ['userId' => ['$in' => $userIds]];
+            if ($targetCompanyId) $orConds[] = ['companyId' => $targetCompanyId];
+        }
+        if (empty($orConds)) continue;
+
+        $filter = count($orConds) === 1 ? $orConds[0] : ['$or' => $orConds];
+
+        try {
+            $docs = $db->find($col, $filter, ['limit' => 500000]);
+            // Limpiar password de users
+            if ($col === 'users') {
+                foreach ($docs as &$d) unset($d['password']);
+                unset($d);
+            }
+            $backup['collections'][$col] = [
+                'count' => count($docs),
+                'documents' => $docs,
+            ];
+        } catch (\Throwable $e) {
+            $backup['collections'][$col] = ['error' => $e->getMessage()];
+        }
+    }
+
+    // Guardar
+    $backupDir = __DIR__ . '/../backups/';
+    if (!is_dir($backupDir)) mkdir($backupDir, 0755, true);
+
+    $filename = 'backup-' . $targetCompanyId . '-' . date('Ymd-His') . '.json';
+    $filepath = $backupDir . $filename;
+
+    file_put_contents($filepath, json_encode($backup, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+    audit_log('cleanup_backup_company', [
+        'companyId' => $targetCompanyId,
+        'filename' => $filename,
+        'size' => filesize($filepath),
+    ], $user['_id']);
+
+    json_response([
+        'success' => true,
+        'filename' => $filename,
+        'size' => filesize($filepath),
+        'downloadUrl' => '/api/admin/cleanup/backup-download?file=' . urlencode($filename),
+        'message' => 'Backup creado. Ahora puedes ejecutar el reset.',
+    ]);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 10. BACKUP DOWNLOAD — Servir el archivo de backup
+// ─────────────────────────────────────────────────────────────────────
+function cleanupBackupDownload() {
+    $user = _cleanup_requireAccess();
+    $filename = basename($_GET['file'] ?? '');
+
+    if (!$filename || !str_starts_with($filename, 'backup-') || !str_ends_with($filename, '.json')) {
+        json_error('archivo inválido', 400);
+    }
+
+    $path = __DIR__ . '/../backups/' . $filename;
+    if (!is_file($path)) json_error('archivo no encontrado', 404);
+
+    while (ob_get_level() > 0) ob_end_clean();
+    header('Content-Type: application/json');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Content-Length: ' . filesize($path));
+    readfile($path);
+    exit;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 11. RESET COMPANY — Borrar TODOS los datos excepto usuarios
+// ─────────────────────────────────────────────────────────────────────
+function cleanupResetCompany() {
+    $user = _cleanup_requireAccess();
+    $db = Database::getInstance();
+    $body = get_body();
+
+    $targetCompanyId = $body['companyId'] ?? null;
+    $confirm   = $body['confirm'] ?? '';
+    $preserve  = $body['preserve'] ?? [];
+    $requireBackup = !empty($body['requireBackup']);
+
+    if (!$targetCompanyId) json_error('companyId requerido', 400);
+
+    if ($confirm !== 'DELETE_ALL_DATA') {
+        json_error('Confirmación inválida. Debe ser: DELETE_ALL_DATA', 400);
+    }
+
+    $scope = _cleanup_resolveScope($user, $db, $targetCompanyId);
+    if (!$scope['ok']) json_error($scope['error'], 403);
+
+    $userIds = $scope['userIds'];
+    if ($userIds === null) json_error('selecciona una empresa específica', 400);
+
+    // Verificar backup reciente si es requerido
+    if ($requireBackup) {
+        $backupDir = __DIR__ . '/../backups/';
+        $recentBackup = null;
+        if (is_dir($backupDir)) {
+            $files = glob($backupDir . 'backup-' . $targetCompanyId . '-*.json');
+            if (!empty($files)) {
+                usort($files, fn($a, $b) => filemtime($b) - filemtime($a));
+                $recentBackup = $files[0];
+            }
+        }
+        if (!$recentBackup || (time() - filemtime($recentBackup)) > 3600) {
+            json_error('Se requiere un backup creado en la última hora antes de resetear', 400);
+        }
+    }
+
+    $preserveConfig   = !isset($preserve['config'])  || $preserve['config'];
+    $preservePayments = !empty($preserve['payments']);
+    $preserveCerts    = !empty($preserve['certifications']);
+    $preserveAudit    = !isset($preserve['audit'])   || $preserve['audit'];
+
+    $collections = _cleanup_dataCollections($preserveConfig, $preservePayments, $preserveCerts, $preserveAudit);
+
+    $stats = ['deleted_total' => 0, 'by_collection' => [], 'errors' => []];
+
+    foreach ($collections as $col) {
+        $orConds = [];
+        if (!empty($userIds)) {
+            $orConds[] = ['userId' => ['$in' => $userIds]];
+        }
+        if ($targetCompanyId) {
+            $orConds[] = ['companyId' => $targetCompanyId];
+        }
+        if (empty($orConds)) continue;
+
+        $filter = count($orConds) === 1 ? $orConds[0] : ['$or' => $orConds];
+
+        try {
+            $docs = $db->find($col, $filter, ['limit' => 500000]);
+            $count = count($docs);
+            if ($count === 0) continue;
+
+            $deleted = 0;
+            foreach ($docs as $doc) {
+                try {
+                    $db->deleteOne($col, ['_id' => $doc['_id']]);
+                    $deleted++;
+                } catch (\Throwable $e) {
+                    // Ignorar individuales
+                }
+            }
+            $stats['by_collection'][$col] = $deleted;
+            $stats['deleted_total'] += $deleted;
+        } catch (\Throwable $e) {
+            $stats['errors'][] = "$col: " . $e->getMessage();
+        }
+    }
+
+    audit_log('cleanup_reset_company', [
+        'companyId' => $targetCompanyId,
+        'preserve' => [
+            'users'          => true,
+            'config'         => $preserveConfig,
+            'payments'       => $preservePayments,
+            'certifications' => $preserveCerts,
+            'audit_logs'     => $preserveAudit,
+        ],
+        'stats' => $stats,
+    ], $user['_id']);
+
+    json_response([
+        'success' => true,
+        'message' => 'Reset completado. Los usuarios fueron preservados.',
+        'companyId' => $targetCompanyId,
+        'stats' => $stats,
+        'preserved' => [
+            'users'          => count($userIds),
+            'config'         => $preserveConfig,
+            'payments'       => $preservePayments,
+            'certifications' => $preserveCerts,
+            'audit_logs'     => $preserveAudit,
+        ],
+    ]);
+}

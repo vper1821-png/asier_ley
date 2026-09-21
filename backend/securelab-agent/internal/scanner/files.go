@@ -15,6 +15,11 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
+// maxRowsToSample es la cantidad de filas que se muestrean para detección de PII.
+// Antes era 10 — insuficiente para nóminas o planillas RR.HH. donde los datos
+// están en filas avanzadas.
+const maxRowsToSample = 200
+
 // ScanFile analiza un archivo en busca de PII
 func ScanFile(path string) (map[string][]string, error) {
 	ext := strings.ToLower(filepath.Ext(path))
@@ -37,6 +42,67 @@ func ScanFile(path string) (map[string][]string, error) {
 	return nil, nil
 }
 
+// CountRows cuenta las filas/registros de un archivo tabular.
+// Devuelve 0 para formatos no tabulares (PDF, TXT, DOCX, etc.).
+// Se usa para reportar rowCount real en lugar del scanCount fijo.
+func CountRows(path string) int {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".xlsx", ".xls":
+		return countExcelRows(path)
+	case ".csv":
+		return countCSVRows(path)
+	}
+	return 0
+}
+
+func countExcelRows(path string) int {
+	f, err := excelize.OpenFile(path)
+	if err != nil {
+		return 0
+	}
+	defer f.Close()
+
+	sheets := f.GetSheetList()
+	if len(sheets) == 0 {
+		return 0
+	}
+	rows, err := f.GetRows(sheets[0])
+	if err != nil {
+		return 0
+	}
+	if len(rows) <= 1 {
+		return 0
+	}
+	return len(rows) - 1 // excluir header
+}
+
+func countCSVRows(path string) int {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0
+	}
+	defer f.Close()
+
+	r := csv.NewReader(f)
+	r.FieldsPerRecord = -1
+	count := 0
+	for {
+		_, err := r.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			break
+		}
+		count++
+	}
+	if count > 0 {
+		count-- // excluir header
+	}
+	return count
+}
+
 func scanExcel(path string) (map[string][]string, error) {
 	f, err := excelize.OpenFile(path)
 	if err != nil {
@@ -55,20 +121,34 @@ func scanExcel(path string) (map[string][]string, error) {
 	headers := rows[0]
 	result := make(map[string][]string)
 
-	for colIdx, header := range headers {
+	// Detectar PII en headers
+	for _, header := range headers {
 		cats := DetectPersonalData(header)
 		for cat := range cats {
-			result[header] = append(result[header], cat)
+			if !stringInSlice(cat, result[header]) {
+				result[header] = append(result[header], cat)
+			}
 		}
-		for _, row := range rows[1:minInt(len(rows), 10)] {
-			if colIdx < len(row) {
-				cats := DetectPersonalData(row[colIdx])
-				for cat := range cats {
-					if !stringInSlice(cat, result[header]) {
-						result[header] = append(result[header], cat)
-					}
-				}
+	}
+
+	// Detectar PII en las primeras maxRowsToSample filas de datos
+	maxRows := maxRowsToSample
+	if len(rows)-1 < maxRows {
+		maxRows = len(rows) - 1
+	}
+
+	for rowIdx := 1; rowIdx <= maxRows; rowIdx++ {
+		row := rows[rowIdx]
+		for colIdx, val := range row {
+			if colIdx >= len(headers) {
 				break
+			}
+			header := headers[colIdx]
+			cats := DetectPersonalData(val)
+			for cat := range cats {
+				if !stringInSlice(cat, result[header]) {
+					result[header] = append(result[header], cat)
+				}
 			}
 		}
 	}
@@ -83,23 +163,25 @@ func scanCSV(path string) (map[string][]string, error) {
 	defer f.Close()
 
 	r := csv.NewReader(f)
+	r.FieldsPerRecord = -1
 	headers, err := r.Read()
 	if err != nil {
 		return nil, err
 	}
 	result := make(map[string][]string)
 
+	// Detectar PII en headers
 	for _, header := range headers {
 		cats := DetectPersonalData(header)
 		for cat := range cats {
-			result[header] = append(result[header], cat)
+			if !stringInSlice(cat, result[header]) {
+				result[header] = append(result[header], cat)
+			}
 		}
 	}
 
-	f.Seek(0, 0)
-	r = csv.NewReader(f)
-	r.Read() // saltar headers
-	for i := 0; i < 10; i++ {
+	// Detectar PII en las primeras maxRowsToSample filas
+	for i := 0; i < maxRowsToSample; i++ {
 		row, err := r.Read()
 		if err == io.EOF {
 			break
@@ -108,10 +190,10 @@ func scanCSV(path string) (map[string][]string, error) {
 			continue
 		}
 		for colIdx, val := range row {
-			cats := DetectPersonalData(val)
-			for cat := range cats {
-				if colIdx < len(headers) {
-					header := headers[colIdx]
+			if colIdx < len(headers) {
+				header := headers[colIdx]
+				cats := DetectPersonalData(val)
+				for cat := range cats {
 					if !stringInSlice(cat, result[header]) {
 						result[header] = append(result[header], cat)
 					}
@@ -130,7 +212,6 @@ func scanTXT(path string) (map[string][]string, error) {
 	defer f.Close()
 
 	scanner := bufio.NewScanner(f)
-	// Aumentar buffer para líneas largas (256KB)
 	scanner.Buffer(make([]byte, 0, 256*1024), 256*1024)
 
 	result := make(map[string][]string)
@@ -148,7 +229,6 @@ func scanTXT(path string) (map[string][]string, error) {
 		}
 		lineNum++
 	}
-	// También detectar PII en el texto completo (cruza líneas)
 	if allText != "" {
 		cats := DetectPersonalData(allText)
 		for cat := range cats {
@@ -217,25 +297,16 @@ func scanXML(path string) (map[string][]string, error) {
 	return result, nil
 }
 
-// scanPDF analiza un PDF en 6 niveles de fallback para cubrir todos los casos:
-//  1. PDF cifrado con contraseña → pdf_cifrado
-//  2. ledongthuc/pdf → PDFs estándar
-//  3. ExtractPDFText propio → Form XObjects, Identity-H, subsets SII
-//  4. DeShiftPDFText → encoding desplazado (DTEs con fuentes custom)
-//  5. Bytes crudos → RUT en claro en metadata o streams sin comprimir
-//  6. Estructura → pdf_escaneado si solo hay imágenes, documento_no_analizable en otro caso
+// scanPDF analiza un PDF en 6 niveles de fallback
 func scanPDF(path string) (map[string][]string, error) {
-	// 1) PDF cifrado con contraseña
 	if isEncryptedPDF(path) {
 		return map[string][]string{
 			"content": {"pdf_cifrado"},
 		}, nil
 	}
 
-	// 2) Analizar estructura del PDF para saber si tiene imágenes y/o texto
 	structure := analyzePDFStructure(path)
 
-	// 3) Intento 1: ledongthuc/pdf (rápido, bueno para PDFs estándar)
 	if text := extractPDFWithLedongthuc(path); len(text) > 50 {
 		result := detectFromText(text)
 		if len(result) > 0 {
@@ -243,9 +314,7 @@ func scanPDF(path string) (map[string][]string, error) {
 		}
 	}
 
-	// 4) Intento 2: extractor propio (maneja Form XObjects, Identity-H, subsets SII)
 	if text, err := ExtractPDFText(path); err == nil && len(text) > 20 {
-		// Intentar des-ofuscar texto con encoding desplazado (SII)
 		text = DeShiftPDFText(text)
 		result := detectFromText(text)
 		if len(result) > 0 {
@@ -253,26 +322,21 @@ func scanPDF(path string) (map[string][]string, error) {
 		}
 	}
 
-	// 5) Intento 3: bytes crudos (RUT en claro en metadata o streams sin comprimir)
 	if result := scanPDFRawBytes(path); len(result) > 0 {
 		return result, nil
 	}
 
-	// 6) No se pudo extraer texto. ¿Es un PDF escaneado?
 	if structure.hasImages && !structure.hasTextContent {
 		return map[string][]string{
 			"content": {"pdf_escaneado"},
 		}, nil
 	}
 
-	// 7) Fallback final: no auditable por razones desconocidas
 	return map[string][]string{
 		"content": {"documento_no_analizable"},
 	}, nil
 }
 
-// detectFromText aplica DetectPersonalData y devuelve el map en el formato
-// que espera scanFileAndReport.
 func detectFromText(text string) map[string][]string {
 	result := make(map[string][]string)
 	cats := DetectPersonalData(text)
@@ -282,8 +346,6 @@ func detectFromText(text string) map[string][]string {
 	return result
 }
 
-// pdfStructure describe las características del PDF que nos interesan
-// para decidir si es un escaneo o un PDF con texto.
 type pdfStructure struct {
 	hasImages      bool
 	hasFonts       bool
@@ -292,8 +354,6 @@ type pdfStructure struct {
 	textStreams    int
 }
 
-// analyzePDFStructure lee los bytes crudos del PDF y busca marcadores
-// para determinar si es un escaneo (solo imágenes) o tiene texto real.
 func analyzePDFStructure(path string) pdfStructure {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -302,11 +362,9 @@ func analyzePDFStructure(path string) pdfStructure {
 	s := string(raw)
 	var st pdfStructure
 
-	// Imágenes
 	st.imageCount = strings.Count(s, "/Subtype /Image") + strings.Count(s, "/Subtype/Image")
 	st.hasImages = st.imageCount > 0
 
-	// Filtros típicos de imágenes escaneadas
 	if strings.Contains(s, "/DCTDecode") ||
 		strings.Contains(s, "/CCITTFaxDecode") ||
 		strings.Contains(s, "/JBIG2Decode") ||
@@ -314,12 +372,10 @@ func analyzePDFStructure(path string) pdfStructure {
 		st.hasImages = true
 	}
 
-	// Fuentes
 	st.hasFonts = strings.Contains(s, "/Font") ||
 		strings.Contains(s, "/BaseFont") ||
 		strings.Contains(s, "/FontFile")
 
-	// Operadores de texto en streams sin comprimir
 	st.textStreams = strings.Count(s, " Tj") +
 		strings.Count(s, " TJ") +
 		strings.Count(s, " BT")
@@ -328,8 +384,6 @@ func analyzePDFStructure(path string) pdfStructure {
 	return st
 }
 
-// scanPDFRawBytes lee el PDF completo como bytes y aplica los patrones
-// directamente sobre el binario.
 func scanPDFRawBytes(path string) map[string][]string {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -338,7 +392,6 @@ func scanPDFRawBytes(path string) map[string][]string {
 	return detectFromText(string(raw))
 }
 
-// extractPDFWithLedongthuc encapsula la llamada a la librería externa.
 func extractPDFWithLedongthuc(path string) string {
 	f, r, err := pdf.Open(path)
 	if err != nil {
@@ -369,7 +422,6 @@ func extractPDFWithLedongthuc(path string) string {
 	return buf.String()
 }
 
-// isEncryptedPDF busca /Encrypt en el archivo.
 func isEncryptedPDF(path string) bool {
 	f, err := os.Open(path)
 	if err != nil {
@@ -404,7 +456,6 @@ func isEncryptedPDF(path string) bool {
 
 func scanDOC(path string) (map[string][]string, error) {
 	ext := strings.ToLower(filepath.Ext(path))
-
 	if ext == ".docx" {
 		return scanDOCX(path)
 	}
@@ -480,11 +531,9 @@ func scanDOCX(path string) (map[string][]string, error) {
 			result["content"] = append(result["content"], cat)
 		}
 	}
-
 	return result, nil
 }
 
-// minInt devuelve el mínimo de dos enteros
 func minInt(a, b int) int {
 	if a < b {
 		return a
@@ -492,7 +541,6 @@ func minInt(a, b int) int {
 	return b
 }
 
-// stringInSlice comprueba si un string está en un slice
 func stringInSlice(s string, slice []string) bool {
 	for _, v := range slice {
 		if v == s {

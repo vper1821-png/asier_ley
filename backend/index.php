@@ -249,6 +249,10 @@ $routes = [
     'POST /api/admin/cleanup/audit-log' => 'routes/admin_cleanup.php@cleanupAuditLog',
     'GET /api/admin/cleanup/companies' => 'routes/admin_cleanup.php@cleanupListCompanies',
     'POST /api/admin/cleanup/companies' => 'routes/admin_cleanup.php@cleanupListCompanies',
+    'POST /api/admin/cleanup/reset-preview' => 'routes/admin_cleanup.php@cleanupResetPreview',
+    'POST /api/admin/cleanup/backup-company' => 'routes/admin_cleanup.php@cleanupBackupCompany',
+    'GET /api/admin/cleanup/backup-download' => 'routes/admin_cleanup.php@cleanupBackupDownload',
+    'POST /api/admin/cleanup/reset-company' => 'routes/admin_cleanup.php@cleanupResetCompany',
 
     // Compliance
     'POST /api/invisia/score'           => 'routes/compliance.php@score',

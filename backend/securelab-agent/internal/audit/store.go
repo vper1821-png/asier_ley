@@ -42,8 +42,11 @@ func (s *Store) init() {
 			process_name TEXT,
 			pid INTEGER,
 			user TEXT,
+			hostname TEXT,
 			size INTEGER,
 			hash TEXT,
+			extension TEXT,
+			row_count INTEGER DEFAULT 0,
 			destination TEXT,
 			personal_data TEXT,
 			sensitive INTEGER DEFAULT 0,
@@ -109,6 +112,13 @@ func (s *Store) init() {
 
 func (s *Store) migrateColumns() {
 	// ── Migrar file_events ──
+	s.migrateFileEvents()
+
+	// ── Migrar sensitive_inventory ──
+	s.migrateSensitiveInventory()
+}
+
+func (s *Store) migrateFileEvents() {
 	rows, err := s.db.Query("PRAGMA table_info(file_events)")
 	if err != nil {
 		return
@@ -134,9 +144,15 @@ func (s *Store) migrateColumns() {
 	if !columns["sensitive"] {
 		s.db.Exec("ALTER TABLE file_events ADD COLUMN sensitive INTEGER DEFAULT 0;")
 	}
-
-	// ── Migrar sensitive_inventory ──
-	s.migrateSensitiveInventory()
+	if !columns["hostname"] {
+		s.db.Exec("ALTER TABLE file_events ADD COLUMN hostname TEXT;")
+	}
+	if !columns["extension"] {
+		s.db.Exec("ALTER TABLE file_events ADD COLUMN extension TEXT;")
+	}
+	if !columns["row_count"] {
+		s.db.Exec("ALTER TABLE file_events ADD COLUMN row_count INTEGER DEFAULT 0;")
+	}
 }
 
 func (s *Store) migrateSensitiveInventory() {
@@ -159,7 +175,6 @@ func (s *Store) migrateSensitiveInventory() {
 		return
 	}
 
-	// Columnas que pueden faltar en DBs antiguas
 	if !columns["personal_data"] {
 		s.db.Exec("ALTER TABLE sensitive_inventory ADD COLUMN personal_data TEXT;")
 	}
@@ -194,9 +209,17 @@ func (s *Store) SaveFileEvent(ev FileEvent) error {
 		sensitive = 1
 	}
 	_, err = s.db.Exec(`
-		INSERT INTO file_events (timestamp, path, event_type, process_name, pid, user, size, hash, destination, personal_data, sensitive)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, ev.Timestamp.Format(time.RFC3339), ev.Path, ev.EventType, ev.ProcessName, ev.PID, ev.User, ev.Size, ev.Hash, ev.Destination, string(personalDataJSON), sensitive)
+		INSERT INTO file_events (
+			timestamp, path, event_type, process_name, pid, user,
+			hostname, size, hash, extension, row_count, destination,
+			personal_data, sensitive
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		ev.Timestamp.Format(time.RFC3339), ev.Path, ev.EventType, ev.ProcessName, ev.PID,
+		ev.User, ev.Hostname, ev.Size, ev.Hash, ev.Extension, ev.RowCount,
+		ev.Destination, string(personalDataJSON), sensitive,
+	)
 	if err != nil {
 		return fmt.Errorf("insertando file_event: %w", err)
 	}
@@ -358,7 +381,6 @@ func (s *Store) FindSensitiveInventory(agentID, companyID, status string, limit 
 		item.UpdatedAt, _ = time.Parse(time.RFC3339, updatedStr)
 		items = append(items, item)
 	}
-	// ── FIX sqlrowserr: chequear error final del iterador ──
 	if err := rows.Err(); err != nil {
 		return items, err
 	}
@@ -413,21 +435,18 @@ func (s *Store) UpdateInventoryOnFileEvent(ev FileEvent) error {
 		return nil
 	}
 
-	// Verificar si el archivo está en el inventario
 	var itemID int
 	err := s.db.QueryRow(`
 		SELECT id FROM sensitive_inventory WHERE path = ? AND status = 'active'
 	`, ev.Path).Scan(&itemID)
 
 	if err == sql.ErrNoRows {
-		// No está en inventario, no hacer nada
 		return nil
 	}
 	if err != nil {
 		return err
 	}
 
-	// Actualizar según tipo de evento
 	now := time.Now().Format(time.RFC3339)
 	status := "active"
 	scanCountInc := 0
@@ -467,7 +486,9 @@ type FileEventFilter struct {
 }
 
 func (s *Store) FindFileEvents(filter FileEventFilter) []FileEvent {
-	query := "SELECT timestamp, path, event_type, process_name, pid, user, size, hash, destination, personal_data, sensitive FROM file_events WHERE 1=1"
+	query := `SELECT timestamp, path, event_type, process_name, pid, user,
+		hostname, size, hash, extension, row_count, destination, personal_data, sensitive
+		FROM file_events WHERE 1=1`
 	args := []interface{}{}
 
 	if filter.AgentId != "" {
@@ -499,8 +520,17 @@ func (s *Store) FindFileEvents(filter FileEventFilter) []FileEvent {
 		var ev FileEvent
 		var pd string
 		var sens int
-		if err := rows.Scan(&ev.Timestamp, &ev.Path, &ev.EventType, &ev.ProcessName, &ev.PID, &ev.User, &ev.Size, &ev.Hash, &ev.Destination, &pd, &sens); err != nil {
+		var hostname, extension sql.NullString
+		var rowCount sql.NullInt64
+		if err := rows.Scan(&ev.Timestamp, &ev.Path, &ev.EventType, &ev.ProcessName, &ev.PID,
+			&ev.User, &hostname, &ev.Size, &ev.Hash, &extension, &rowCount,
+			&ev.Destination, &pd, &sens); err != nil {
 			continue
+		}
+		ev.Hostname = hostname.String
+		ev.Extension = extension.String
+		if rowCount.Valid {
+			ev.RowCount = int(rowCount.Int64)
 		}
 		if pd != "" {
 			_ = json.Unmarshal([]byte(pd), &ev.PersonalData)
@@ -508,8 +538,6 @@ func (s *Store) FindFileEvents(filter FileEventFilter) []FileEvent {
 		ev.Sensitive = sens == 1
 		events = append(events, ev)
 	}
-	// ── FIX sqlrowserr: chequear error final del iterador ──
-	// La firma no permite devolver error, así que lo registramos en stderr.
 	if err := rows.Err(); err != nil {
 		fmt.Fprintf(os.Stderr, "[audit] FindFileEvents: error iterando rows: %v\n", err)
 	}

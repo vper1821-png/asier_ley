@@ -1155,6 +1155,164 @@ require_once __DIR__ . '/../includes/header.php';
                         <p class="text-text-muted text-[12px]">Selecciona una empresa y presiona <b class="text-primary-400">Diagnosticar</b> para comenzar.</p>
                     </div>
                 </template>
+
+                                <!-- ═══ ZONA DE PELIGRO — RESET TOTAL ═══ -->
+                <template x-if="selectedCompany">
+                    <div class="mt-8 rounded-2xl border-2 border-red-500/40 bg-red-500/[0.03] overflow-hidden">
+                        <!-- Header de peligro -->
+                        <div class="px-6 py-5 border-b border-red-500/30 bg-gradient-to-r from-red-500/10 to-red-600/5">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-xl bg-red-500/20 border border-red-500/40 flex items-center justify-center">
+                                    <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <h3 class="text-[15px] font-bold text-red-400">Zona de Peligro — Reset Total</h3>
+                                    <p class="text-[11px] text-red-300/80 mt-0.5">
+                                        Borra TODOS los datos de <strong x-text="companyName()"></strong> excepto los usuarios.
+                                        Esta acción <strong>NO se puede deshacer</strong>.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="p-6 space-y-5">
+                            <!-- Qué preservar -->
+                            <div>
+                                <label class="block text-[11px] font-semibold text-text-heading mb-3">Qué preservar</label>
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                    <label class="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 cursor-not-allowed">
+                                        <input type="checkbox" checked disabled class="rounded border-border-theme">
+                                        <span class="text-[11px] text-emerald-400 font-medium">Usuarios (obligatorio)</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.08] cursor-pointer hover:bg-white/[0.05]">
+                                        <input type="checkbox" x-model="resetPreserve.config" class="rounded border-border-theme">
+                                        <span class="text-[11px] text-text-body">Configuración</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.08] cursor-pointer hover:bg-white/[0.05]">
+                                        <input type="checkbox" x-model="resetPreserve.payments" class="rounded border-border-theme">
+                                        <span class="text-[11px] text-text-body">Pagos</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.08] cursor-pointer hover:bg-white/[0.05]">
+                                        <input type="checkbox" x-model="resetPreserve.certifications" class="rounded border-border-theme">
+                                        <span class="text-[11px] text-text-body">Certificaciones</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.08] cursor-pointer hover:bg-white/[0.05]">
+                                        <input type="checkbox" x-model="resetPreserve.audit" class="rounded border-border-theme">
+                                        <span class="text-[11px] text-text-body">Audit Logs</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Botones de acción -->
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <button @click="previewReset()" :disabled="resetLoading.preview"
+                                    class="px-4 py-3 rounded-lg text-[11px] font-medium bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 transition-all flex items-center gap-2 justify-center disabled:opacity-50">
+                                    <svg class="w-4 h-4" :class="resetLoading.preview ? 'animate-spin' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                    </svg>
+                                    1. Preview Reset
+                                </button>
+                                <button @click="backupCompany()" :disabled="resetLoading.backup"
+                                    class="px-4 py-3 rounded-lg text-[11px] font-medium bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20 transition-all flex items-center gap-2 justify-center disabled:opacity-50">
+                                    <svg class="w-4 h-4" :class="resetLoading.backup ? 'animate-spin' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                                    </svg>
+                                    2. Crear Backup
+                                </button>
+                                <button @click="resetCompany()" :disabled="resetLoading.reset || resetConfirmText !== 'DELETE_ALL_DATA'"
+                                    class="px-4 py-3 rounded-lg text-[11px] font-bold bg-red-600 hover:bg-red-700 text-white transition-all flex items-center gap-2 justify-center disabled:opacity-40 disabled:cursor-not-allowed">
+                                    <svg class="w-4 h-4" :class="resetLoading.reset ? 'animate-spin' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                    </svg>
+                                    3. Reset Total
+                                </button>
+                            </div>
+
+                            <!-- Backup info -->
+                            <template x-if="backupInfo">
+                                <div class="px-4 py-3 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-[11px]">
+                                    <p class="text-cyan-400">
+                                        ✅ Backup creado: <strong x-text="backupInfo.filename"></strong>
+                                        (<span x-text="Math.round(backupInfo.size / 1024)"></span> KB)
+                                    </p>
+                                    <p class="text-text-subtle mt-1">
+                                        También puedes descargarlo manualmente desde:
+                                        <a :href="API + backupInfo.downloadUrl.replace('/api', '')" target="_blank" class="text-cyan-300 hover:text-cyan-200 underline ml-1">descargar</a>
+                                    </p>
+                                </div>
+                            </template>
+
+                            <!-- Preview del reset -->
+                            <template x-if="resetPreview">
+                                <div class="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5">
+                                    <h4 class="text-[12px] font-semibold text-amber-400 mb-3">
+                                        Preview — <span x-text="resetPreview.summary.documents_to_delete"></span> documentos serán eliminados
+                                        en <span x-text="resetPreview.summary.collections_affected"></span> colecciones
+                                    </h4>
+                                    <div class="max-h-48 overflow-y-auto scrollbar-custom space-y-1">
+                                        <template x-for="(count, col) in resetPreview.counts" :key="col">
+                                            <div class="flex justify-between items-center px-3 py-1.5 rounded bg-bg-base/40 border border-border-theme/20 text-[10px]">
+                                                <span class="text-text-body font-mono" x-text="col"></span>
+                                                <span class="text-red-400 font-bold" x-text="count + ' docs'"></span>
+                                            </div>
+                                        </template>
+                                    </div>
+                                    <p class="text-[10px] text-emerald-400 mt-3">
+                                        ✅ Usuarios preservados: <span x-text="resetPreview.preserved.users"></span>
+                                    </p>
+                                </div>
+                            </template>
+
+                            <!-- Confirmación por texto -->
+                            <div>
+                                <label class="block text-[11px] font-semibold text-red-400 mb-2">
+                                    Para confirmar, escribe exactamente: <code class="px-1.5 py-0.5 bg-red-500/20 rounded text-red-300 font-mono">DELETE_ALL_DATA</code>
+                                </label>
+                                <input type="text"
+                                    x-model="resetConfirmText"
+                                    placeholder="DELETE_ALL_DATA"
+                                    class="w-full px-4 py-2.5 rounded-lg bg-bg-base border-2 border-red-500/30 focus:border-red-500 text-[12px] text-white font-mono placeholder-text-subtle focus:outline-none transition-colors">
+                                <p x-show="resetConfirmText && resetConfirmText !== 'DELETE_ALL_DATA'" class="text-[10px] text-amber-400 mt-1.5">
+                                    ⚠️ El texto no coincide
+                                </p>
+                                <p x-show="resetConfirmText === 'DELETE_ALL_DATA'" class="text-[10px] text-emerald-400 mt-1.5">
+                                    ✓ Confirmación válida. Puedes presionar Reset.
+                                </p>
+                            </div>
+
+                            <!-- Resultado del reset -->
+                            <template x-if="resetResult">
+                                <div class="rounded-xl border-2 border-emerald-500/40 bg-emerald-500/5 p-5">
+                                    <h4 class="text-[13px] font-semibold text-emerald-400 mb-3">✅ Reset completado</h4>
+                                    <p class="text-[11px] text-text-body mb-3">
+                                        <strong x-text="resetResult.deleted_total"></strong> documentos eliminados en total.
+                                    </p>
+                                    <div class="max-h-40 overflow-y-auto scrollbar-custom space-y-1">
+                                        <template x-for="(count, col) in resetResult.by_collection" :key="col">
+                                            <div class="flex justify-between items-center px-3 py-1.5 rounded bg-bg-base/40 border border-border-theme/20 text-[10px]">
+                                                <span class="text-text-body font-mono" x-text="col"></span>
+                                                <span class="text-emerald-400" x-text="count + ' eliminados'"></span>
+                                            </div>
+                                        </template>
+                                    </div>
+                                    <template x-if="resetResult.errors && resetResult.errors.length">
+                                        <div class="mt-3 px-3 py-2 rounded bg-red-500/10 border border-red-500/20">
+                                            <p class="text-[10px] text-red-400 font-bold mb-1">Errores:</p>
+                                            <template x-for="(err, i) in resetResult.errors" :key="i">
+                                                <p class="text-[10px] text-red-300 font-mono" x-text="err"></p>
+                                            </template>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+
+
             </div>
 
             <?php elseif ($tab === 'settings'): ?>
@@ -1911,6 +2069,24 @@ function cleanupApp() {
             audit: false
         },
 
+        // ── Reset total ──
+        resetPreview: null,
+        backupInfo: null,
+        resetConfirmText: '',
+        resetPreserve: {
+            users: true,        // siempre true
+            config: true,
+            payments: false,
+            certifications: false,
+            audit: true,
+        },
+        resetResult: null,
+        resetLoading: {
+            preview: false,
+            backup: false,
+            reset: false,
+        },
+
         init() {
             this.loadCompanies();
         },
@@ -2050,6 +2226,106 @@ function cleanupApp() {
             } finally {
                 this.loading.audit = false;
             }
+        },
+
+
+                // ── Reset total: métodos ──
+        async previewReset() {
+            this.resetLoading.preview = true;
+            this.resetPreview = null;
+            this.resetResult = null;
+            try {
+                const res = await this.apiCall('reset-preview', {
+                    companyId: this.selectedCompany,
+                    preserve: {
+                        config: this.resetPreserve.config,
+                        payments: this.resetPreserve.payments,
+                        certifications: this.resetPreserve.certifications,
+                        audit: this.resetPreserve.audit,
+                    },
+                });
+                if (res.success) {
+                    this.resetPreview = res;
+                } else {
+                    this.showAlert(res.error || 'Error en preview reset', 'error');
+                }
+            } catch (e) {
+                this.showAlert('Error: ' + e.message, 'error');
+            } finally {
+                this.resetLoading.preview = false;
+            }
+        },
+
+        async backupCompany() {
+            if (!confirm('¿Crear un backup completo de esta empresa?\n\nSe descargará un archivo JSON con TODOS los datos actuales.')) {
+                return;
+            }
+            this.resetLoading.backup = true;
+            try {
+                const res = await this.apiCall('backup-company', {
+                    companyId: this.selectedCompany,
+                });
+                if (res.success) {
+                    this.backupInfo = res;
+                    this.showAlert('Backup creado: ' + res.filename + ' (' + Math.round(res.size / 1024) + ' KB)', 'success');
+                    // Disparar descarga automática
+                    window.location.href = API + res.downloadUrl.replace('/api', '');
+                } else {
+                    this.showAlert(res.error || 'Error al crear backup', 'error');
+                }
+            } catch (e) {
+                this.showAlert('Error: ' + e.message, 'error');
+            } finally {
+                this.resetLoading.backup = false;
+            }
+        },
+
+        async resetCompany() {
+            if (this.resetConfirmText !== 'DELETE_ALL_DATA') {
+                this.showAlert('Debes escribir DELETE_ALL_DATA para confirmar', 'error');
+                return;
+            }
+
+            if (!confirm('⚠️ ¿BORRAR TODOS los datos de esta empresa?\n\nSe preservarán los usuarios y la configuración marcada.\n\nEsta acción NO se puede deshacer.')) {
+                return;
+            }
+            if (!confirm('ÚLTIMA OPORTUNIDAD\n\n¿Realmente deseas continuar con el reset de ' + this.companyName() + '?')) {
+                return;
+            }
+
+            this.resetLoading.reset = true;
+            this.resetResult = null;
+            try {
+                const res = await this.apiCall('reset-company', {
+                    companyId: this.selectedCompany,
+                    confirm: 'DELETE_ALL_DATA',
+                    requireBackup: !!this.backupInfo,
+                    preserve: {
+                        config: this.resetPreserve.config,
+                        payments: this.resetPreserve.payments,
+                        certifications: this.resetPreserve.certifications,
+                        audit: this.resetPreserve.audit,
+                    },
+                });
+                if (res.success) {
+                    this.resetResult = res.stats;
+                    this.resetPreview = null;
+                    this.resetConfirmText = '';
+                    this.showAlert('Reset completado. ' + res.stats.deleted_total + ' documentos eliminados.', 'success');
+                    this.diagnose();
+                } else {
+                    this.showAlert(res.error || 'Error al resetear', 'error');
+                }
+            } catch (e) {
+                this.showAlert('Error: ' + e.message, 'error');
+            } finally {
+                this.resetLoading.reset = false;
+            }
+        },
+
+        companyName() {
+            const c = this.companies.find(x => x.companyId === this.selectedCompany);
+            return c ? c.companyName : this.selectedCompany;
         },
 
         healthColorClass() {

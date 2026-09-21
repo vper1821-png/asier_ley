@@ -64,6 +64,7 @@ type ScanResult struct {
 	HasSensitive bool
 	PersonalData map[string][]string
 	Hash         string
+	RowCount     int
 	Error        string
 	ScannedAt    time.Time
 	ModifiedAt   time.Time
@@ -83,6 +84,7 @@ type InitialInventoryItem struct {
 	Sensitive    bool                `json:"sensitive"`
 	PersonalData map[string][]string `json:"personalData"`
 	Hash         string              `json:"hash"`
+	RowCount     int                 `json:"rowCount"`
 	FirstSeen    time.Time           `json:"firstSeen"`
 	LastScanned  time.Time           `json:"lastScanned"`
 	LastModified time.Time           `json:"lastModified"`
@@ -105,7 +107,6 @@ func RunInitialMassiveScan(
 	log.Info("Config: MaxFiles=%d, MaxDepth=%d, Workers=%d, Timeout=%v",
 		config.MaxFiles, config.MaxDepth, config.ConcurrentWorkers, config.ScanTimeout)
 
-	// ── Resolver directorios ──
 	scanDirs := resolveScanDirs(config, log)
 	if len(scanDirs) == 0 {
 		log.Warn("No hay directorios válidos para escanear")
@@ -188,6 +189,7 @@ func RunInitialMassiveScan(
 				Sensitive:    result.HasSensitive,
 				PersonalData: result.PersonalData,
 				Hash:         result.Hash,
+				RowCount:     result.RowCount,
 				FirstSeen:    time.Now(),
 				LastScanned:  time.Now(),
 				LastModified: result.ModifiedAt,
@@ -241,6 +243,7 @@ func RunInitialMassiveScan(
 					Sensitive:    false,
 					PersonalData: result.PersonalData,
 					Hash:         result.Hash,
+					RowCount:     result.RowCount,
 					FirstSeen:    time.Now(),
 					LastScanned:  time.Now(),
 					LastModified: result.ModifiedAt,
@@ -263,7 +266,6 @@ func RunInitialMassiveScan(
 
 // resolveScanDirs decide qué directorios escanear, priorizando CustomDirs.
 func resolveScanDirs(cfg *InitialScanConfig, log *logger.Logger) []string {
-	// 1. CustomDirs (prioridad)
 	if len(cfg.CustomDirs) > 0 {
 		var valid []string
 		seen := make(map[string]bool)
@@ -294,7 +296,6 @@ func resolveScanDirs(cfg *InitialScanConfig, log *logger.Logger) []string {
 		}
 	}
 
-	// 2. Auto-descubrimiento
 	return getScanDirectories(log)
 }
 
@@ -394,11 +395,7 @@ func isHidden(path string) bool {
 }
 
 // shouldSkipDir decide si un directorio debe excluirse del escaneo.
-//
-// FIX CRÍTICO: se excluye por PATH ABSOLUTO, no por basename.
-// Nombres como "dev", "env", "admin", "bin", "config", "build", "default"
-// son usernames válidos en Windows y Linux. Excluirlos por basename
-// hace que se pierdan usuarios reales (ej: usuario llamado "env" o "DEV").
+// Excluye por PATH ABSOLUTO, no por basename.
 func shouldSkipDir(path string, config *InitialScanConfig) bool {
 	if !config.SkipSystem && !config.SkipHidden {
 		return false
@@ -408,7 +405,6 @@ func shouldSkipDir(path string, config *InitialScanConfig) bool {
 	lowerBase := strings.ToLower(base)
 	lowerPath := strings.ToLower(filepath.Clean(path))
 
-	// Ocultos (empiezan con punto)
 	if config.SkipHidden && strings.HasPrefix(base, ".") {
 		return true
 	}
@@ -441,7 +437,6 @@ func shouldSkipDir(path string, config *InitialScanConfig) bool {
 			}
 		}
 
-		// AppData: solo si estamos dentro de C:\Users\<algo>\
 		if strings.HasPrefix(p, `c:\users\`) {
 			if strings.Contains(p, `\appdata\`) {
 				return true
@@ -465,7 +460,6 @@ func shouldSkipDir(path string, config *InitialScanConfig) bool {
 			return true
 		}
 
-		// Junctions del sistema dentro de C:\Users\
 		if strings.HasPrefix(p, `c:\users\`) {
 			switch lowerBase {
 			case "all users", "default user", "defaultaccount", "wdagutilityaccount":
@@ -504,7 +498,6 @@ func shouldSkipDir(path string, config *InitialScanConfig) bool {
 	return false
 }
 
-// scanFileWithTimeout escanea un archivo con timeout
 func scanFileWithTimeout(path string, config *InitialScanConfig) *ScanResult {
 	ctx, cancel := context.WithTimeout(context.Background(), config.FileTimeout)
 	defer cancel()
@@ -522,7 +515,6 @@ func scanFileWithTimeout(path string, config *InitialScanConfig) *ScanResult {
 	}
 }
 
-// scanSingleFile escanea un archivo individual
 func scanSingleFile(path string) *ScanResult {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -548,6 +540,8 @@ func scanSingleFile(path string) *ScanResult {
 	cats := DetectPersonalDataFromMap(personalData)
 	hasSensitive := HasSensitiveData(cats)
 
+	rowCount := CountRows(path)
+
 	relPath := path
 	for _, base := range getScanDirectories(nil) {
 		if rel, err := filepath.Rel(base, path); err == nil && !strings.HasPrefix(rel, "..") {
@@ -565,6 +559,7 @@ func scanSingleFile(path string) *ScanResult {
 		HasSensitive: hasSensitive,
 		PersonalData: personalData,
 		Hash:         hash,
+		RowCount:     rowCount,
 		ScannedAt:    time.Now(),
 		ModifiedAt:   info.ModTime(),
 	}
@@ -590,8 +585,6 @@ func getCategoriesList(cats map[string]bool) []string {
 }
 
 // getScanDirectories retorna directorios a escanear según SO.
-// SIN caché (se recalcula cada vez) para evitar que el primer resultado
-// quede congelado para siempre.
 func getScanDirectories(log *logger.Logger) []string {
 	return computeScanDirectories(log)
 }
@@ -626,7 +619,6 @@ func computeScanDirectories(log *logger.Logger) []string {
 				filepath.Join(pub, "Downloads"),
 			)
 		}
-		// Fallback universal: cubre todos los perfiles
 		baseDirs = append(baseDirs, `C:\Users`)
 	} else {
 		baseDirs = append(baseDirs,
@@ -671,7 +663,6 @@ func isSystemProfilePath(p string) bool {
 		strings.Contains(l, `windows\syswow64`)
 }
 
-// Funciones auxiliares
 func getAgentID() string   { return "unknown" }
 func getUserID() string    { return "unknown" }
 func getCompanyID() string { return "unknown" }

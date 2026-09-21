@@ -282,15 +282,11 @@ class AgentWebSocket implements MessageComponentInterface {
         }
     }
 
-    // ─── HANDLER: INVENTORY_ITEM (FIX CRÍTICO) ──────────────────────
+    // ─── HANDLER: INVENTORY_ITEM ────────────────────────────────────
 
     /**
-     * Antes: este handler tenía una implementación propia que SOBRESCRIBÍA
-     * analysisResult (perdiendo inventoryId) y no creaba el item de inventario.
-     * Resultado: solo ~13% de los archivos aparecían en el RAT.
-     *
-     * Ahora: delega a processFileDetection(), el mismo método que usa
-     * handleFileDetected. Un solo flujo, un solo lugar para arreglar bugs.
+     * Este handler delega a processFileDetection() — el mismo método que
+     * usa handleFileDetected. Un solo flujo, un solo lugar para arreglar bugs.
      */
     private function handleInventoryItem(ConnectionInterface $from, $data) {
         $agentId = $from->agentId ?? $data['agentId'] ?? '';
@@ -316,7 +312,7 @@ class AgentWebSocket implements MessageComponentInterface {
             'hostname'     => $data['hostname'] ?? 'unknown',
             'user'         => $data['user'] ?? null,
             'size'         => (int)($data['size'] ?? 0),
-            'rowCount'     => (int)($data['scanCount'] ?? $data['rowCount'] ?? 0),
+            'rowCount'     => (int)($data['rowCount'] ?? $data['scanCount'] ?? 0),
             'sensitive'    => !empty($data['sensitive']),
             'personalData' => $data['personalData'] ?? [],
             'categories'   => $data['categories'] ?? [],
@@ -337,19 +333,23 @@ class AgentWebSocket implements MessageComponentInterface {
     private function handleFileEvent(ConnectionInterface $from, $data) {
         $agentId = $from->agentId ?? $data['agentId'] ?? '';
         if (!$agentId || !$this->db) return;
+
         $doc = [
-            'agentId' => $agentId,
-            'userId' => $from->userId ?? '',
-            'timestamp' => $data['timestamp'] ?? date('c'),
-            'path' => $data['path'] ?? '',
-            'eventType' => $data['eventType'] ?? 'unknown',
-            'process' => $data['process'] ?? '',
-            'pid' => (int)($data['pid'] ?? 0),
-            'user' => $data['user'] ?? '',
-            'size' => (int)($data['size'] ?? 0),
-            'hash' => $data['hash'] ?? '',
+            'agentId'     => $agentId,
+            'userId'      => $from->userId ?? '',
+            'timestamp'   => $data['timestamp'] ?? date('c'),
+            'path'        => $data['path'] ?? '',
+            'eventType'   => $data['eventType'] ?? 'unknown',
+            'process'     => $data['process'] ?? '',
+            'pid'         => (int)($data['pid'] ?? 0),
+            'user'        => $data['user'] ?? '',
+            'hostname'    => $data['hostname'] ?? '',
+            'extension'   => $data['extension'] ?? '',
+            'size'        => (int)($data['size'] ?? 0),
+            'hash'        => $data['hash'] ?? '',
+            'rowCount'    => (int)($data['rowCount'] ?? 0),
             'destination' => $data['destination'] ?? '',
-            'createdAt' => date('c'),
+            'createdAt'   => date('c'),
         ];
         $this->db->insertOne('file_events', $doc);
     }
@@ -357,35 +357,37 @@ class AgentWebSocket implements MessageComponentInterface {
     private function handleDBQuery(ConnectionInterface $from, $data) {
         $agentId = $from->agentId ?? $data['agentId'] ?? '';
         if (!$agentId || !$this->db) return;
+
         $doc = [
-            'agentId' => $agentId,
-            'userId' => $from->userId ?? '',
+            'agentId'   => $agentId,
+            'userId'    => $from->userId ?? '',
             'timestamp' => $data['timestamp'] ?? date('c'),
-            'engine' => $data['engine'] ?? '',
-            'database' => $data['database'] ?? '',
-            'user' => $data['user'] ?? '',
-            'host' => $data['host'] ?? '',
-            'query' => $data['query'] ?? '',
+            'engine'    => $data['engine'] ?? '',
+            'database'  => $data['database'] ?? '',
+            'user'      => $data['user'] ?? '',
+            'host'      => $data['host'] ?? '',
+            'query'     => $data['query'] ?? '',
             'operation' => $data['operation'] ?? 'query',
             'riskScore' => (float)($data['riskScore'] ?? 0),
             'createdAt' => date('c'),
         ];
         $this->db->insertOne('database_logs', $doc);
+
         if ($doc['riskScore'] >= 0.5) {
             $severity = $doc['riskScore'] >= 0.8 ? 'critical' : 'high';
             $this->db->insertOne('alerts', [
-                'agentId' => $agentId,
-                'userId' => $from->userId ?? '',
-                'title' => 'Consulta riesgosa en ' . $doc['database'],
-                'message' => $doc['query'],
-                'severity' => $severity,
-                'source' => 'db_query',
-                'category' => 'database_access',
-                'lawArticle' => 'Art. 25 Ley 21.719',
-                'eventType' => $doc['operation'] ?? 'query',
-                'read' => false,
-                'resolved' => false,
-                'createdAt' => date('c'),
+                'agentId'     => $agentId,
+                'userId'      => $from->userId ?? '',
+                'title'       => 'Consulta riesgosa en ' . $doc['database'],
+                'message'     => $doc['query'],
+                'severity'    => $severity,
+                'source'      => 'db_query',
+                'category'    => 'database_access',
+                'lawArticle'  => 'Art. 25 Ley 21.719',
+                'eventType'   => $doc['operation'] ?? 'query',
+                'read'        => false,
+                'resolved'    => false,
+                'createdAt'   => date('c'),
             ]);
         }
     }
@@ -393,31 +395,34 @@ class AgentWebSocket implements MessageComponentInterface {
     private function handleHostEvent(ConnectionInterface $from, $data) {
         $agentId = $from->agentId ?? $data['agentId'] ?? '';
         if (!$agentId || !$this->db) return;
+
         $doc = [
-            'agentId' => $agentId,
-            'userId' => $from->userId ?? '',
+            'agentId'   => $agentId,
+            'userId'    => $from->userId ?? '',
             'timestamp' => $data['timestamp'] ?? date('c'),
-            'type' => $data['type'] ?? 'host_event',
-            'severity' => $data['severity'] ?? 'info',
-            'title' => $data['title'] ?? 'Evento del sistema',
-            'detail' => $data['detail'] ?? '',
-            'source' => $data['source'] ?? 'agent',
+            'type'      => $data['type'] ?? 'host_event',
+            'severity'  => $data['severity'] ?? 'info',
+            'title'     => $data['title'] ?? 'Evento del sistema',
+            'detail'    => $data['detail'] ?? '',
+            'source'    => $data['source'] ?? 'agent',
             'createdAt' => date('c'),
         ];
+
         $this->db->insertOne('alerts', [
-            'userId' => $from->userId ?? '',
-            'agentId' => $agentId,
-            'title' => $doc['title'],
-            'message' => $doc['detail'],
-            'severity' => $doc['severity'],
-            'source' => $doc['source'],
-            'category' => 'security_monitoring',
-            'lawArticle' => 'Art. 25 Ley 21.719',
-            'eventType' => $doc['type'],
-            'read' => false,
-            'resolved' => false,
-            'createdAt' => $doc['createdAt'],
+            'userId'      => $from->userId ?? '',
+            'agentId'     => $agentId,
+            'title'       => $doc['title'],
+            'message'     => $doc['detail'],
+            'severity'    => $doc['severity'],
+            'source'      => $doc['source'],
+            'category'    => 'security_monitoring',
+            'lawArticle'  => 'Art. 25 Ley 21.719',
+            'eventType'   => $doc['type'],
+            'read'        => false,
+            'resolved'    => false,
+            'createdAt'   => $doc['createdAt'],
         ]);
+
         $this->db->insertOne('host_events', $doc);
     }
 
@@ -427,34 +432,38 @@ class AgentWebSocket implements MessageComponentInterface {
             echo "⚠️ telemetry ignorado (sin agentId o db)\n";
             return;
         }
+
         $diskFree = (float)($data['diskFree'] ?? 0);
         $diskTotal = (float)($data['diskTotal'] ?? 0);
         $diskPct = $diskTotal > 0 ? round((($diskTotal - $diskFree) / $diskTotal) * 100, 1) : 0;
+
         $doc = [
-            'userId' => $from->userId ?? '',
-            'agentId' => $agentId,
-            'hostname' => $data['hostname'] ?? $agentId,
-            'cpu' => (float)($data['cpu'] ?? 0),
-            'ram' => (float)($data['memory'] ?? 0),
-            'disk' => max(0, min(100, $diskPct)),
-            'diskFree' => $diskFree,
-            'diskTotal' => $diskTotal,
-            'diskUsed' => max(0, $diskTotal - $diskFree),
-            'processes' => (int)($data['processes'] ?? 0),
+            'userId'      => $from->userId ?? '',
+            'agentId'     => $agentId,
+            'hostname'    => $data['hostname'] ?? $agentId,
+            'cpu'         => (float)($data['cpu'] ?? 0),
+            'ram'         => (float)($data['memory'] ?? 0),
+            'disk'        => max(0, min(100, $diskPct)),
+            'diskFree'    => $diskFree,
+            'diskTotal'   => $diskTotal,
+            'diskUsed'    => max(0, $diskTotal - $diskFree),
+            'processes'   => (int)($data['processes'] ?? 0),
             'connections' => (int)($data['connections'] ?? 0),
-            'platform' => $data['platform'] ?? '',
-            'arch' => $data['arch'] ?? '',
-            'os' => $data['os'] ?? '',
-            'user' => $data['user'] ?? '',
-            'uptime' => (int)($data['uptime'] ?? 0),
-            'status' => 'online',
-            'lastSeen' => date('c'),
+            'platform'    => $data['platform'] ?? '',
+            'arch'        => $data['arch'] ?? '',
+            'os'          => $data['os'] ?? '',
+            'user'        => $data['user'] ?? '',
+            'uptime'      => (int)($data['uptime'] ?? 0),
+            'status'      => 'online',
+            'lastSeen'    => date('c'),
         ];
+
         $userId = $from->userId ?? '';
         $agent = $this->db->findOne('agents', ['agentId' => $agentId, 'userId' => $userId]);
         if (!$agent) {
             return;
         }
+
         $existing = $this->db->findOne('host_monitor', ['agentId' => $agentId, 'userId' => $userId]);
         if ($existing) {
             $this->db->updateOne('host_monitor', ['_id' => $existing['_id']], $doc);
@@ -462,6 +471,7 @@ class AgentWebSocket implements MessageComponentInterface {
             $doc['createdAt'] = date('c');
             $this->db->insertOne('host_monitor', $doc);
         }
+
         if (isset($agent['lockdown'])) {
             $this->db->updateOne('host_monitor', ['agentId' => $agentId, 'userId' => $userId], ['lockdown' => $agent['lockdown']]);
         }
@@ -470,23 +480,24 @@ class AgentWebSocket implements MessageComponentInterface {
     private function handleGenericEvent(ConnectionInterface $from, $data) {
         $agentId = $from->agentId ?? $data['agentId'] ?? '';
         if (!$agentId || !$this->db) return;
+
         $this->db->insertOne('alerts', [
-            'userId' => $from->userId ?? '',
-            'agentId' => $agentId,
-            'title' => $data['title'] ?? 'Evento del agente',
-            'message' => $data['description'] ?? '',
-            'severity' => $data['severity'] ?? 'medium',
-            'source' => $data['source'] ?? 'agent',
-            'category' => 'security_monitoring',
-            'lawArticle' => 'Art. 25 Ley 21.719',
-            'eventType' => 'generic',
-            'read' => false,
-            'resolved' => false,
-            'createdAt' => date('c'),
+            'userId'      => $from->userId ?? '',
+            'agentId'     => $agentId,
+            'title'       => $data['title'] ?? 'Evento del agente',
+            'message'     => $data['description'] ?? '',
+            'severity'    => $data['severity'] ?? 'medium',
+            'source'      => $data['source'] ?? 'agent',
+            'category'    => 'security_monitoring',
+            'lawArticle'  => 'Art. 25 Ley 21.719',
+            'eventType'   => 'generic',
+            'read'        => false,
+            'resolved'    => false,
+            'createdAt'   => date('c'),
         ]);
     }
 
-    // ─── DATA RESPONSE (FIX: no borrar el más nuevo) ────────────────
+    // ─── DATA RESPONSE ──────────────────────────────────────────────
 
     private function handleDataResponse(ConnectionInterface $conn, $data) {
         $agentId = $conn->agentId ?? $data['agentId'] ?? '';
@@ -494,10 +505,10 @@ class AgentWebSocket implements MessageComponentInterface {
         if (!$agentId || !$type || !$this->db) return;
 
         $this->db->insertOne('agent_data', [
-            'agentId' => $agentId,
-            'type' => $type,
-            'data' => $data['data'] ?? null,
-            'ts' => (int)($data['ts'] ?? time()),
+            'agentId'   => $agentId,
+            'type'      => $type,
+            'data'      => $data['data'] ?? null,
+            'ts'        => (int)($data['ts'] ?? time()),
             'createdAt' => date('c'),
         ]);
 
@@ -524,11 +535,14 @@ class AgentWebSocket implements MessageComponentInterface {
     private function handleSync(ConnectionInterface $from) {
         $agentId = $from->agentId ?? '';
         if (!$agentId) return;
+
         if ($this->db) {
             $this->db->updateOne('agents', ['agentId' => $agentId], ['lastSeen' => date('c')]);
         }
+
         $agent = $this->db->findOne('agents', ['agentId' => $agentId]);
         $lockdown = $agent['lockdown'] ?? ['enabled' => false];
+
         $commands = $this->db->find('agent_commands', [
             'agentId' => $agentId,
             'executed' => ['$in' => [false, null]],
@@ -536,8 +550,8 @@ class AgentWebSocket implements MessageComponentInterface {
         $pending = [];
         foreach ($commands as $cmd) {
             $pending[] = [
-                'command' => $cmd['command'],
-                'params' => $cmd['params'] ?? [],
+                'command'   => $cmd['command'],
+                'params'    => $cmd['params'] ?? [],
                 'commandId' => $cmd['_id'],
             ];
         }
@@ -555,13 +569,13 @@ class AgentWebSocket implements MessageComponentInterface {
         $connections = [];
         $seen = [];
         foreach (array_merge($dbConns, $dashboardConns) as $dbConn) {
-            $engine = $dbConn['engine'] ?? $dbConn['type'] ?? '';
-            $host = $dbConn['host'] ?? '';
-            $port = (int)($dbConn['port'] ?? 0);
+            $engine   = $dbConn['engine'] ?? $dbConn['type'] ?? '';
+            $host     = $dbConn['host'] ?? '';
+            $port     = (int)($dbConn['port'] ?? 0);
             $database = $dbConn['database'] ?? '';
             $username = $dbConn['username'] ?? $dbConn['user'] ?? '';
             $password = $dbConn['password'] ?? '';
-            $ssl = (bool)($dbConn['ssl'] ?? false);
+            $ssl      = (bool)($dbConn['ssl'] ?? false);
 
             if (in_array($engine, ['mariadb', 'mysql'])) {
                 $engine = 'mysql';
@@ -587,9 +601,9 @@ class AgentWebSocket implements MessageComponentInterface {
         $from->send(json_encode([
             'type' => 'sync_response',
             'payload' => [
-                'lockdown' => $lockdown,
+                'lockdown'        => $lockdown,
                 'pendingCommands' => $pending,
-                'connections' => $connections,
+                'connections'     => $connections,
             ]
         ]));
     }
@@ -598,13 +612,14 @@ class AgentWebSocket implements MessageComponentInterface {
         $commandId = $data['commandId'] ?? '';
         $status = $data['status'] ?? 'error';
         $result = $data['result'] ?? '';
+
         if ($commandId && $this->db) {
             try {
                 $this->db->updateOne('agent_commands', ['_id' => $commandId, 'userId' => $from->userId ?? ''], [
-                    'executed' => true,
+                    'executed'   => true,
                     'executedAt' => date('c'),
-                    'result' => $result,
-                    'status' => $status,
+                    'result'     => $result,
+                    'status'     => $status,
                 ]);
             } catch (\Throwable $e) {
                 echo "❌ Error guardando respuesta: " . $e->getMessage() . "\n";
@@ -616,19 +631,22 @@ class AgentWebSocket implements MessageComponentInterface {
 
     private function sendPendingCommands($agentId) {
         if (!$this->db) return;
+
         $commands = $this->db->find('agent_commands', [
             'agentId' => $agentId,
             'executed' => ['$in' => [false, null]],
         ]);
+
         foreach ($commands as $cmd) {
             $conn = $this->agentSessions[$agentId] ?? null;
             if (!$conn) break;
+
             try {
                 $conn->send(json_encode([
                     'type' => 'command',
                     'payload' => [
-                        'command' => $cmd['command'],
-                        'params' => $cmd['params'] ?? [],
+                        'command'   => $cmd['command'],
+                        'params'    => $cmd['params'] ?? [],
                         'commandId' => $cmd['_id'],
                     ]
                 ]));
@@ -639,14 +657,11 @@ class AgentWebSocket implements MessageComponentInterface {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // PROCESAMIENTO DE DETECCIÓN DE ARCHIVO (FIX CRÍTICO)
+    // PROCESAMIENTO DE DETECCIÓN DE ARCHIVO
     // ═══════════════════════════════════════════════════════════════
     //
     // Este método es el ÚNICO lugar que crea/actualiza el inventario.
     // Tanto handleFileDetected como handleInventoryItem lo llaman.
-    //
-    // FIX 1: Preserva inventoryId al actualizar (evita duplicados)
-    // FIX 2: Añade agentId, hostname, path al inventario (agrupación)
     //
     private function processFileDetection($userId, $agentId, $fileData) {
         if (!$this->db) {
@@ -663,48 +678,48 @@ class AgentWebSocket implements MessageComponentInterface {
 
         // 1. Buscar si ya existe
         $existing = $db->findOne('compliance_files', [
-            'agentId' => $agentId,
-            'path' => $fileData['path'],
+            'agentId'    => $agentId,
+            'path'       => $fileData['path'],
             'sourceType' => 'agent'
         ]);
 
-        // ── FIX: preservar inventoryId ──
         $existingInventoryId = $existing['analysisResult']['inventoryId'] ?? null;
 
-        $hostname = $fileData['hostname'] ?? 'unknown';
-        $sensitive = !empty($fileData['sensitive']);
+        $hostname     = $fileData['hostname'] ?? 'unknown';
+        $sensitive    = !empty($fileData['sensitive']);
         $personalData = $fileData['personalData'] ?? [];
+        $extension    = strtolower(pathinfo($fileData['path'], PATHINFO_EXTENSION));
 
         // 2. Construir documento del archivo
         $analysisResult = [
-            'rowCount'    => (int)($fileData['rowCount'] ?? 0),
-            'headers'     => array_keys($personalData),
-            'patterns'    => $personalData,
-            'sensitive'   => $sensitive,
-            'analyzedAt'  => date('c'),
-            'analyzedBy'  => 'agent',
-            'user'        => $fileData['user'] ?? null,
+            'rowCount'   => (int)($fileData['rowCount'] ?? 0),
+            'headers'    => array_keys($personalData),
+            'patterns'   => $personalData,
+            'sensitive'  => $sensitive,
+            'analyzedAt' => date('c'),
+            'analyzedBy' => 'agent',
+            'user'       => $fileData['user'] ?? null,
         ];
         if ($existingInventoryId) {
             $analysisResult['inventoryId'] = $existingInventoryId;
         }
 
         $doc = [
-            'userId'        => $userId,
-            'sourceType'    => 'agent',
-            'agentId'       => $agentId,
-            'hostname'      => $hostname,
-            'path'          => $fileData['path'],
-            'originalName'  => basename($fileData['path']),
-            'ext'           => strtolower(pathinfo($fileData['path'], PATHINFO_EXTENSION)),
-            'size'          => (int)($fileData['size'] ?? 0),
-            'hash'          => $fileData['hash'],
-            'mimeType'      => $fileData['mimeType'] ?? 'application/octet-stream',
-            'status'        => 'analyzed',
-            'user'          => $fileData['user'] ?? null,
+            'userId'         => $userId,
+            'sourceType'     => 'agent',
+            'agentId'        => $agentId,
+            'hostname'       => $hostname,
+            'path'           => $fileData['path'],
+            'originalName'   => basename($fileData['path']),
+            'ext'            => $extension,
+            'size'           => (int)($fileData['size'] ?? 0),
+            'hash'           => $fileData['hash'],
+            'mimeType'       => $fileData['mimeType'] ?? 'application/octet-stream',
+            'status'         => 'analyzed',
+            'user'           => $fileData['user'] ?? null,
             'analysisResult' => $analysisResult,
-            'createdAt'     => $existing['createdAt'] ?? date('c'),
-            'updatedAt'     => date('c'),
+            'createdAt'      => $existing['createdAt'] ?? date('c'),
+            'updatedAt'      => date('c'),
         ];
 
         if ($existing) {
@@ -731,7 +746,7 @@ class AgentWebSocket implements MessageComponentInterface {
         }
         $categories = array_values(array_unique(array_filter($categories)));
 
-        // 4. Inventario (RAT) — INCLUYE agentId y hostname para agrupar
+        // 4. Inventario (RAT) — INCLUYE agentId, hostname, extension
         $inventoryData = [
             'userId'         => $userId,
             'sourceType'     => 'file',
@@ -739,6 +754,7 @@ class AgentWebSocket implements MessageComponentInterface {
             'agentId'        => $agentId,
             'hostname'       => $hostname,
             'path'           => $fileData['path'],
+            'extension'      => $extension,
             'name'           => '📄 ' . basename($fileData['path']),
             'dataCategories' => implode(', ', $categories),
             'records'        => (int)($fileData['rowCount'] ?? 0),
@@ -751,13 +767,10 @@ class AgentWebSocket implements MessageComponentInterface {
         ];
 
         if ($inventoryId) {
-            // Actualizar el existente
             $db->updateOne('compliance_inventory', ['_id' => $inventoryId], $inventoryData);
         } else {
-            // Crear nuevo
             $inventoryData['createdAt'] = date('c');
             $inv = $db->insertOne('compliance_inventory', $inventoryData);
-            // Enlazar el inventario al file
             $db->updateOne('compliance_files', ['_id' => $fileId], [
                 'analysisResult.inventoryId' => $inv['_id']
             ]);
@@ -765,29 +778,29 @@ class AgentWebSocket implements MessageComponentInterface {
 
         // 5. Auditoría de archivos
         $db->insertOne('file_audit_logs', [
-            'userId' => $userId,
-            'agentId' => $agentId,
-            'hostname' => $hostname,
-            'path' => $fileData['path'],
-            'user' => $fileData['user'] ?? null,
+            'userId'     => $userId,
+            'agentId'    => $agentId,
+            'hostname'   => $hostname,
+            'path'       => $fileData['path'],
+            'user'       => $fileData['user'] ?? null,
             'detectedAt' => date('c'),
             'categories' => $categories,
-            'sensitive' => $sensitive,
-            'rowCount' => (int)($fileData['rowCount'] ?? 0),
-            'fileType' => $fileData['fileType'] ?? 'unknown',
-            'hash' => $fileData['hash'],
-            'status' => 'processed',
+            'sensitive'  => $sensitive,
+            'rowCount'   => (int)($fileData['rowCount'] ?? 0),
+            'fileType'   => $fileData['fileType'] ?? $extension,
+            'hash'       => $fileData['hash'],
+            'status'     => 'processed',
         ]);
 
         // 6. Auditoría general
         $db->insertOne('audit_logs', [
-            'userId' => $userId,
-            'action' => 'file_detected_by_agent',
+            'userId'  => $userId,
+            'action'  => 'file_detected_by_agent',
             'details' => [
-                'agentId' => $agentId,
-                'path' => $fileData['path'],
-                'user' => $fileData['user'] ?? null,
-                'sensitive' => $sensitive,
+                'agentId'    => $agentId,
+                'path'       => $fileData['path'],
+                'user'       => $fileData['user'] ?? null,
+                'sensitive'  => $sensitive,
                 'categories' => $categories,
             ],
             'createdAt' => date('c'),
@@ -814,7 +827,7 @@ class AgentWebSocket implements MessageComponentInterface {
             return;
         }
 
-        $db = $this->db;
+        $db  = $this->db;
         $now = date('c');
 
         $existing = $db->findOne('compliance_files', [
@@ -844,19 +857,22 @@ class AgentWebSocket implements MessageComponentInterface {
             ]);
         }
 
+        // Extension real del evento (o derivada del path como fallback)
+        $extension = $data['extension'] ?? strtolower(pathinfo($path, PATHINFO_EXTENSION));
+
         $db->insertOne('file_audit_logs', [
-            'userId'       => $userId,
-            'agentId'      => $agentId,
-            'hostname'     => $data['hostname'] ?? 'unknown',
-            'path'         => $path,
-            'user'         => $data['user'] ?? null,
-            'detectedAt'   => $now,
-            'categories'   => array_keys($data['personalData'] ?? []),
-            'sensitive'    => !empty($data['sensitive']),
-            'fileType'     => 'unknown',
-            'hash'         => $hash,
-            'status'       => 'deleted',
-            'eventType'    => 'deleted',
+            'userId'     => $userId,
+            'agentId'    => $agentId,
+            'hostname'   => $data['hostname'] ?? 'unknown',
+            'path'       => $path,
+            'user'       => $data['user'] ?? null,
+            'detectedAt' => $now,
+            'categories' => array_keys($data['personalData'] ?? []),
+            'sensitive'  => !empty($data['sensitive']),
+            'fileType'   => $extension,
+            'hash'       => $hash,
+            'status'     => 'deleted',
+            'eventType'  => 'deleted',
         ]);
 
         $db->insertOne('audit_logs', [
@@ -888,6 +904,7 @@ $server = IoServer::factory(
     3839
 );
 
+// ─── PUSH DIRECTO: Polling MongoDB cada 1s para comandos pendientes ───
 $agentWsRef = $agentWs;
 $server->loop->addPeriodicTimer(1.0, function () use ($agentWsRef) {
     $sessions = $agentWsRef->getAgentSessions();
@@ -895,6 +912,7 @@ $server->loop->addPeriodicTimer(1.0, function () use ($agentWsRef) {
 
     $db = $agentWsRef->getDb();
     if (!$db) return;
+
     foreach ($sessions as $agentId => $conn) {
         $cmds = $db->find('agent_commands', [
             'agentId' => $agentId,
@@ -909,8 +927,8 @@ $server->loop->addPeriodicTimer(1.0, function () use ($agentWsRef) {
                 $conn->send(json_encode([
                     'type' => 'command',
                     'payload' => [
-                        'command' => $cmd['command'],
-                        'params' => $cmd['params'] ?? [],
+                        'command'   => $cmd['command'],
+                        'params'    => $cmd['params'] ?? [],
                         'commandId' => $cmd['_id'],
                     ]
                 ]));
