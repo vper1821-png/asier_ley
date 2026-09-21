@@ -43,6 +43,8 @@ SetCompressor /SOLID zlib
 Unicode true
 BrandingText "SecureLab Agent Installer v${PRODUCT_VERSION}"
 
+; Icono por defecto de NSIS (evita bug de parsing en makensis Linux)
+
 ; Páginas del instalador
 !insertmacro MUI_PAGE_LICENSE "LICENSE.txt"
 !insertmacro MUI_PAGE_DIRECTORY
@@ -60,31 +62,19 @@ BrandingText "SecureLab Agent Installer v${PRODUCT_VERSION}"
 ; ------------------------------------------------------------------------------
 Section "SecureLab Agent" SEC01
   SectionIn RO
-
-  ; ── FIX: Obtener rutas reales del usuario que ejecuta el instalador ──
-  ; $PROFILE apunta al home del usuario que instala (C:\Users\<user>)
-  ; Esto es crítico para que el escaneo inicial encuentre los archivos reales.
-  ReadEnvStr $R0 "USERPROFILE"
-  ReadEnvStr $R1 "PUBLIC"
-  StrCpy $PROFILE $R0
-
+  
   ; Crear directorio de instalación
   SetOutPath "$INSTDIR"
-
+  
   ; Copiar binario del agente
   File "/oname=securelab-agent.exe" "${AGENT_EXE}"
-
+  
   ; Crear directorio de datos y logs en ProgramData (escribible por el servicio SYSTEM)
   CreateDirectory "$ALLUSERSPROFILE\SecureLab Agent\logs"
   CreateDirectory "$ALLUSERSPROFILE\SecureLab Agent\data"
   nsExec::ExecToLog 'icacls "$ALLUSERSPROFILE\SecureLab Agent" /grant "SYSTEM:(OI)(CI)F" /grant "Administrators:(OI)(CI)F" /grant "Users:(OI)(CI)M" /T'
-
-  ; ══════════════════════════════════════════════════════════════════
-  ; FIX: Generar config.json CON file_watch_dirs
-  ; Antes no se escribía file_watch_dirs, y el escaneo inicial usaba
-  ; os.UserHomeDir() = C:\Windows\system32\config\systemprofile (vacío).
-  ; Ahora se escriben las rutas reales del usuario que instaló.
-  ; ══════════════════════════════════════════════════════════════════
+  
+  ; Generar config.json con las rutas correctas y el token
   FileOpen $0 "$INSTDIR\config.json" w
   FileWrite $0 '{$\r$\n'
   FileWrite $0 '  "api_base": "${API_BASE}",$\r$\n'
@@ -98,21 +88,10 @@ Section "SecureLab Agent" SEC01
   FileWrite $0 '  "knowledge_db_path": "$ALLUSERSPROFILE\\SecureLab Agent\\data\\knowledge.db",$\r$\n'
   FileWrite $0 '  "state_file": "$ALLUSERSPROFILE\\SecureLab Agent\\data\\.agent-state.json",$\r$\n'
   FileWrite $0 '  "persistence_mode": "aggressive",$\r$\n'
-  FileWrite $0 '  "hardening_enabled": true,$\r$\n'
-  FileWrite $0 '  "file_watch_dirs": [$\r$\n'
-  FileWrite $0 '    "$PROFILE\\Documents",$\r$\n'
-  FileWrite $0 '    "$PROFILE\\Desktop",$\r$\n'
-  FileWrite $0 '    "$PROFILE\\Downloads",$\r$\n'
-  FileWrite $0 '    "$PROFILE\\OneDrive",$\r$\n'
-  FileWrite $0 '    "$PROFILE\\Google Drive",$\r$\n'
-  FileWrite $0 '    "$PROFILE\\Dropbox",$\r$\n'
-  FileWrite $0 '    "$R1\\Documents",$\r$\n'
-  FileWrite $0 '    "$R1\\Downloads",$\r$\n'
-  FileWrite $0 '    "C:\\Users"$\r$\n'
-  FileWrite $0 '  ]$\r$\n'
+  FileWrite $0 '  "hardening_enabled": true$\r$\n'
   FileWrite $0 '}$\r$\n'
   FileClose $0
-
+  
   ; Detener y eliminar servicio previo si ya existía
   DetailPrint "Verificando servicio existente..."
   nsExec::ExecToLog 'sc query "SecureLabAgent"'
@@ -125,35 +104,35 @@ Section "SecureLab Agent" SEC01
     nsExec::ExecToLog 'sc delete "SecureLabAgent"'
     Sleep 1000
   ${EndIf}
-
+  
   ; Registrar servicio en el Administrador de Servicios de Windows (SCM)
   DetailPrint "Registrando servicio SecureLabAgent..."
   nsExec::ExecToLog 'sc create "SecureLabAgent" binPath= "\"$INSTDIR\securelab-agent.exe\"" start= auto DisplayName= "${PRODUCT_NAME}"'
   nsExec::ExecToLog 'sc description "SecureLabAgent" "SecureLab Security Agent - Endpoint protection, host monitoring and compliance."'
-
+  
   ; Configurar recuperación automática en caso de fallo
   DetailPrint "Configurando auto-recuperación..."
   nsExec::ExecToLog 'sc failure "SecureLabAgent" reset= 86400 actions= restart/5000/restart/10000/restart/30000'
-
+  
   ; Conceder permisos de escritura en logs y bases de datos para todos los usuarios
   DetailPrint "Configurando permisos de acceso..."
   nsExec::ExecToLog 'icacls "$INSTDIR" /grant *S-1-5-32-545:(OI)(CI)M /T /C /Q'
   nsExec::ExecToLog 'icacls "$INSTDIR\logs" /grant *S-1-5-32-545:(OI)(CI)F /T /C /Q'
-
+  
   ; Registrar auto-arranque en sesion de usuario para el overlay de bloqueo
   DetailPrint "Registrando inicio automatico en sesion de usuario..."
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "SecureLabAgent" "$\"$INSTDIR\securelab-agent.exe$\" --check-lockdown"
-
+  
   ; Iniciar el servicio Windows
   DetailPrint "Iniciando servicio SecureLabAgent..."
   nsExec::ExecToLog 'net start "SecureLabAgent"'
   Sleep 1000
   nsExec::ExecToLog 'sc start "SecureLabAgent"'
   Sleep 1500
-
+  
   ; Crear desinstalador
   WriteUninstaller "$INSTDIR\uninstall.exe"
-
+  
   ; Registro para Programas y Características de Windows
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "DisplayName" "${PRODUCT_NAME}"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "DisplayVersion" "${PRODUCT_VERSION}"
@@ -162,7 +141,7 @@ Section "SecureLab Agent" SEC01
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "InstallLocation" "$INSTDIR"
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "NoModify" 1
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "NoRepair" 1
-
+  
   MessageBox MB_OK|MB_ICONINFORMATION "✓ ${PRODUCT_NAME} instalado y configurado correctamente.$\r$\n$\r$\nEl servicio se encuentra activo en segundo plano y se iniciará automáticamente con el sistema."
 SectionEnd
 
@@ -177,10 +156,10 @@ Section "Uninstall"
   DetailPrint "Eliminando servicio..."
   nsExec::ExecToLog 'sc delete "SecureLabAgent"'
   Sleep 1000
-
+  
   ; Eliminar registro de auto-arranque
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "SecureLabAgent"
-
+  
   ; Eliminar archivos de la aplicación
   Delete "$INSTDIR\securelab-agent.exe"
   Delete "$INSTDIR\config.json"
@@ -200,9 +179,9 @@ Section "Uninstall"
   Delete "$INSTDIR\logs\*"
   RMDir "$INSTDIR\logs"
   RMDir "$INSTDIR"
-
+  
   ; Eliminar entrada del registro
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
-
+  
   MessageBox MB_OK|MB_ICONINFORMATION "✓ ${PRODUCT_NAME} ha sido desinstalado correctamente del equipo."
 SectionEnd
