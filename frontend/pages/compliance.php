@@ -17,14 +17,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $res = api_post_form('/api/compliance/' . urlencode($col), $payload);
         if (!empty($res['success'])) $msg = 'Registro creado.'; else $err = $res['error'] ?? 'Error al crear.';
     } elseif (isset($_POST['delete_item']) && $col) {
-    $res = api_delete('/api/compliance/' . urlencode($col) . '/' . urlencode($_POST['item_id']), ['token' => $token]);
-    if (!empty($res['success'])) {
-        $msg = 'Registro eliminado correctamente.';
-    } else {
-        $err = $res['error'] ?? 'No se pudo eliminar el registro (HTTP error).';
-        error_log('[compliance delete] col=' . $col . ' id=' . ($_POST['item_id'] ?? '') . ' res=' . json_encode($res));
-    }
-}
+        $res = api_delete('/api/compliance/' . urlencode($col) . '/' . urlencode($_POST['item_id']), ['token' => $token]);
+        if (!empty($res['success'])) {
+            $msg = 'Registro eliminado correctamente.';
+        } else {
+            $err = $res['error'] ?? 'No se pudo eliminar el registro (HTTP error).';
+            error_log('[compliance delete] col=' . $col . ' id=' . ($_POST['item_id'] ?? '') . ' res=' . json_encode($res));
+        }
     } elseif (isset($_POST['item_action']) && $col) {
         $res = api_post_form('/api/compliance/' . urlencode($col) . '/' . urlencode($_POST['item_id']) . '/' . urlencode($_POST['item_action']), ['token' => $token, 'response' => $_POST['response'] ?? '']);
         if (!empty($res['success'])) $msg = 'Acción aplicada.'; else $err = $res['error'] ?? 'Error.';
