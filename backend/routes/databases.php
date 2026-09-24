@@ -30,6 +30,25 @@ function getDbId() {
     return $_GET['id'] ?? '';
 }
 
+/**
+ * Devuelve los IDs (string) de todos los usuarios de la misma empresa
+ * que el usuario autenticado. Si no tiene empresa, devuelve solo su ID.
+ */
+function getCompanyUserIds($user) {
+    $db = Database::getInstance();
+    $userRecord = $db->findOne('users', ['_id' => $user['_id']]);
+    if (!$userRecord) {
+        return [(string)$user['_id']];
+    }
+    $companyId = $userRecord['companyId'] ?? $user['_id'];
+    $companyUsers = $db->find('users', ['companyId' => $companyId]);
+    $userIds = array_map('strval', array_column($companyUsers, '_id'));
+    if (empty($userIds)) {
+        $userIds = [(string)$user['_id']];
+    }
+    return $userIds;
+}
+
 function connect() {
     $user = Auth::requireAuth();
     $body = get_body();
@@ -41,7 +60,16 @@ function connect() {
     }
 
     $agentId = $body['agentId'];
-    $agent = $db->findOne('agents', ['$or' => [['agentId' => $agentId], ['_id' => $agentId]], 'userId' => $user['_id']]);
+
+    // ✅ Buscar el agente dentro de TODA la empresa, no solo del usuario actual
+    $userIds = getCompanyUserIds($user);
+    $agent = $db->findOne('agents', [
+        '$or' => [
+            ['agentId' => $agentId],
+            ['_id'     => $agentId],
+        ],
+        'userId' => ['$in' => $userIds],
+    ]);
     if (!$agent) json_error('agente no encontrado', 404);
 
     $allowedTypes = ['mysql', 'mariadb', 'postgres', 'postgresql', 'mssql', 'sqlite', 'mongodb'];
@@ -55,20 +83,20 @@ function connect() {
 
     $storedAgentId = $agent['agentId'] ?? $agent['_id'] ?? $agentId;
     $record = $db->insertOne('databases', [
-        'userId' => $user['_id'],
-        'agentId' => $storedAgentId,
+        'userId'    => $user['_id'],
+        'agentId'   => $storedAgentId,
         'agentName' => $agent['hostname'] ?? '',
-        'name' => $body['name'],
-        'type' => $body['type'],
-        'host' => $body['host'],
-        'port' => $body['port'],
-        'user' => $body['user'],
-        'password' => $body['password'] ?? '',
-        'database' => $body['database'],
-        'ssl' => filter_var($body['ssl'] ?? false, FILTER_VALIDATE_BOOLEAN),
-        'status' => 'configured',
-        'lastTest' => null,
-        'tables' => 0,
+        'name'      => $body['name'],
+        'type'      => $body['type'],
+        'host'      => $body['host'],
+        'port'      => $body['port'],
+        'user'      => $body['user'],
+        'password'  => $body['password'] ?? '',
+        'database'  => $body['database'],
+        'ssl'       => filter_var($body['ssl'] ?? false, FILTER_VALIDATE_BOOLEAN),
+        'status'    => 'configured',
+        'lastTest'  => null,
+        'tables'    => 0,
     ]);
 
     unset($record['password']);
@@ -186,9 +214,20 @@ function executeDBCommandViaAgent($userId, $command, $record, $timeout = 25) {
         json_error('esta conexión no tiene un agente asignado');
     }
 
+    // ✅ Scope de empresa: cualquier agente de la misma empresa es válido
+    $userRecord = $db->findOne('users', ['_id' => $userId]);
+    if (!$userRecord) json_error('usuario no encontrado');
+    $companyId = $userRecord['companyId'] ?? $userId;
+    $companyUsers = $db->find('users', ['companyId' => $companyId]);
+    $userIds = array_map('strval', array_column($companyUsers, '_id'));
+    if (empty($userIds)) $userIds = [(string)$userId];
+
     $agent = $db->findOne('agents', [
-        '$or' => [['agentId' => $agentId], ['_id' => $agentId]],
-        'userId' => $userId
+        '$or' => [
+            ['agentId' => $agentId],
+            ['_id'     => $agentId],
+        ],
+        'userId' => ['$in' => $userIds],
     ]);
 
     $recent = date('c', strtotime('-30 minutes'));
@@ -197,24 +236,18 @@ function executeDBCommandViaAgent($userId, $command, $record, $timeout = 25) {
         && !empty($a['lastSeen'])
         && $a['lastSeen'] >= $recent;
 
-    if (!$isOnline($agent) && !empty($agent['hostname'])) {
+    // Fallback: otro agente de la empresa con el mismo hostname que esté online
+    if ($agent && !$isOnline($agent) && !empty($agent['hostname'])) {
         $sameHost = array_values(array_filter(
-            $db->find('agents', ['userId' => $userId, 'hostname' => $agent['hostname']]),
+            $db->find('agents', [
+                'userId'   => ['$in' => $userIds],
+                'hostname' => $agent['hostname'],
+            ]),
             $isOnline
         ));
         if ($sameHost) {
             usort($sameHost, fn($a, $b) => strcmp($b['lastSeen'], $a['lastSeen']));
             $agent = $sameHost[0];
-        }
-    }
-
-    if (!$isOnline($agent)) {
-        $online = array_values(array_filter(
-            $db->find('agents', ['userId' => $userId]),
-            $isOnline
-        ));
-        if (count($online) === 1) {
-            $agent = $online[0];
         }
     }
 
@@ -228,19 +261,19 @@ function executeDBCommandViaAgent($userId, $command, $record, $timeout = 25) {
     $resolvedAgentId = $agent['agentId'] ?? '';
     if ($resolvedAgentId !== '' && $resolvedAgentId !== $agentId) {
         $db->updateOne('databases', ['_id' => $record['_id']], [
-            'agentId' => $resolvedAgentId,
+            'agentId'   => $resolvedAgentId,
             'agentName' => $agent['hostname'] ?? '',
         ]);
     }
 
     $params = [
-        'type' => $record['type'],
-        'host' => $record['host'],
-        'port' => (int)($record['port'] ?? 0),
+        'type'     => $record['type'],
+        'host'     => $record['host'],
+        'port'     => (int)($record['port'] ?? 0),
         'database' => $record['database'],
-        'user' => $record['user'],
+        'user'     => $record['user'],
         'password' => $record['password'] ?? '',
-        'ssl' => filter_var($record['ssl'] ?? false, FILTER_VALIDATE_BOOLEAN),
+        'ssl'      => filter_var($record['ssl'] ?? false, FILTER_VALIDATE_BOOLEAN),
     ];
 
     $commandId = sendAgentCommand($userId, $agent['agentId'] ?? $agentId, $command, $params);
@@ -338,19 +371,19 @@ function getDsn($record) {
             if (!class_exists('MongoDB\Client')) {
                 json_error('MongoDB driver no instalado. Ejecuta: composer require mongodb/mongodb');
             }
-            
+
             $uri = "mongodb://";
             if ($user && $password) {
                 $uri .= urlencode($user) . ':' . urlencode($password) . '@';
             }
             $uri .= $host . ':' . $port . '/' . $database;
-            
+
             $client = new MongoDB\Client($uri, [
                 'serverSelectionTimeoutMS' => 5000,
                 'connectTimeoutMS' => 5000,
                 'socketTimeoutMS' => 5000,
             ]);
-            
+
             $client->selectDatabase($database)->command(['ping' => 1]);
             return $client;
         }
@@ -454,25 +487,25 @@ function query() {
         if (strpos(strtolower($query), 'find') === false) {
             json_error('MongoDB solo soporta consultas find()');
         }
-        
+
         try {
             $conn = getDsn($record);
             $database = $conn->selectDatabase($record['database']);
-            
+
             $parts = explode(',', $query);
             $collectionName = trim(str_replace(['find(', "'", '"'], '', $parts[0]));
             $filter = isset($parts[1]) ? json_decode(trim($parts[1]), true) : [];
-            
+
             $collection = $database->selectCollection($collectionName);
             $cursor = $collection->find($filter, ['limit' => 100]);
             $rows = iterator_to_array($cursor);
-            
+
             foreach ($rows as &$row) {
                 if (isset($row['_id']) && $row['_id'] instanceof MongoDB\BSON\ObjectId) {
                     $row['_id'] = (string)$row['_id'];
                 }
             }
-            
+
             json_response(['success' => true, 'rows' => $rows, 'count' => count($rows)]);
         } catch (Exception $e) {
             json_error('query fallida: ' . $e->getMessage());
@@ -506,7 +539,7 @@ function generateReport() {
     $conn = getDsn($record);
     $tables = [];
     $type = $record['type'] ?? '';
-    
+
     try {
         if (in_array($type, ['mysql', 'mariadb'])) {
             $stmt = $conn->query("SELECT table_name, table_rows FROM information_schema.tables WHERE table_schema = '" . addslashes($record['database']) . "'");
