@@ -17,8 +17,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $res = api_post_form('/api/compliance/' . urlencode($col), $payload);
         if (!empty($res['success'])) $msg = 'Registro creado.'; else $err = $res['error'] ?? 'Error al crear.';
     } elseif (isset($_POST['delete_item']) && $col) {
-        $res = api_delete('/api/compliance/' . urlencode($col) . '/' . urlencode($_POST['item_id']), ['token' => $token]);
-        if (!empty($res['success'])) $msg = 'Registro eliminado.'; else $err = $res['error'] ?? 'Error al eliminar.';
+    $res = api_delete('/api/compliance/' . urlencode($col) . '/' . urlencode($_POST['item_id']), ['token' => $token]);
+    if (!empty($res['success'])) {
+        $msg = 'Registro eliminado correctamente.';
+    } else {
+        $err = $res['error'] ?? 'No se pudo eliminar el registro (HTTP error).';
+        error_log('[compliance delete] col=' . $col . ' id=' . ($_POST['item_id'] ?? '') . ' res=' . json_encode($res));
+    }
+}
     } elseif (isset($_POST['item_action']) && $col) {
         $res = api_post_form('/api/compliance/' . urlencode($col) . '/' . urlencode($_POST['item_id']) . '/' . urlencode($_POST['item_action']), ['token' => $token, 'response' => $_POST['response'] ?? '']);
         if (!empty($res['success'])) $msg = 'Acción aplicada.'; else $err = $res['error'] ?? 'Error.';
@@ -312,6 +318,64 @@ require_once __DIR__ . '/../includes/header.php';
 .compliance-workspace .wizard-step-error { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 0.5rem; padding: 0.75rem; margin-bottom: 1rem; font-size: 11px; color: #f87171; display: none; }
 .compliance-workspace .wizard-step-error.show { display: block; }
 .compliance-workspace .compliance-hint { display: block; color: var(--text-subtle, #6b7280); font-size: 9px; margin-top: 0.35rem; line-height: 1.4; }
+.compliance-workspace .compliance-checkbox-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.5rem;
+}
+.compliance-workspace .compliance-checkbox-chip {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid var(--border-color, rgba(255,255,255,0.08));
+    border-radius: 0.6rem;
+    background: color-mix(in srgb, var(--bg-input, #0b0b0f) 94%, transparent);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-size: 11px;
+    color: var(--text-body, #d1d5db);
+    user-select: none;
+}
+.compliance-workspace .compliance-checkbox-chip:hover {
+    border-color: rgba(59,130,246,0.5);
+    background: rgba(59,130,246,0.05);
+}
+.compliance-workspace .compliance-checkbox-chip input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    accent-color: #10b981;
+    cursor: pointer;
+    flex-shrink: 0;
+    margin: 0;
+}
+.compliance-workspace .compliance-checkbox-chip:has(input:checked) {
+    border-color: rgba(16,185,129,0.5);
+    background: rgba(16,185,129,0.06);
+}
+.compliance-workspace .compliance-checkbox-chip:has(input:checked) span {
+    color: #34d399;
+    font-weight: 600;
+}
+
+/* ═══ Filas RAT completas vs incompletas ═══ */
+.compliance-workspace .rat-row-complete {
+    background: rgba(16,185,129,0.035);
+    border-left: 3px solid #10b981 !important;
+}
+.compliance-workspace .rat-row-complete:hover {
+    background: rgba(16,185,129,0.07);
+}
+.compliance-workspace .rat-row-incomplete {
+    border-left: 3px solid rgba(245,158,11,0.5) !important;
+    background: rgba(245,158,11,0.02);
+}
+.compliance-workspace .rat-row-incomplete:hover {
+    background: rgba(245,158,11,0.05);
+}
+
+
+
 @keyframes wizardFadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -1566,8 +1630,11 @@ main.compliance-workspace { position: relative; }
                 'low' => count(array_filter($inventoryItems, fn($i) => ($i['risk'] ?? '') === 'low' || empty($i['risk']))),
             ];
             $completeItems = count(array_filter($inventoryItems, function($i) {
-                return !empty($i['name']) && !empty($i['legalBasis']) && !empty($i['dataCategories']);
-            }));
+    return !empty($i['name'])
+        && !empty($i['legalBasis'])
+        && !empty($i['dataCategories'])
+        && !empty($i['recipients']);
+}));
 
             // ─── Filtros y ordenamiento ───
             $search = $_GET['search'] ?? '';
@@ -1597,15 +1664,26 @@ main.compliance-workspace { position: relative; }
                 $filtered = array_filter($filtered, fn($i) => ($i['sourceType'] ?? 'database') === $filterSource);
             }
 
-            // Ordenar
-            usort($filtered, function($a, $b) use ($sortBy, $sortDir) {
-                $valA = $a[$sortBy] ?? '';
-                $valB = $b[$sortBy] ?? '';
-                $cmp = strcmp($valA, $valB);
-                return $sortDir === 'desc' ? -$cmp : $cmp;
-            });
+            // Filtrar por estado (completo/incompleto) ANTES de ordenar
+$filterComplete = $_GET['complete'] ?? '';
+if ($filterComplete !== '') {
+    $filtered = array_filter($filtered, function($i) use ($filterComplete) {
+        $complete = !empty($i['name']) && !empty($i['legalBasis'])
+            && !empty($i['dataCategories']) && !empty($i['recipients']);
+        return $complete === ($filterComplete === '1');
+    });
+    $filtered = array_values($filtered);
+}
 
-            $totalFiltered = count($filtered);
+// Ordenar (una sola vez, después de aplicar todos los filtros)
+usort($filtered, function($a, $b) use ($sortBy, $sortDir) {
+    $valA = $a[$sortBy] ?? '';
+    $valB = $b[$sortBy] ?? '';
+    $cmp = strcmp($valA, $valB);
+    return $sortDir === 'desc' ? -$cmp : $cmp;
+});
+
+$totalFiltered = count($filtered);
             ?>
 
             <?php renderSectionHeader('Inventario de Datos Personales (RAT)',
@@ -1674,11 +1752,18 @@ main.compliance-workspace { position: relative; }
                     </select>
 
                     <!-- Filtro: Origen -->
-                    <select id="filter-source" class="bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all" onchange="updateFilters()">
-                        <option value="">Todos los orígenes</option>
-                        <option value="database" <?= $filterSource === 'database' ? 'selected' : '' ?>>Base de datos</option>
-                        <option value="file" <?= $filterSource === 'file' ? 'selected' : '' ?>>Archivo</option>
-                    </select>
+<select id="filter-source" class="bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all" onchange="updateFilters()">
+    <option value="">Todos los orígenes</option>
+    <option value="database" <?= $filterSource === 'database' ? 'selected' : '' ?>>Base de datos</option>
+    <option value="file" <?= $filterSource === 'file' ? 'selected' : '' ?>>Archivo</option>
+</select>
+
+<!-- Filtro: Estado (completo/incompleto) -->
+<select id="filter-complete" class="bg-bg-base border border-border-theme text-[12px] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-accent transition-all" onchange="updateFilters()">
+    <option value="">Todos los estados</option>
+    <option value="1" <?= ($_GET['complete'] ?? '') === '1' ? 'selected' : '' ?>>Solo completos</option>
+    <option value="0" <?= ($_GET['complete'] ?? '') === '0' ? 'selected' : '' ?>>Solo incompletos</option>
+</select>
 
                     <!-- Botón limpiar -->
                     <button onclick="clearFilters()" class="px-3 py-2 rounded-lg text-[11px] font-medium bg-bg-elevated/80 border border-border-theme text-text-muted hover:text-text-body transition-all">
@@ -1939,19 +2024,19 @@ main.compliance-workspace { position: relative; }
                                     </div>
                                 </div>
                                                                 <div class="compliance-form-row mt-4">
-                                    <div class="compliance-form-cell">
-                                        <label class="compliance-form-label">¿A quién se comunican los datos? (Art. 14.1.d) <span class="required">*</span></label>
-                                        <select name="fields[recipients][]" id="inventory-wizard-recipients" multiple required class="compliance-select inventory-wizard-field" size="5">
-                                            <option value="no_se_comunica">No se comunican a terceros</option>
-                                            <option value="encargados">Encargados del tratamiento</option>
-                                            <option value="proveedores_ti">Proveedores TI / Cloud</option>
-                                            <option value="autoridades">Autoridades públicas</option>
-                                            <option value="auditores">Auditores / Asesores</option>
-                                            <option value="bancos">Bancos / Entidades financieras</option>
-                                            <option value="publico">Comunicación pública</option>
-                                        </select>
-                                        <span class="compliance-hint">Ctrl+Click para seleccionar múltiples</span>
-                                    </div>
+                                    <div class="compliance-form-cell" style="grid-column: 1 / -1;">
+    <label class="compliance-form-label">¿A quién se comunican los datos? (Art. 14.1.d) <span class="required">*</span></label>
+    <div class="compliance-checkbox-grid" id="inventory-wizard-recipients">
+        <label class="compliance-checkbox-chip"><input type="checkbox" name="fields[recipients][]" value="no_se_comunica"><span>No se comunican a terceros</span></label>
+        <label class="compliance-checkbox-chip"><input type="checkbox" name="fields[recipients][]" value="encargados"><span>Encargados del tratamiento</span></label>
+        <label class="compliance-checkbox-chip"><input type="checkbox" name="fields[recipients][]" value="proveedores_ti"><span>Proveedores TI / Cloud</span></label>
+        <label class="compliance-checkbox-chip"><input type="checkbox" name="fields[recipients][]" value="autoridades"><span>Autoridades públicas</span></label>
+        <label class="compliance-checkbox-chip"><input type="checkbox" name="fields[recipients][]" value="auditores"><span>Auditores / Asesores</span></label>
+        <label class="compliance-checkbox-chip"><input type="checkbox" name="fields[recipients][]" value="bancos"><span>Bancos / Entidades financieras</span></label>
+        <label class="compliance-checkbox-chip"><input type="checkbox" name="fields[recipients][]" value="publico"><span>Comunicación pública</span></label>
+    </div>
+    <span class="compliance-hint">Selecciona todos los que apliquen</span>
+</div>
                                     <div class="compliance-form-cell">
                                         <label class="compliance-form-label">Detalle de destinatarios (si aplica)</label>
                                         <textarea name="fields[recipientsDetail]" rows="2" class="compliance-textarea" placeholder="Ej: AWS (EE.UU.), Banco Santander, SII"></textarea>
@@ -2119,14 +2204,22 @@ main.compliance-workspace { position: relative; }
                                         ? '<svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>'
                                         : '<svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>';
                                     $sourceId = $it['sourceId'] ?? null;
-                                    $isComplete = !empty($it['name']) && !empty($it['legalBasis']) && !empty($it['dataCategories']);
+                                    $isComplete = !empty($it['name'])
+    && !empty($it['legalBasis'])
+    && !empty($it['dataCategories'])
+    && !empty($it['recipients']);
                                 ?>
-                                <tr class="border-t border-border-theme/30 hover:bg-bg-base/40 transition-colors">
+                                <tr class="border-t border-border-theme/30 hover:bg-bg-base/40 transition-colors <?= $isComplete ? 'rat-row-complete' : 'rat-row-incomplete' ?>">
                                     <td class="py-2.5 px-3">
-                                        <span class="text-[12px] font-medium text-text-heading"><?= h($it['name'] ?? 'Sin nombre') ?></span>
-                                        <?php if (!$isComplete): ?>
-                                            <span class="ml-1 text-[8px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">Incompleto</span>
-                                        <?php endif; ?>
+                                        <span class="text-[12px] font-medium <?= $isComplete ? 'text-emerald-300' : 'text-text-heading' ?>"><?= h($it['name'] ?? 'Sin nombre') ?></span>
+<?php if ($isComplete): ?>
+    <span class="ml-1 inline-flex items-center gap-0.5 text-[8px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
+        <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
+        Completo
+    </span>
+<?php else: ?>
+    <span class="ml-1 text-[8px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">Incompleto</span>
+<?php endif; ?>
                                         <?php if (!empty($it['purpose'])): ?>
                                             <span class="block text-[9px] text-text-subtle mt-0.5"><?= h($it['purpose']) ?></span>
                                         <?php endif; ?>
@@ -2187,9 +2280,9 @@ main.compliance-workspace { position: relative; }
                                             </button>
 
                                             <!-- Eliminar -->
-                                            <form method="POST" class="inline" onsubmit="return confirm('¿Eliminar esta actividad de tratamiento? Esta acción no se puede deshacer.')">
-                                                <input type="hidden" name="collection" value="inventory">
-                                                <input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>">
+                                            <form method="POST" class="inline" onsubmit="return confirm('¿Eliminar esta actividad de tratamiento?\n\nNombre: <?= h(addslashes($it['name'] ?? 'Sin nombre')) ?>\nID: <?= h(substr($it['_id'] ?? '', 0, 8)) ?>...\n\nEsta acción no se puede deshacer.')">
+    <input type="hidden" name="collection" value="inventory">
+    <input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>">
                                                 <button type="submit" name="delete_item" value="1"
                                                         class="p-1.5 rounded-lg text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-all"
                                                         title="Eliminar">
@@ -2405,18 +2498,18 @@ main.compliance-workspace { position: relative; }
                                 <p class="text-[11px] font-bold text-indigo-300 uppercase tracking-wider mb-3">Destinatarios de los Datos (Art. 14.1.d)</p>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
-                                        <label class="compliance-form-label">Categorías de destinatarios <span class="text-red-400">*</span></label>
-                                        <select name="recipients" id="edit-recipients" multiple required class="compliance-select w-full" size="5">
-                                            <option value="no_se_comunica">No se comunican a terceros</option>
-                                            <option value="encargados">Encargados del tratamiento</option>
-                                            <option value="proveedores_ti">Proveedores TI / Cloud</option>
-                                            <option value="autoridades">Autoridades públicas</option>
-                                            <option value="auditores">Auditores / Asesores</option>
-                                            <option value="bancos">Bancos / Entidades financieras</option>
-                                            <option value="publico">Comunicación pública</option>
-                                        </select>
-                                        <p class="text-[9px] text-text-subtle mt-1">Ctrl+Click para seleccionar múltiples</p>
-                                    </div>
+    <label class="compliance-form-label">Categorías de destinatarios <span class="text-red-400">*</span></label>
+    <div class="compliance-checkbox-grid" id="edit-recipients">
+        <label class="compliance-checkbox-chip"><input type="checkbox" name="recipients" value="no_se_comunica"><span>No se comunican a terceros</span></label>
+        <label class="compliance-checkbox-chip"><input type="checkbox" name="recipients" value="encargados"><span>Encargados del tratamiento</span></label>
+        <label class="compliance-checkbox-chip"><input type="checkbox" name="recipients" value="proveedores_ti"><span>Proveedores TI / Cloud</span></label>
+        <label class="compliance-checkbox-chip"><input type="checkbox" name="recipients" value="autoridades"><span>Autoridades públicas</span></label>
+        <label class="compliance-checkbox-chip"><input type="checkbox" name="recipients" value="auditores"><span>Auditores / Asesores</span></label>
+        <label class="compliance-checkbox-chip"><input type="checkbox" name="recipients" value="bancos"><span>Bancos / Entidades financieras</span></label>
+        <label class="compliance-checkbox-chip"><input type="checkbox" name="recipients" value="publico"><span>Comunicación pública</span></label>
+    </div>
+    <p class="text-[9px] text-text-subtle mt-1">Selecciona todos los que apliquen</p>
+</div>
                                     <div>
                                         <label class="compliance-form-label">Detalle de destinatarios</label>
                                         <textarea name="recipientsDetail" id="edit-recipientsDetail" rows="4" class="compliance-textarea w-full" placeholder="Ej: AWS (EE.UU.), Banco Santander, SII"></textarea>
@@ -2462,19 +2555,22 @@ main.compliance-workspace { position: relative; }
 
             // ─── Filtros ───
             function updateFilters() {
-                const search = document.getElementById('inventory-search').value;
-                const risk = document.getElementById('filter-risk').value;
-                const sensitive = document.getElementById('filter-sensitive').value;
-                const source = document.getElementById('filter-source').value;
+    const val = id => document.getElementById(id)?.value ?? '';
+    const search = val('inventory-search');
+    const risk = val('filter-risk');
+    const sensitive = val('filter-sensitive');
+    const source = val('filter-source');
+    const complete = val('filter-complete');
 
-                let url = '?tab=inventory';
-                if (search) url += '&search=' + encodeURIComponent(search);
-                if (risk) url += '&risk=' + encodeURIComponent(risk);
-                if (sensitive !== '') url += '&sensitive=' + encodeURIComponent(sensitive);
-                if (source) url += '&source=' + encodeURIComponent(source);
+    let url = '?tab=inventory';
+    if (search) url += '&search=' + encodeURIComponent(search);
+    if (risk) url += '&risk=' + encodeURIComponent(risk);
+    if (sensitive !== '') url += '&sensitive=' + encodeURIComponent(sensitive);
+    if (source) url += '&source=' + encodeURIComponent(source);
+    if (complete !== '') url += '&complete=' + encodeURIComponent(complete);
 
-                window.location.href = url;
-            }
+    window.location.href = url;
+}
 
             function clearFilters() {
                 window.location.href = '?tab=inventory';
@@ -2658,16 +2754,13 @@ main.compliance-workspace { position: relative; }
                 document.getElementById('edit-notes').value = item.notes || '';
                 document.getElementById('edit-evidenceUrl').value = item.evidenceUrl || '';
 
-                // ✅ NUEVO: Destinatarios (Art. 14.1.d)
-                const recipients = Array.isArray(item.recipients) ? item.recipients : [];
-                const recSelect = document.getElementById('edit-recipients');
-                if (recSelect) {
-                    Array.from(recSelect.options).forEach(opt => {
-                        opt.selected = recipients.includes(opt.value);
-                    });
-                }
-                const recDetail = document.getElementById('edit-recipientsDetail');
-                if (recDetail) recDetail.value = item.recipientsDetail || '';
+                // ✅ Destinatarios (Art. 14.1.d) — ahora con checkboxes
+const recipients = Array.isArray(item.recipients) ? item.recipients : [];
+document.querySelectorAll('#edit-recipients input[name="recipients"]').forEach(cb => {
+    cb.checked = recipients.includes(cb.value);
+});
+const recDetail = document.getElementById('edit-recipientsDetail');
+if (recDetail) recDetail.value = item.recipientsDetail || '';
 
                 const msg = document.getElementById('edit-msg');
                 msg.classList.add('hidden');
@@ -2684,8 +2777,15 @@ main.compliance-workspace { position: relative; }
                 // Helper: string → array limpio
                 const splitList = (s) => String(s || '').split(/[,\n]/).map(x => x.trim()).filter(Boolean);
 
-                             const recEl = document.getElementById('edit-recipients');
-                const recipientsSelected = recEl ? Array.from(recEl.selectedOptions).map(o => o.value) : [];
+                             const recipientsSelected = Array.from(
+    document.querySelectorAll('#edit-recipients input[name="recipients"]:checked')
+).map(cb => cb.value);
+if (recipientsSelected.length === 0) {
+    msg.textContent = 'Selecciona al menos un destinatario (Art. 14.1.d).';
+    msg.className = 'p-3 rounded-lg text-[11px] bg-red-500/10 border border-red-500/20 text-red-400';
+    msg.classList.remove('hidden');
+    return;
+}
 
                 const payload = {
                     token: '<?= h($token) ?>',
@@ -7435,32 +7535,41 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Validar select multiple del formulario de inventario (RAT)
     const inventoryForm = document.querySelector('form input[name="collection"][value="inventory"]')?.closest('form');
-    if (inventoryForm) {
-        inventoryForm.addEventListener('submit', function(e) {
-            const dataCategoriesSelect = this.querySelector('select[name="dataCategories[]"]');
-            const subjectCategoriesSelect = this.querySelector('select[name="subjectCategories[]"]');
+if (inventoryForm) {
+    inventoryForm.addEventListener('submit', function(e) {
+        const dataCategoriesSelect = this.querySelector('select[name="fields[dataCategories][]"]');
+        const subjectCategoriesSelect = this.querySelector('select[name="fields[subjectCategories][]"]');
+        const recipientsChecked = this.querySelectorAll('input[name="fields[recipients][]"]:checked');
 
-            if (dataCategoriesSelect) {
-                const selectedOptions = Array.from(dataCategoriesSelect.selectedOptions).filter(opt => opt.selected);
-                if (selectedOptions.length === 0) {
-                    e.preventDefault();
-                    alert('Por favor, selecciona al menos una categoría de datos (usa Ctrl+Click para seleccionar múltiples)');
-                    dataCategoriesSelect.focus();
-                    return;
-                }
+        if (dataCategoriesSelect) {
+            const selectedOptions = Array.from(dataCategoriesSelect.selectedOptions).filter(opt => opt.selected);
+            if (selectedOptions.length === 0) {
+                e.preventDefault();
+                alert('Por favor, selecciona al menos una categoría de datos (usa Ctrl+Click para seleccionar múltiples)');
+                dataCategoriesSelect.focus();
+                return;
             }
+        }
 
-            if (subjectCategoriesSelect) {
-                const selectedOptions = Array.from(subjectCategoriesSelect.selectedOptions).filter(opt => opt.selected);
-                if (selectedOptions.length === 0) {
-                    e.preventDefault();
-                    alert('Por favor, selecciona al menos una categoría de titulares (usa Ctrl+Click para seleccionar múltiples)');
-                    subjectCategoriesSelect.focus();
-                    return;
-                }
+        if (subjectCategoriesSelect) {
+            const selectedOptions = Array.from(subjectCategoriesSelect.selectedOptions).filter(opt => opt.selected);
+            if (selectedOptions.length === 0) {
+                e.preventDefault();
+                alert('Por favor, selecciona al menos una categoría de titulares (usa Ctrl+Click para seleccionar múltiples)');
+                subjectCategoriesSelect.focus();
+                return;
             }
-        });
-    }
+        }
+
+        if (recipientsChecked.length === 0) {
+            e.preventDefault();
+            alert('Selecciona al menos un destinatario (Art. 14.1.d).');
+            const firstCb = this.querySelector('input[name="fields[recipients][]"]');
+            if (firstCb) firstCb.focus();
+            return;
+        }
+    });
+}
 
     // Validar select multiple del formulario de brechas
     const breachForm = document.querySelector('form input[name="collection"][value="breaches"]')?.closest('form');

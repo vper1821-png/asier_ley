@@ -766,16 +766,39 @@ function crud() {
     }
 
     if ($method === 'DELETE' && $id) {
-        $existing = $db->findOne($collection, ['_id' => $id, 'userId' => $user['_id']]);
-        if (!$existing) json_error('elemento no encontrado o no pertenece al usuario', 404);
+        $filter = ['_id' => $id];
+        if (!$isSuperAdmin) $filter['userId'] = ['$in' => $userIds];
+
+        $existing = $db->findOne($collection, $filter);
+        if (!$existing) {
+            json_error('elemento no encontrado', 404);
+        }
+
         $db->deleteOne($collection, ['_id' => $id]);
+
+        audit_log('compliance_delete', [
+            'collection' => $collection,
+            'itemId'     => $id,
+            'itemName'   => $existing['name'] ?? $existing['title'] ?? '',
+        ], $user['_id']);
+
         json_response(['success' => true]);
         return;
     }
 
     if ($method === 'DELETE' && !$id) {
-        $all = $db->find($collection, ['userId' => $user['_id']]);
-        foreach ($all as $it) $db->deleteOne($collection, ['_id' => $it['_id']]);
+        $filter = $isSuperAdmin ? [] : ['userId' => ['$in' => $userIds]];
+        $all = $db->find($collection, $filter);
+
+        foreach ($all as $it) {
+            $db->deleteOne($collection, ['_id' => $it['_id']]);
+        }
+
+        audit_log('compliance_delete_all', [
+            'collection' => $collection,
+            'deleted'    => count($all),
+        ], $user['_id']);
+
         json_response(['success' => true, 'deleted' => count($all)]);
         return;
     }

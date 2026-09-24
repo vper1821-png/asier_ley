@@ -71,6 +71,11 @@ function api_get($path, $params = []) {
     return json_decode($response, true);
 }
 
+/**
+ * DELETE robusto: siempre devuelve un array con 'error' o 'success'.
+ * Antes devolvía null si el backend respondía HTML (ModSecurity, 404 HTML, etc.)
+ * y por eso el frontend mostraba "Error al eliminar" genérico.
+ */
 function api_delete($path, $params = []) {
     if (!empty($params)) {
         $path .= (strpos($path, '?') === false ? '?' : '&') . http_build_query($params);
@@ -81,9 +86,23 @@ function api_delete($path, $params = []) {
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
     curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Accept: application/json']);
     $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlErr = curl_error($ch);
     curl_close($ch);
-    return json_decode($response, true);
+
+    if ($response === false) {
+        return ['error' => 'No se pudo contactar al servidor: ' . $curlErr];
+    }
+    $data = json_decode($response, true);
+    if (!is_array($data)) {
+        return ['error' => 'Respuesta inválida del servidor (HTTP ' . $httpCode . '). Revisa los logs.'];
+    }
+    if ($httpCode >= 400 && empty($data['error'])) {
+        $data['error'] = 'Error HTTP ' . $httpCode;
+    }
+    return $data;
 }
 
 function is_logged_in() {
@@ -145,6 +164,7 @@ function is_active() {
 function h($str) {
     return htmlspecialchars($str ?? '', ENT_QUOTES, 'UTF-8');
 }
+
 function api_put($path, $data = []) {
     $data['token'] = $_SESSION['token'] ?? '';
     $url = API_BASE_URL . $path;
