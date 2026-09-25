@@ -21,11 +21,17 @@ func NewStore(dbPath string) *Store {
 		panic("no se pudo crear el directorio para la base de datos: " + err.Error())
 	}
 
-	dsn := dbPath + "?_journal_mode=WAL&_busy_timeout=5000"
+	dsn := dbPath + "?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		panic(err)
 	}
+
+	// Una sola conexión → cero SQLITE_BUSY en Windows
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxLifetime(0)
+
 	s := &Store{db: db}
 	s.init()
 	s.migrateColumns()
@@ -96,6 +102,16 @@ func (s *Store) init() {
 			created_at TEXT DEFAULT (datetime('now')),
 			updated_at TEXT DEFAULT (datetime('now'))
 		);
+		CREATE TABLE IF NOT EXISTS scan_state (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			initial_scan_completed INTEGER NOT NULL DEFAULT 0,
+			initial_scan_started_at TEXT,
+			initial_scan_completed_at TEXT,
+			initial_scan_total_files INTEGER DEFAULT 0,
+			initial_scan_sensitive_files INTEGER DEFAULT 0,
+			initial_scan_duration_sec INTEGER DEFAULT 0,
+			updated_at TEXT DEFAULT (datetime('now'))
+		);
 		CREATE INDEX IF NOT EXISTS idx_sensitive_inventory_agent ON sensitive_inventory(agent_id);
 		CREATE INDEX IF NOT EXISTS idx_sensitive_inventory_company ON sensitive_inventory(company_id);
 		CREATE INDEX IF NOT EXISTS idx_sensitive_inventory_path ON sensitive_inventory(path);
@@ -111,10 +127,7 @@ func (s *Store) init() {
 }
 
 func (s *Store) migrateColumns() {
-	// ── Migrar file_events ──
 	s.migrateFileEvents()
-
-	// ── Migrar sensitive_inventory ──
 	s.migrateSensitiveInventory()
 }
 
@@ -285,7 +298,6 @@ func (s *Store) SaveInitialInventory(item SensitiveInventoryItem) error {
 	categoriesJSON, _ := json.Marshal(item.Categories)
 	personalDataJSON, _ := json.Marshal(item.PersonalData)
 
-	// Verificar si ya existe
 	var existingID int
 	err := s.db.QueryRow(`
 		SELECT id FROM sensitive_inventory WHERE agent_id = ? AND path = ?
@@ -297,7 +309,6 @@ func (s *Store) SaveInitialInventory(item SensitiveInventoryItem) error {
 	}
 
 	if existingID > 0 {
-		// Actualizar
 		_, err = s.db.Exec(`
 			UPDATE sensitive_inventory SET
 				user_id = ?, company_id = ?, hostname = ?, relative_path = ?,
@@ -313,7 +324,6 @@ func (s *Store) SaveInitialInventory(item SensitiveInventoryItem) error {
 		return err
 	}
 
-	// Insertar nuevo (19 columnas → 19 placeholders)
 	_, err = s.db.Exec(`
 		INSERT INTO sensitive_inventory (
 			agent_id, user_id, company_id, hostname, path, relative_path,
@@ -542,4 +552,141 @@ func (s *Store) FindFileEvents(filter FileEventFilter) []FileEvent {
 		fmt.Fprintf(os.Stderr, "[audit] FindFileEvents: error iterando rows: %v\n", err)
 	}
 	return events
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Estado del escaneo inicial
+// ═══════════════════════════════════════════════════════════════════════
+
+// InitialScanCompleted indica si el escaneo masivo inicial ya se hizo.
+func (s *Store) InitialScanCompleted() bool {
+	var done int
+	err := s.db.QueryRow(
+		`SELECT initial_scan_completed FROM scan_state WHERE id = 1`,
+	).Scan(&done)
+	if err == sql.ErrNoRows {
+		return false
+	}
+	if err != nil {
+		return false
+	}
+	return done == 1
+}
+
+// MarkInitialScanStarted deja constancia de que arrancó el primer escaneo.
+func (s *Store) MarkInitialScanStarted() error {
+	_, err := s.db.Exec(`
+		INSERT INTO scan_state (id, initial_scan_completed, initial_scan_started_at, updated_at)
+		VALUES (1, 0, ?, datetime('now'))
+		ON CONFLICT(id) DO UPDATE SET
+			initial_scan_started_at = excluded.initial_scan_started_at,
+			updated_at = datetime('now')
+	`, time.Now().Format(time.RFC3339))
+	return err
+}
+
+// MarkInitialScanCompleted graba el resultado final. A partir de aquí el
+// agente NO vuelve a escanear en arranques posteriores.
+func (s *Store) MarkInitialScanCompleted(total, sensitive int, durationSec int64) error {
+	_, err := s.db.Exec(`
+		INSERT INTO scan_state (
+			id, initial_scan_completed, initial_scan_completed_at,
+			initial_scan_total_files, initial_scan_sensitive_files,
+			initial_scan_duration_sec, updated_at
+		) VALUES (1, 1, ?, ?, ?, ?, datetime('now'))
+		ON CONFLICT(id) DO UPDATE SET
+			initial_scan_completed = 1,
+			initial_scan_completed_at = excluded.initial_scan_completed_at,
+			initial_scan_total_files = excluded.initial_scan_total_files,
+			initial_scan_sensitive_files = excluded.initial_scan_sensitive_files,
+			initial_scan_duration_sec = excluded.initial_scan_duration_sec,
+			updated_at = datetime('now')
+	`, time.Now().Format(time.RFC3339), total, sensitive, durationSec)
+	return err
+}
+
+// ResetInitialScan borra el marcador para forzar un nuevo escaneo completo.
+func (s *Store) ResetInitialScan() error {
+	_, err := s.db.Exec(`DELETE FROM scan_state WHERE id = 1`)
+	return err
+}
+
+// InitialScanInfo devuelve un resumen del estado para logging/diagnóstico.
+func (s *Store) InitialScanInfo() map[string]interface{} {
+	info := map[string]interface{}{
+		"completed": false,
+	}
+	var (
+		completed      int
+		startedAt      sql.NullString
+		completedAt    sql.NullString
+		totalFiles     sql.NullInt64
+		sensitiveFiles sql.NullInt64
+		durationSec    sql.NullInt64
+	)
+	err := s.db.QueryRow(`
+		SELECT initial_scan_completed, initial_scan_started_at, initial_scan_completed_at,
+		       initial_scan_total_files, initial_scan_sensitive_files,
+		       initial_scan_duration_sec
+		FROM scan_state WHERE id = 1
+	`).Scan(&completed, &startedAt, &completedAt, &totalFiles, &sensitiveFiles, &durationSec)
+	if err != nil {
+		return info
+	}
+	info["completed"] = completed == 1
+	if startedAt.Valid {
+		info["started_at"] = startedAt.String
+	}
+	if completedAt.Valid {
+		info["completed_at"] = completedAt.String
+	}
+	if totalFiles.Valid {
+		info["total_files"] = totalFiles.Int64
+	}
+	if sensitiveFiles.Valid {
+		info["sensitive_files"] = sensitiveFiles.Int64
+	}
+	if durationSec.Valid {
+		info["duration_seconds"] = durationSec.Int64
+	}
+	return info
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Actualización del inventario desde el monitor
+// ═══════════════════════════════════════════════════════════════════════
+
+// UpdateInventoryFromEvent refleja un cambio de archivo en el inventario
+// sin necesidad de re-escanear. Se llama desde FileMonitor.
+func (s *Store) UpdateInventoryFromEvent(ev FileEvent) error {
+	if ev.Path == "" || !ev.Sensitive {
+		return nil
+	}
+	cats := make([]string, 0, len(ev.PersonalData))
+	seen := map[string]bool{}
+	for _, list := range ev.PersonalData {
+		for _, c := range list {
+			if !seen[c] {
+				seen[c] = true
+				cats = append(cats, c)
+			}
+		}
+	}
+	item := SensitiveInventoryItem{
+		AgentID:      "local",
+		Hostname:     ev.Hostname,
+		Path:         ev.Path,
+		Size:         ev.Size,
+		Extension:    ev.Extension,
+		Categories:   cats,
+		Sensitive:    true,
+		PersonalData: ev.PersonalData,
+		Hash:         ev.Hash,
+		FirstSeen:    ev.Timestamp,
+		LastScanned:  time.Now(),
+		LastModified: ev.Timestamp,
+		ScanCount:    1,
+		Status:       "active",
+	}
+	return s.SaveInitialInventory(item)
 }

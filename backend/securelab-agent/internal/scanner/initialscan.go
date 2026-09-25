@@ -33,8 +33,6 @@ type InitialScanConfig struct {
 	SkipSystem        bool
 	ConcurrentWorkers int
 
-	// CustomDirs: rutas explícitas. Si están seteadas, tienen prioridad
-	// sobre el auto-descubrimiento.
 	CustomDirs []string
 }
 
@@ -228,29 +226,6 @@ func RunInitialMassiveScan(
 
 			inventoryItems = append(inventoryItems, item)
 			log.Info("📁 DATOS SENSIBLES ENCONTRADOS: %s (cats: %v)", result.RelativePath, getCategoriesList(result.Categories))
-		} else {
-			if sender != nil {
-				sender.SendInitialInventory(InitialInventoryItem{
-					AgentID:      getAgentID(),
-					UserID:       getUserID(),
-					CompanyID:    getCompanyID(),
-					Hostname:     getHostname(),
-					Path:         result.Path,
-					RelativePath: result.RelativePath,
-					Size:         result.Size,
-					Extension:    result.Extension,
-					Categories:   getCategoriesList(result.Categories),
-					Sensitive:    false,
-					PersonalData: result.PersonalData,
-					Hash:         result.Hash,
-					RowCount:     result.RowCount,
-					FirstSeen:    time.Now(),
-					LastScanned:  time.Now(),
-					LastModified: result.ModifiedAt,
-					ScanCount:    1,
-					Status:       "active",
-				})
-			}
 		}
 	}
 
@@ -359,6 +334,14 @@ func walkAndSend(scanCtx context.Context, scanDirs []string, config *InitialScan
 				return nil
 			}
 
+			// ── No hidratar archivos cloud-only (OneDrive/Dropbox/Drive) ──
+			if IsCloudOnly(info) {
+				if log != nil {
+					log.Debug("Saltando archivo cloud-only (no hidratado): %s", path)
+				}
+				return nil
+			}
+
 			select {
 			case jobs <- path:
 				sentFiles++
@@ -395,7 +378,6 @@ func isHidden(path string) bool {
 }
 
 // shouldSkipDir decide si un directorio debe excluirse del escaneo.
-// Excluye por PATH ABSOLUTO, no por basename.
 func shouldSkipDir(path string, config *InitialScanConfig) bool {
 	if !config.SkipSystem && !config.SkipHidden {
 		return false
@@ -519,6 +501,11 @@ func scanSingleFile(path string) *ScanResult {
 	info, err := os.Stat(path)
 	if err != nil {
 		return &ScanResult{Path: path, Error: err.Error()}
+	}
+
+	// Defensa adicional: no hidratar cloud-only
+	if IsCloudOnly(info) {
+		return &ScanResult{Path: path, Error: "cloud-only, no hidratado"}
 	}
 
 	if info.Size() < 10 || info.Size() > 500*1024*1024 {

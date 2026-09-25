@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"securelab-agent/internal/audit"
@@ -14,7 +15,6 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-// newFileWatcher crea un watcher usando fsnotify con logger
 func newFileWatcher(dir string, eventChan chan audit.FileEvent, log *logger.Logger) *fileWatcher {
 	return &fileWatcher{
 		dir:    dir,
@@ -24,8 +24,7 @@ func newFileWatcher(dir string, eventChan chan audit.FileEvent, log *logger.Logg
 	}
 }
 
-// Directorios del sistema que se deben excluir del monitoreo.
-// IMPORTANTE: solo basenames que JAMÁS son usernames válidos.
+// Directorios del sistema que se excluyen del monitoreo.
 var excludedDirs = map[string]bool{
 	"appdata":                   true,
 	"localappdata":              true,
@@ -36,6 +35,7 @@ var excludedDirs = map[string]bool{
 	"system32":                  true,
 	"syswow64":                  true,
 	"windows":                   true,
+	"winsxs":                    true,
 	"program files":             true,
 	"program files (x86)":       true,
 	"program files (arm)":       true,
@@ -46,6 +46,38 @@ var excludedDirs = map[string]bool{
 	"$windows.~ws":              true,
 	"$sysreset":                 true,
 	"windows.old":               true,
+	".dropbox.cache":            true,
+	".dropbox":                  true,
+	".git":                      true,
+	".svn":                      true,
+	".hg":                       true,
+}
+
+// Basura generada por clientes de sync y temporales de Office.
+var syncJunkMarkers = []string{
+	"~$", "_$", ".~",
+	".849c9593-",
+	".tmp", ".temp", ".partial", ".crdownload", ".part",
+	"desktop.ini", "thumbs.db", ".ds_store",
+	".dropbox", "icon\r",
+}
+
+func isSyncJunk(name string) bool {
+	base := strings.ToLower(filepath.Base(name))
+	if base == "" || base == "." || base == ".." {
+		return true
+	}
+	for _, m := range syncJunkMarkers {
+		if strings.HasPrefix(base, m) || strings.HasSuffix(base, m) {
+			return true
+		}
+	}
+	for _, d := range []string{".git", ".svn", ".hg"} {
+		if base == d {
+			return true
+		}
+	}
+	return false
 }
 
 func isExcludedDir(path string) bool {
@@ -53,11 +85,8 @@ func isExcludedDir(path string) bool {
 	return excludedDirs[base]
 }
 
-// getUserForFile intenta determinar el usuario dueño del archivo a partir
-// del path, evitando mandar "unknown" o "DESKTOP-XXX$" cuando el agente
-// corre como LocalSystem.
+// getUserForFile determina el usuario dueño del archivo a partir del path.
 func getUserForFile(path string) string {
-	// ── Windows: derivar de C:\Users\<user>\... ──
 	if runtime.GOOS == "windows" {
 		lower := strings.ToLower(path)
 		if idx := strings.Index(lower, `\users\`); idx >= 0 {
@@ -65,7 +94,6 @@ func getUserForFile(path string) string {
 			if end := strings.IndexAny(rest, `\/`); end > 0 {
 				name := rest[:end]
 				lowName := strings.ToLower(name)
-				// Excluir cuentas especiales del sistema
 				if lowName != "public" &&
 					lowName != "default" &&
 					lowName != "default user" &&
@@ -77,7 +105,6 @@ func getUserForFile(path string) string {
 		}
 	}
 
-	// ── Unix: derivar de /home/<user>/ o /Users/<user>/ ──
 	if runtime.GOOS != "windows" {
 		for _, prefix := range []string{"/home/", "/Users/"} {
 			if strings.HasPrefix(path, prefix) {
@@ -89,19 +116,26 @@ func getUserForFile(path string) string {
 		}
 	}
 
-	// ── Fallback: variable de entorno ──
 	if u := os.Getenv("USERNAME"); u != "" && u != "SYSTEM" && !strings.HasSuffix(u, "$") {
 		return u
 	}
 	if u := os.Getenv("USER"); u != "" && u != "root" {
 		return u
 	}
-
 	return "unknown"
 }
 
-// watch inicia el monitoreo del directorio con fsnotify
-func (w *fileWatcher) watch(ctx context.Context) error {
+// watch arranca el event loop INMEDIATAMENTE y lanza el Walk en paralelo.
+// readyWG se decrementa cuando el Walk termina (o si watch falla).
+func (w *fileWatcher) watch(ctx context.Context, readyWG *sync.WaitGroup) error {
+	var readyOnce sync.Once
+	notifyReady := func() {
+		if readyWG != nil {
+			readyOnce.Do(func() { readyWG.Done() })
+		}
+	}
+	defer notifyReady()
+
 	w.log.Debug("FileWatcher: iniciando vigilancia en %s", w.dir)
 
 	watcher, err := fsnotify.NewWatcher()
@@ -111,15 +145,25 @@ func (w *fileWatcher) watch(ctx context.Context) error {
 	}
 	defer watcher.Close()
 
-	var addedCount int
-	err = filepath.Walk(w.dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			w.log.Warn("FileWatcher: error accediendo a %s: %v", path, err)
-			return nil
-		}
-		if info.IsDir() {
+	// 1) Registrar la raíz AHORA → escuchamos desde el minuto 0
+	if err := watcher.Add(w.dir); err != nil {
+		w.log.Warn("FileWatcher: no se pudo añadir raíz %s: %v", w.dir, err)
+	} else {
+		w.log.Debug("FileWatcher: raíz registrada: %s", w.dir)
+	}
+
+	// 2) Walk en goroutine aparte — no bloquea el event loop
+	go func() {
+		defer notifyReady()
+		addedCount := 1
+		walkErr := filepath.Walk(w.dir, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info == nil || !info.IsDir() {
+				return nil
+			}
+			if path == w.dir {
+				return nil
+			}
 			if isExcludedDir(path) {
-				w.log.Debug("FileWatcher: excluyendo directorio del sistema: %s", path)
 				return filepath.SkipDir
 			}
 			if err := watcher.Add(path); err != nil {
@@ -127,63 +171,72 @@ func (w *fileWatcher) watch(ctx context.Context) error {
 			} else {
 				addedCount++
 			}
+			return nil
+		})
+		if walkErr != nil {
+			w.log.Error("FileWatcher: error en Walk para %s: %v", w.dir, walkErr)
 		}
-		return nil
-	})
-	if err != nil {
-		w.log.Error("FileWatcher: error en Walk para %s: %v", w.dir, err)
-		return err
-	}
-	w.log.Info("FileWatcher: %d directorios añadidos en %s", addedCount, w.dir)
+		w.log.Info("FileWatcher: %d directorios registrados en %s", addedCount, w.dir)
+	}()
 
 	hostname, _ := os.Hostname()
 
+	// 3) EVENT LOOP — escucha desde el primer momento
 	for {
 		select {
 		case event, ok := <-watcher.Events:
 			if !ok {
-				w.log.Info("FileWatcher: canal de eventos cerrado para %s", w.dir)
+				w.log.Info("FileWatcher: canal cerrado para %s", w.dir)
 				return nil
 			}
 
-			// ── FIX: si se creó un subdirectorio, añadirlo al watcher ──
+			if isSyncJunk(event.Name) {
+				continue
+			}
+
+			// Subdirectorio nuevo → registrarlo y NO emitir evento de archivo
 			if event.Op&fsnotify.Create == fsnotify.Create {
 				if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
 					if !isExcludedDir(event.Name) {
 						if err := watcher.Add(event.Name); err != nil {
-							w.log.Warn("FileWatcher: no se pudo añadir subdir nuevo %s: %v", event.Name, err)
+							w.log.Warn("FileWatcher: no se pudo añadir subdir %s: %v", event.Name, err)
 						} else {
 							w.log.Debug("FileWatcher: subdir nuevo añadido: %s", event.Name)
 						}
 					}
+					continue
 				}
 			}
 
 			evType := mapEventType(event.Op)
-			pid := os.Getpid()
-			procName := filepath.Base(os.Args[0])
-
 			ev := audit.FileEvent{
 				Timestamp:   time.Now(),
 				Path:        event.Name,
 				EventType:   evType,
-				ProcessName: procName,
-				PID:         pid,
+				ProcessName: filepath.Base(os.Args[0]),
+				PID:         os.Getpid(),
 				User:        getUserForFile(event.Name),
 				Hostname:    hostname,
 				Extension:   strings.ToLower(filepath.Ext(event.Name)),
 			}
+
 			w.log.Debug("FileWatcher: evento %s en %s (user=%s)", evType, event.Name, ev.User)
+
+			// Envío BLOQUEANTE con cancelación — nunca descarta en silencio
 			select {
 			case w.events <- ev:
-			default:
-				w.log.Warn("FileWatcher: canal de eventos lleno, descartando evento en %s", event.Name)
+			case <-ctx.Done():
+				return nil
+			case <-time.After(10 * time.Second):
+				w.log.Warn("FileWatcher: timeout enviando evento (%s)", event.Name)
 			}
+
 		case err, ok := <-watcher.Errors:
 			if !ok {
 				return nil
 			}
 			w.log.Error("FileWatcher: error en %s: %v", w.dir, err)
+
 		case <-ctx.Done():
 			w.log.Info("FileWatcher: contexto cancelado para %s", w.dir)
 			return nil

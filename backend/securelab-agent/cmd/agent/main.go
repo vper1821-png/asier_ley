@@ -79,6 +79,7 @@ func runAgent(ctx context.Context) {
 	log.Debug("State File: %s", cfg.StateFile)
 	log.Debug("Token configurado: %t (longitud: %d)", cfg.Token != "", len(cfg.Token))
 	log.Debug("Intervalos: Heartbeat=%ds, Telemetría=%ds, Sync=%dms", cfg.HeartbeatInterval, cfg.TelemetryInterval, cfg.SyncInterval)
+	log.Debug("FileWatchDirs: %v", cfg.FileWatchDirs)
 
 	store := audit.NewStore(cfg.AuditDBPath)
 	defer store.Close()
@@ -120,30 +121,88 @@ func runAgent(ctx context.Context) {
 	}
 	wsClient.StartSyncLoop(syncInterval)
 
-	// ══════════════════════════════════════════════════════════════
-	// ESCANEO INICIAL MASIVO — usa cfg.FileWatchDirs como fuente
-	// ══════════════════════════════════════════════════════════════
+	// ══════════════════════════════════════════════════════════════════
+	// ORDEN: 1) FileMonitor  2) WaitReady  3) Escáner (solo 1ª vez)
+	// ══════════════════════════════════════════════════════════════════
+
+	// 1) FileMonitor PRIMERO — arranca el event loop inmediatamente
+	fileMon := filemonitor.NewMonitor(store, wsClient, log)
+
+	watchDirs := cfg.FileWatchDirs
+	if len(watchDirs) == 0 {
+		// Fallback: usar los mismos directorios que el escáner auto-descubre
+		watchDirs = scanner.GetDefaultScanDirectories(log)
+		if len(watchDirs) > 0 {
+			log.Warn("FileWatchDirs vacío — usando auto-descubrimiento (%d dirs): %v", len(watchDirs), watchDirs)
+		}
+	}
+	fileMon.WatchDirectories(watchDirs)
+	go fileMon.Start()
+	defer fileMon.Stop()
+
+	// 2) Esperar a que los watchers terminen su Walk inicial
+	if !fileMon.WaitReady(3 * time.Minute) {
+		log.Warn("FileMonitor: arrancando escáner con watchers aún registrando")
+	}
+
+	// 3) Escaneo inicial masivo — SOLO si nunca se hizo
 	go func() {
-		time.Sleep(10 * time.Second)
+		if store.InitialScanCompleted() {
+			info := store.InitialScanInfo()
+			log.Info("✅ Escaneo inicial ya realizado previamente — NO se re-escanea")
+			if v, ok := info["completed_at"].(string); ok {
+				log.Info("   Completado el: %s", v)
+			}
+			if v, ok := info["total_files"].(int64); ok {
+				log.Info("   Archivos escaneados en su momento: %d", v)
+			}
+			if v, ok := info["sensitive_files"].(int64); ok {
+				log.Info("   Archivos sensibles detectados: %d", v)
+			}
+			log.Info("   → El FileMonitor cubre cambios en tiempo real")
+			return
+		}
+
+		if err := store.MarkInitialScanStarted(); err != nil {
+			log.Warn("No se pudo guardar el estado de inicio: %v", err)
+		}
 
 		scanCfg := scanner.DefaultInitialScanConfig()
-		scanCfg.CustomDirs = cfg.FileWatchDirs // ← fuente única de verdad
+		scanCfg.CustomDirs = cfg.FileWatchDirs
 
-		log.Info("🚀 Iniciando escaneo masivo inicial de datos sensibles...")
+		startTime := time.Now()
+		log.Info("🚀 PRIMER escaneo masivo de datos sensibles...")
 		log.Info("   Timeout: %v | MaxFiles: %d | MaxDepth: %d",
 			scanCfg.ScanTimeout, scanCfg.MaxFiles, scanCfg.MaxDepth)
 		log.Info("   CustomDirs: %v", scanCfg.CustomDirs)
 
 		scanned, sensitive, err := scanner.RunInitialMassiveScan(ctx, log, store, wsClient, scanCfg)
-		if err != nil && err != context.Canceled {
-			log.Error("Error en escaneo inicial masivo: %v", err)
-		} else {
-			log.Info("✅ Escaneo inicial completado: %d archivos, %d con datos sensibles", scanned, sensitive)
+
+		if err == context.Canceled {
+			log.Warn("⚠️  Escaneo cancelado — se reintentará en el próximo arranque")
+			return
 		}
+		if err != nil {
+			log.Error("❌ Escaneo inicial falló: %v — se reintentará en el próximo arranque", err)
+			return
+		}
+
+		duration := int64(time.Since(startTime).Seconds())
+		if err := store.MarkInitialScanCompleted(scanned, sensitive, duration); err != nil {
+			log.Error("Error guardando estado de completado: %v", err)
+		}
+
+		log.Info("=============================================================")
+		log.Info("✅ ESCANEO INICIAL COMPLETADO Y MARCADO")
+		log.Info("   Archivos escaneados: %d", scanned)
+		log.Info("   Con datos sensibles: %d", sensitive)
+		log.Info("   Duración: %d segundos", duration)
+		log.Info("   → No se volverá a escanear en futuros arranques")
+		log.Info("=============================================================")
 	}()
 
-	assistant := assistant.NewAssistant(cfg.KnowledgeDBPath, log)
-	_ = assistant
+	assistantInstance := assistant.NewAssistant(cfg.KnowledgeDBPath, log)
+	_ = assistantInstance
 
 	piiScanner := scanner.NewPIIScanner(store, log)
 
@@ -153,11 +212,6 @@ func runAgent(ctx context.Context) {
 	wsClient.SetDBConnectionsChan(dbMonitor.GetDBConnectionsChan())
 	dbMonitor.StartDBConnectionsListener()
 	defer dbMonitor.Stop()
-
-	fileMon := filemonitor.NewMonitor(store, wsClient, log)
-	fileMon.WatchDirectories(cfg.FileWatchDirs)
-	go fileMon.Start()
-	defer fileMon.Stop()
 
 	go func() {
 		hard := hardening.NewHardener(store, wsClient, log)

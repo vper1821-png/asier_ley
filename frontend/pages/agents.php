@@ -246,8 +246,11 @@ $platforms = [
                                 <?php endif; ?>
                             </div>
                             <p class="text-[10px] text-text-subtle truncate">
-                                <?= h($agent['platform'] ?? $agent['os'] ?? '') ?> · <?= h($agent['ip'] ?? '') ?> · Último latido: <?= h(substr($agent['lastSeen'] ?? $agent['lastHeartbeat'] ?? 'N/A', 0, 16)) ?>
-                            </p>
+    <?= h($agent['platform'] ?? $agent['os'] ?? '') ?> · <?= h($agent['ip'] ?? '') ?> · Último latido: <?= h(substr($agent['lastSeen'] ?? $agent['lastHeartbeat'] ?? 'N/A', 0, 16)) ?>
+</p>
+<span class="scan-badge badge-info text-[9px]" id="scan-badge-<?= h($agent['agentId'] ?? $agent['_id'] ?? '') ?>">
+    Cargando estado…
+</span>
                         </div>
                     </div>
                     <div class="flex items-center gap-3 flex-shrink-0">
@@ -267,6 +270,10 @@ $platforms = [
                             class="p-2 rounded-lg text-[11px] bg-bg-panel/80 border border-border-theme text-text-muted hover:text-indigo-400 hover:bg-bg-elevated transition-all">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                         </button>
+                        <button onclick="forceRescan('<?= h($agent['agentId'] ?? $agent['_id'] ?? '') ?>')" title="Re-escanear archivos"
+    class="p-2 rounded-lg text-[11px] bg-bg-panel/80 border border-border-theme text-text-muted hover:text-emerald-400 hover:border-emerald-500/30 transition-all">
+    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+</button>
                         <button onclick="pinAgent(<?= $i ?>, '<?= h($agent['_id'] ?? '') ?>', <?= !empty($agent['pinned']) ? 'true' : 'false' ?>)" title="<?= !empty($agent['pinned']) ? 'Desfijar' : 'Fijar' ?>"
                             class="p-2 rounded-lg text-[11px] bg-bg-panel/80 border border-border-theme <?= !empty($agent['pinned']) ? 'text-amber-400 border-amber-500/30 hover:bg-amber-500/10' : 'text-text-muted hover:text-amber-400 hover:border-amber-500/30' ?> transition-all">
                             <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
@@ -306,6 +313,13 @@ details.agent-folder > summary::-webkit-details-marker { display: none; }
 .func-btn.cyan:hover { background:rgba(34,211,238,0.08); border-color:rgba(34,211,238,0.3); }
 .func-btn.purple { color:#c084fc; }
 .func-btn.purple:hover { background:rgba(168,85,247,0.08); border-color:rgba(168,85,247,0.3); }
+.scan-badge { display:inline-flex; align-items:center; gap:4px; padding:2px 7px; border-radius:4px; font-weight:500; margin-top:3px; }
+.badge-success { background:#dcfce7; color:#166534; }
+.badge-warning { background:#fef3c7; color:#92400e; }
+.badge-danger  { background:#fee2e2; color:#991b1b; }
+.badge-info    { background:#dbeafe; color:#1e40af; }
+.spinner { display:inline-block; width:9px; height:9px; border:2px solid currentColor; border-top-color:transparent; border-radius:50%; animation:spin 0.8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
 </style>
 
 <!-- Modal detalle del agente -->
@@ -1223,6 +1237,72 @@ function copyLinuxInstallCommand() {
         }
     }).catch(() => alert('No se pudo copiar'));
 }
+
+// ── Estado de escaneo de cada agente ──
+async function loadScanState(agentId) {
+    const badge = document.getElementById('scan-badge-' + agentId);
+    if (!badge) return;
+    try {
+        const r = await fetch('/api-proxy.php?path=/api/agents/' + encodeURIComponent(agentId) + '/scan-state', {
+            headers: { 'Authorization': 'Bearer ' + SL_TOKEN }
+        });
+        const j = await r.json();
+        if (!j.success) { badge.textContent = 'Sin datos'; badge.className = 'scan-badge badge-info text-[9px]'; return; }
+        const s = j.scanState || {};
+        if (s.completed) {
+            badge.innerHTML = '✅ Escaneado · ' + (s.total_files || 0) + ' archivos · ' + (s.sensitive_files || 0) + ' sensibles';
+            badge.className = 'scan-badge badge-success text-[9px]';
+            badge.title = 'Completado el ' + (s.completed_at || '—') + ' (' + (s.duration_seconds || 0) + 's)';
+        } else if (s.started_at) {
+            badge.innerHTML = '<i class="spinner"></i> Escaneando…';
+            badge.className = 'scan-badge badge-warning text-[9px]';
+        } else {
+            badge.textContent = '⏳ Pendiente de escaneo inicial';
+            badge.className = 'scan-badge badge-info text-[9px]';
+        }
+    } catch (e) {
+        badge.textContent = 'Sin datos';
+        badge.className = 'scan-badge badge-info text-[9px]';
+    }
+}
+
+// ── Forzar re-escaneo ──
+async function forceRescan(agentId) {
+    if (!confirm('¿Re-escanear TODOS los archivos de este agente?\n\nPuede tardar varios minutos. El monitor seguirá funcionando durante el proceso.')) return;
+    try {
+        const r = await fetch('/api-proxy.php?path=/api/agents/' + encodeURIComponent(agentId) + '/force-rescan', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + SL_TOKEN, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: SL_TOKEN })
+        });
+        const j = await r.json();
+        if (j.success) {
+            alert(j.message || 'Comando encolado.');
+            setTimeout(() => loadScanState(agentId), 3000);
+        } else {
+            alert('Error: ' + (j.error || 'desconocido'));
+        }
+    } catch (e) {
+        alert('Error de red: ' + e.message);
+    }
+}
+
+// ── Cargar estado de todos los agentes al cargar ──
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('[id^="scan-badge-"]').forEach(badge => {
+        const agentId = badge.id.replace('scan-badge-', '');
+        if (agentId) loadScanState(agentId);
+    });
+    // Refrescar cada 60s
+    setInterval(() => {
+        document.querySelectorAll('[id^="scan-badge-"]').forEach(badge => {
+            const agentId = badge.id.replace('scan-badge-', '');
+            if (agentId) loadScanState(agentId);
+        });
+    }, 60000);
+});
+
+
 
 filterAgents(document.getElementById('agent-search').value);
 

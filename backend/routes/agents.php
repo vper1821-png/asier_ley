@@ -147,12 +147,22 @@ function heartbeat() {
     }
 
     // Update agent status
-    $db->updateOne('agents', ['agentId' => $agentId], [
+    $agentUpdates = [
         'status' => 'online',
         'lastSeen' => date('c'),
         'metrics' => $metrics,
         'systemStatus' => $status,
-    ]);
+    ];
+
+    // ═══════════════════════════════════════════════════════════════
+    // NUEVO: recibir estado del escaneo si el agente lo reporta
+    // ═══════════════════════════════════════════════════════════════
+    if (!empty($body['scanState']) && is_array($body['scanState'])) {
+        $agentUpdates['scanState']   = $body['scanState'];
+        $agentUpdates['scanStateAt'] = date('c');
+    }
+
+    $db->updateOne('agents', ['agentId' => $agentId], $agentUpdates);
 
     // Process events from agent and create alerts
     $events = $body['events'] ?? [];
@@ -168,13 +178,39 @@ function heartbeat() {
         ]);
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // NUEVO: recoger comandos pendientes para este agente
+    // ═══════════════════════════════════════════════════════════════
+    $pendingCommandsOut = [];
+    try {
+        $pendingCmds = $db->find('agent_commands', [
+            'agentId'  => $agentId,
+            'executed' => ['$in' => [false, null]],
+        ]);
+
+        foreach ($pendingCmds as $cmd) {
+            $pendingCommandsOut[] = [
+                'command'   => $cmd['command'] ?? '',
+                'params'    => $cmd['params'] ?? [],
+                'commandId' => (string)($cmd['_id'] ?? ''),
+            ];
+            // Marcar como enviado por heartbeat para no reenviarlo en el próximo
+            $db->updateOne('agent_commands', ['_id' => $cmd['_id']], [
+                'sentViaHeartbeat' => true,
+                'sentViaHeartbeatAt' => date('c'),
+            ]);
+        }
+    } catch (\Throwable $e) {
+        error_log('[heartbeat] error leyendo agent_commands: ' . $e->getMessage());
+    }
+
     json_response([
         'error' => '',
         'pendingRules' => [],
         'pendingBlocks' => [],
         'pendingUnblocks' => [],
         'syncBlocked' => [],
-        'pendingCommands' => [],
+        'pendingCommands' => $pendingCommandsOut,   // ← AHORA con datos reales
         'heartbeatInterval' => 5,
     ]);
 }
@@ -1253,4 +1289,107 @@ TMPL, [
     header('Content-Disposition: attachment; filename="securelab-agent-install.sh"');
     echo $script;
     exit;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Estado del escaneo inicial del agente + comando de re-escaneo
+// ═══════════════════════════════════════════════════════════════════════
+
+// GET/POST /api/agents/{id}/scan-state
+// Devuelve qué sabe el backend sobre el escaneo inicial de ese agente.
+function scanState() {
+    $user = Auth::requireAuth();
+    $db = Database::getInstance();
+
+    $body = get_body();
+    $agentId = $_GET['id'] ?? $body['agentId'] ?? '';
+    if (!$agentId) json_error('agentId requerido');
+
+    $agent = $db->findOne('agents', ['agentId' => $agentId]);
+    if (!$agent) json_error('agente no encontrado', 404);
+
+    $state = $agent['scanState'] ?? [
+        'completed'        => false,
+        'started_at'       => null,
+        'completed_at'     => null,
+        'total_files'      => 0,
+        'sensitive_files'  => 0,
+        'duration_seconds' => 0,
+    ];
+
+    json_response([
+        'success'   => true,
+        'agentId'   => $agentId,
+        'scanState' => $state,
+        'updatedAt' => $agent['scanStateAt'] ?? null,
+    ]);
+}
+
+// POST /api/agents/{id}/force-rescan
+// Encola un comando "force-rescan" para que el agente lo ejecute al
+// recibir el próximo heartbeat.
+function forceRescan() {
+    $user = Auth::requireAuth();
+    $db = Database::getInstance();
+
+    $body = get_body();
+    $agentId = $_GET['id'] ?? $body['agentId'] ?? '';
+    if (!$agentId) json_error('agentId requerido');
+
+    $agent = $db->findOne('agents', ['agentId' => $agentId]);
+    if (!$agent) json_error('agente no encontrado', 404);
+
+    // Evitar duplicados: si ya hay un comando pending, no encolar otro
+    $existing = $db->findOne('agent_commands', [
+        'agentId' => $agentId,
+        'command' => 'force-rescan',
+        'status'  => 'pending',
+    ]);
+    if ($existing) {
+        json_response([
+            'success' => true,
+            'message' => 'Ya hay un re-escaneo pendiente. Se ejecutará en el próximo heartbeat.',
+            'queued'  => false,
+        ]);
+        return;
+    }
+
+    $db->insertOne('agent_commands', [
+        'agentId'   => $agentId,
+        'command'   => 'force-rescan',
+        'payload'   => [],
+        'status'    => 'pending',
+        'createdAt' => date('c'),
+        'createdBy' => (string)$user['_id'],
+    ]);
+
+    audit_log('agent_force_rescan', ['agentId' => $agentId], $user['_id']);
+
+    json_response([
+        'success' => true,
+        'queued'  => true,
+        'message' => 'Comando de re-escaneo encolado. Se ejecutará en el próximo heartbeat.',
+    ]);
+}
+
+// POST /api/agents/{id}/scan-state/report
+// El agente reporta aquí su estado de escaneo (además del heartbeat).
+// Útil si el heartbeat no incluye scanState.
+function scanStateReport() {
+    $user = Auth::requireAuth();
+    $db = Database::getInstance();
+
+    $body = get_body();
+    $agentId = $_GET['id'] ?? $body['agentId'] ?? '';
+    if (!$agentId) json_error('agentId requerido');
+
+    $scanState = $body['scanState'] ?? null;
+    if (!$scanState) json_error('scanState requerido');
+
+    $db->updateOne('agents', ['agentId' => $agentId], [
+        'scanState'   => $scanState,
+        'scanStateAt' => date('c'),
+    ]);
+
+    json_response(['success' => true]);
 }

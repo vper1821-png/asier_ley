@@ -22,6 +22,7 @@ type Monitor struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
 	wg        sync.WaitGroup
+	readyWG   sync.WaitGroup // espera a que los watchers terminen el Walk inicial
 	store     *audit.Store
 	wsClient  *ws.Client
 	log       *logger.Logger
@@ -42,7 +43,7 @@ func NewMonitor(store *audit.Store, wsClient *ws.Client, log *logger.Logger) *Mo
 		store:     store,
 		wsClient:  wsClient,
 		log:       log,
-		eventChan: make(chan audit.FileEvent, 1000),
+		eventChan: make(chan audit.FileEvent, 10000),
 		pending:   make(map[string]*time.Timer),
 		lastSent:  make(map[string]string),
 	}
@@ -67,18 +68,41 @@ func (m *Monitor) Start() {
 	}
 	m.log.Info("FileMonitor: iniciando vigilancia sobre %d directorios", len(m.watchers))
 
+	// Procesador de eventos PRIMERO — el canal se vacía desde el minuto 0
+	m.wg.Add(1)
+	go m.processEvents()
+
+	// Watchers después; readyWG cuenta cuándo terminan de registrar subdirs
 	for _, w := range m.watchers {
 		m.wg.Add(1)
+		m.readyWG.Add(1)
 		go func(w *fileWatcher) {
 			defer m.wg.Done()
-			if err := w.watch(m.ctx); err != nil {
+			if err := w.watch(m.ctx, &m.readyWG); err != nil {
 				m.log.Error("FileMonitor: error en watcher para %s: %v", w.dir, err)
 			}
 		}(w)
 	}
+}
 
-	m.wg.Add(1)
-	go m.processEvents()
+// WaitReady bloquea hasta que todos los watchers terminaron su Walk inicial.
+func (m *Monitor) WaitReady(timeout time.Duration) bool {
+	if len(m.watchers) == 0 {
+		return true
+	}
+	done := make(chan struct{})
+	go func() {
+		m.readyWG.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		m.log.Info("FileMonitor: todos los watchers listos — el escáner puede arrancar")
+		return true
+	case <-time.After(timeout):
+		m.log.Warn("FileMonitor: timeout (%v) esperando watchers — arrancando escáner igualmente", timeout)
+		return false
+	}
 }
 
 func (m *Monitor) AddSensitiveFilePaths(paths []string) {
@@ -260,7 +284,7 @@ func (m *Monitor) forgetHash(path string) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// SCAN + REPORT — FIX: completar RowCount, Hostname, Extension
+// SCAN + REPORT
 // ═══════════════════════════════════════════════════════════════════════
 
 func (m *Monitor) scanFileAndReport(ev audit.FileEvent, alreadySent bool) {
@@ -304,12 +328,6 @@ func (m *Monitor) scanFileAndReport(ev audit.FileEvent, alreadySent bool) {
 		return
 	}
 
-	// ══════════════════════════════════════════════════════════════
-	// FIX: completar campos que el watcher no siempre rellena.
-	// RowCount: contar filas reales del archivo (xlsx, csv).
-	// Hostname: obtener del SO si no viene en el evento.
-	// Extension: derivar del path si no viene.
-	// ══════════════════════════════════════════════════════════════
 	if ev.RowCount == 0 {
 		ev.RowCount = scanner.CountRows(ev.Path)
 	}
@@ -326,6 +344,11 @@ func (m *Monitor) scanFileAndReport(ev audit.FileEvent, alreadySent bool) {
 		m.log.Error("FileMonitor: error guardando evento con PII local: %v", err)
 	} else {
 		m.log.Debug("FileMonitor: evento con PII guardado localmente: %s", ev.Path)
+	}
+
+	// Mantener el inventario actualizado en tiempo real (para RAT autofill).
+	if m.store != nil {
+		_ = m.store.UpdateInventoryFromEvent(ev)
 	}
 
 	m.wsClient.SendFileDetection(ev)

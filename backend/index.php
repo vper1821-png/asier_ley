@@ -114,6 +114,10 @@ $routes = [
     'POST /api/agents/{id}/db-connection' => 'routes/agents.php@dbConnectionCreate',
     'POST /api/agents/{id}/db-connection/delete' => 'routes/agents.php@dbConnectionDelete',
     'POST /api/agents/{id}/db-connection/test' => 'routes/agents.php@dbConnectionTest',
+    'POST /api/agents/{id}/force-rescan' => 'routes/agents.php@forceRescan',
+    'POST /api/agents/{id}/scan-state' => 'routes/agents.php@scanState',
+    'GET /api/agents/{id}/scan-state' => 'routes/agents.php@scanState',
+    'POST /api/agents/{id}/scan-state/report' => 'routes/agents.php@scanStateReport',
 
     // Alerts
     'POST /api/alerts' => 'routes/alerts.php@listAll',
@@ -740,6 +744,29 @@ if (preg_match('#^/backend/reports/(.+\.pdf)$#', $uri, $matches) && $method === 
         exit;
     }
 }
+
+if (preg_match('#^/api/agents/([a-zA-Z0-9_-]+)/force-rescan$#', $uri, $m) && $method === 'POST') {
+    $_GET['id'] = $m[1];
+    require_once __DIR__ . '/routes/agents.php';
+    forceRescan();
+    exit;
+}
+
+if (preg_match('#^/api/agents/([a-zA-Z0-9_-]+)/scan-state$#', $uri, $m) && in_array($method, ['GET', 'POST'])) {
+    $_GET['id'] = $m[1];
+    require_once __DIR__ . '/routes/agents.php';
+    scanState();
+    exit;
+}
+
+if (preg_match('#^/api/agents/([a-zA-Z0-9_-]+)/scan-state/report$#', $uri, $m) && $method === 'POST') {
+    $_GET['id'] = $m[1];
+    require_once __DIR__ . '/routes/agents.php';
+    scanStateReport();
+    exit;
+}
+
+
 
 // Alternative endpoint to serve PDFs through API
 if (preg_match('#^/api/reports/download/(.+\.pdf)$#', $uri, $matches) && $method === 'GET') {
