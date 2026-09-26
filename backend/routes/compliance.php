@@ -628,7 +628,7 @@ function crud() {
         json_error('método no soportado', 405);
     }
 
-    $allowedCollections = ['consents', 'inventory', 'breaches', 'templates', 'trainings', 'dpia', 'dpa', 'pseudonymization', 'invites', 'processors', 'transfers', 'public_policy'];
+    $allowedCollections = ['consents', 'inventory', 'breaches', 'templates', 'trainings', 'dpia', 'dpa', 'pseudonymization', 'invites', 'processors', 'transfers', 'public_policy', 'packs'];
     if (!in_array($resource, $allowedCollections)) {
         json_error('recurso no soportado', 404);
     }
@@ -760,6 +760,14 @@ function crud() {
         $updates = $body;
         unset($updates['_id'], $updates['userId']);
         $updates['updatedAt'] = date('c');
+
+        // ✅ Marcar como revisado manualmente (inventory)
+        if ($resource === 'inventory') {
+            $updates['needsReview'] = false;
+            $updates['reviewedAt']  = date('c');
+            $updates['reviewedBy']  = (string)$user['_id'];
+        }
+
         $db->updateOne($collection, ['_id' => $id], $updates);
         json_response(['success' => true]);
         return;
@@ -1762,4 +1770,323 @@ function deliverConcreteData() {
         'deliveryUrl' => API_BASE_URL . '/api/public/portal/deliver?token=' . urlencode($deliveryToken),
         'expiresAt'   => $expiresAt,
     ]);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MÓDULO DE PLANTILLAS Y PACKS
+// ═══════════════════════════════════════════════════════════════════
+
+function applyPackToAgents() {
+    $user = Auth::requireAuth();
+    $db = Database::getInstance();
+    $body = get_body();
+
+    $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+    preg_match('#/packs/([^/]+)/apply-to-agents#', $uri, $m);
+    $packId = $m[1] ?? '';
+    if (!$packId) json_error('packId requerido');
+
+    $agentIds = $body['agentIds'] ?? [];
+    $reapply  = !empty($body['reapplyExisting']);
+    if (!is_array($agentIds) || empty($agentIds)) json_error('agentIds requerido (array)');
+
+    $pack = $db->findOne('compliance_packs', ['_id' => $packId, 'userId' => $user['_id']]);
+    if (!$pack) json_error('pack no encontrado', 404);
+
+    $templates = $db->find('compliance_templates', ['packId' => $packId, 'active' => true]);
+    $templateIds = array_map(fn($t) => (string)$t['_id'], $templates);
+    if (empty($templateIds)) json_error('el pack no tiene plantillas activas', 400);
+
+    $now = date('c');
+    $assignerEmail = $user['email'] ?? '';
+    $assigned = 0; $reapplied = 0;
+
+    foreach ($agentIds as $agentId) {
+        $agent = $db->findOne('agents', ['agentId' => $agentId, 'userId' => $user['_id']]);
+        if (!$agent) continue;
+
+        $db->updateOne('agents', ['_id' => $agent['_id']], [
+            'packId' => $packId, 'templateIds' => $templateIds,
+            'packAssignedAt' => $now, 'packAssignedBy' => (string)$user['_id'],
+            'packAssignedByEmail' => $assignerEmail,
+        ]);
+        $assigned++;
+
+        if ($reapply) {
+            $items = $db->find('compliance_inventory', ['userId' => $user['_id'], 'agentId' => $agentId]);
+            foreach ($items as $it) {
+                if (isset($it['needsReview']) && $it['needsReview'] === false) continue;
+                $resolved = resolveTemplateForInventoryItem($user['_id'], $agentId, $it, $templates);
+                if (!$resolved) continue;
+
+                $updates = applyTemplateDefaults($it, $resolved['defaults']);
+                if (!empty($updates)) {
+                    $updates['templateApplied'] = $resolved['templateId'];
+                    $updates['templateName'] = $resolved['templateName'];
+                    $updates['templateMode'] = 'manual_bulk';
+                    $updates['templateAppliedAt'] = $now;
+                    $updates['needsReview'] = true;
+                    $updates['updatedAt'] = $now;
+                    $db->updateOne('compliance_inventory', ['_id' => $it['_id']], $updates);
+                    $reapplied++;
+                }
+            }
+        }
+    }
+
+    $db->updateOne('compliance_packs', ['_id' => $packId], ['updatedAt' => $now]);
+
+    audit_log('pack_applied_to_agents', [
+        'packId' => $packId, 'packName' => $pack['name'] ?? '',
+        'agents' => $assigned, 'reapplied' => $reapplied,
+        'templateIds' => count($templateIds),
+    ], $user['_id']);
+
+    json_response(['success' => true, 'assigned' => $assigned, 'reapplied' => $reapplied, 'templates' => count($templateIds)]);
+}
+
+function unassignPackFromAgent() {
+    $user = Auth::requireAuth();
+    $db = Database::getInstance();
+
+    $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+    preg_match('#/agents/([^/]+)/unassign-pack#', $uri, $m);
+    $agentId = $m[1] ?? '';
+    if (!$agentId) json_error('agentId requerido');
+
+    $agent = $db->findOne('agents', ['agentId' => $agentId, 'userId' => $user['_id']]);
+    if (!$agent) json_error('agente no encontrado', 404);
+
+    $db->updateOne('agents', ['_id' => $agent['_id']], [
+        'packId' => null, 'templateIds' => [],
+        'packAssignedAt' => null, 'packAssignedBy' => null, 'packAssignedByEmail' => null,
+    ]);
+
+    audit_log('pack_unassigned', ['agentId' => $agentId], $user['_id']);
+    json_response(['success' => true]);
+}
+
+function previewPackApply() {
+    $user = Auth::requireAuth();
+    $db = Database::getInstance();
+    $body = get_body();
+
+    $packId   = $body['packId'] ?? '';
+    $agentIds = $body['agentIds'] ?? [];
+    if (!$packId || empty($agentIds)) json_error('packId y agentIds requeridos');
+
+    $pack = $db->findOne('compliance_packs', ['_id' => $packId, 'userId' => $user['_id']]);
+    if (!$pack) json_error('pack no encontrado', 404);
+
+    $templates = $db->find('compliance_templates', ['packId' => $packId, 'active' => true]);
+
+    $preview = []; $willChange = 0; $skipped = 0; $byTemplate = [];
+
+    foreach ($agentIds as $agentId) {
+        $items = $db->find('compliance_inventory', ['userId' => $user['_id'], 'agentId' => $agentId]);
+        foreach ($items as $it) {
+            if (isset($it['needsReview']) && $it['needsReview'] === false) { $skipped++; continue; }
+            $resolved = resolveTemplateForInventoryItem($user['_id'], $agentId, $it, $templates);
+            if (!$resolved) continue;
+
+            $changes = applyTemplateDefaults($it, $resolved['defaults']);
+            if (!empty($changes)) {
+                $willChange++;
+                $tplId = $resolved['templateId'];
+                if (!isset($byTemplate[$tplId])) {
+                    $byTemplate[$tplId] = ['templateId' => $tplId, 'templateName' => $resolved['templateName'], 'items' => 0];
+                }
+                $byTemplate[$tplId]['items']++;
+                if (count($preview) < 20) {
+                    $preview[] = [
+                        'inventoryId' => (string)$it['_id'], 'name' => $it['name'] ?? '',
+                        'template' => $resolved['templateName'], 'changes' => array_keys($changes),
+                    ];
+                }
+            }
+        }
+    }
+
+    json_response(['success' => true, 'willChange' => $willChange, 'skipped' => $skipped, 'preview' => $preview, 'byTemplate' => array_values($byTemplate)]);
+}
+
+function clusterInventory() {
+    $user = Auth::requireAuth();
+    $db = Database::getInstance();
+    $body = get_body();
+
+    $agentIds = $body['agentIds'] ?? [];
+    $dryRun   = !empty($body['dryRun']);
+
+    $filter = ['userId' => $user['_id']];
+    if (!empty($agentIds)) $filter['agentId'] = ['$in' => $agentIds];
+
+    $items = $db->find('compliance_inventory', $filter);
+    $groups = [];
+
+    foreach ($items as $it) {
+        $topPath = '';
+        $firstSource = $it['sources'][0] ?? null;
+        $path = $firstSource['path'] ?? ($it['path'] ?? '');
+        if ($path !== '') {
+            $parts = preg_split('#[\\\\/]+#', $path);
+            $topPath = $parts[1] ?? '';
+        }
+        $sig = md5(($it['agentId'] ?? '') . '|' . strtolower($topPath) . '|' . ($it['templateApplied'] ?? ''));
+        if (!isset($groups[$sig])) {
+            $groups[$sig] = [
+                'signature' => $sig, 'agentId' => $it['agentId'] ?? '',
+                'topPath' => $topPath, 'templateId' => $it['templateApplied'] ?? null,
+                'templateName' => $it['templateName'] ?? '', 'items' => [],
+            ];
+        }
+        $groups[$sig]['items'][] = $it;
+    }
+
+    $proposals = [];
+    foreach ($groups as $sig => $g) {
+        if (count($g['items']) < 2) continue;
+        $canonical = $g['items'][0];
+        $totalSources = 0; $totalRecords = 0; $allExts = []; $allCats = [];
+
+        foreach ($g['items'] as $it) {
+            $sources = $it['sources'] ?? [];
+            if (empty($sources) && !empty($it['path'])) {
+                $sources = [[
+                    'fileId' => $it['sourceId'] ?? '', 'path' => $it['path'],
+                    'records' => (int)($it['records'] ?? 0), 'detectedAt' => $it['createdAt'] ?? date('c'),
+                ]];
+            }
+            $totalSources += count($sources);
+            $totalRecords += (int)($it['recordCount'] ?? $it['records'] ?? 0);
+            $ext = strtolower((string)($it['extension'] ?? ''));
+            if ($ext !== '' && !in_array($ext, $allExts)) $allExts[] = $ext;
+            $cats = $it['dataCategories'] ?? '';
+            if (is_array($cats)) $allCats = array_merge($allCats, $cats);
+            elseif (is_string($cats) && $cats !== '') $allCats = array_merge($allCats, array_map('trim', explode(',', $cats)));
+        }
+
+        $proposals[] = [
+            'signature' => $sig, 'agentId' => $g['agentId'], 'topPath' => $g['topPath'],
+            'templateId' => $g['templateId'], 'templateName' => $g['templateName'],
+            'itemsToMerge' => count($g['items']),
+            'itemIds' => array_map(fn($i) => (string)$i['_id'], $g['items']),
+            'canonicalId' => (string)$canonical['_id'],
+            'mergedSources' => $totalSources, 'mergedRecords' => $totalRecords,
+            'mergedCats' => array_values(array_unique(array_filter($allCats))),
+            'mergedExts' => $allExts,
+        ];
+    }
+
+    if ($dryRun) {
+        json_response([
+            'success' => true, 'dryRun' => true, 'proposals' => $proposals,
+            'groups' => count($proposals), 'totalItems' => count($items),
+        ]);
+    }
+
+    $merged = 0; $deleted = 0;
+    foreach ($proposals as $p) {
+        $canonical = $db->findOne('compliance_inventory', ['_id' => $p['canonicalId']]);
+        if (!$canonical) continue;
+
+        $allSources = $canonical['sources'] ?? [];
+        foreach ($p['itemIds'] as $id) {
+            if ($id === $p['canonicalId']) continue;
+            $other = $db->findOne('compliance_inventory', ['_id' => $id]);
+            if (!$other) continue;
+            foreach (($other['sources'] ?? []) as $s) $allSources[] = $s;
+            if (empty($other['sources']) && !empty($other['path'])) {
+                $allSources[] = [
+                    'fileId' => $other['sourceId'] ?? '', 'path' => $other['path'],
+                    'records' => (int)($other['records'] ?? 0), 'detectedAt' => $other['createdAt'] ?? date('c'),
+                ];
+            }
+        }
+
+        $db->updateOne('compliance_inventory', ['_id' => $p['canonicalId']], [
+            'sources' => $allSources, 'fileCount' => count($allSources),
+            'recordCount' => $p['mergedRecords'],
+            'dataCategories' => implode(', ', $p['mergedCats']),
+            'fileExtensions' => $p['mergedExts'],
+            'lastSeenAt' => date('c'), 'updatedAt' => date('c'),
+        ]);
+
+        foreach ($p['itemIds'] as $id) {
+            if ($id === $p['canonicalId']) continue;
+            $db->deleteOne('compliance_inventory', ['_id' => $id]);
+            $deleted++;
+        }
+        $merged++;
+    }
+
+    audit_log('cluster_inventory_applied', ['groups' => count($proposals), 'merged' => $merged, 'deleted' => $deleted], $user['_id']);
+    json_response(['success' => true, 'merged' => $merged, 'deleted' => $deleted, 'groups' => count($proposals)]);
+}
+
+function resolveTemplateForInventoryItem($userId, $agentId, $item, $templates) {
+    $path = $item['path'] ?? '';
+    $hostname = $item['hostname'] ?? '';
+    $extension = strtolower((string)($item['extension'] ?? pathinfo($path, PATHINFO_EXTENSION)));
+    $categories = [];
+    if (!empty($item['dataCategories'])) {
+        $categories = is_array($item['dataCategories'])
+            ? $item['dataCategories']
+            : array_map('trim', explode(',', $item['dataCategories']));
+    }
+
+    $ctx = [
+        'path' => $path, 'hostname' => $hostname,
+        'extension' => $extension, 'categories' => $categories,
+        'sensitive' => !empty($item['sensitive']),
+    ];
+
+    usort($templates, fn($a, $b) => ($b['priority'] ?? 0) <=> ($a['priority'] ?? 0));
+
+    foreach ($templates as $tpl) {
+        if (!empty($tpl['isFallback'])) continue;
+        if (matchTemplateRules($tpl, $ctx)) {
+            return ['templateId' => (string)$tpl['_id'], 'templateName' => $tpl['name'] ?? '', 'defaults' => $tpl['defaults'] ?? []];
+        }
+    }
+    foreach ($templates as $tpl) {
+        if (!empty($tpl['isFallback'])) {
+            return ['templateId' => (string)$tpl['_id'], 'templateName' => $tpl['name'] ?? '', 'defaults' => $tpl['defaults'] ?? []];
+        }
+    }
+    return null;
+}
+
+function matchTemplateRules($tpl, $ctx) {
+    $rules = $tpl['matchRules'] ?? [];
+    if (empty($rules)) return false;
+    $logic = $tpl['matchLogic'] ?? 'OR';
+    $results = [];
+    foreach ($rules as $r) {
+        $type = $r['type'] ?? ''; $value = $r['value'] ?? ''; $ok = false;
+        if ($type === 'path') $ok = fnmatch($value, $ctx['path'] ?? '', FNM_CASEFOLD);
+        elseif ($type === 'hostname') $ok = fnmatch($value, $ctx['hostname'] ?? '', FNM_CASEFOLD);
+        elseif ($type === 'extension') {
+            $exts = array_map('trim', explode(',', strtolower($value)));
+            $ok = in_array(strtolower($ctx['extension'] ?? ''), $exts, true);
+        } elseif ($type === 'category') {
+            $want = array_map('trim', explode(',', strtolower($value)));
+            $have = array_map('strtolower', $ctx['categories'] ?? []);
+            $ok = !empty(array_intersect($want, $have));
+        }
+        $results[] = $ok;
+    }
+    return $logic === 'AND' ? !in_array(false, $results, true) : in_array(true, $results, true);
+}
+
+function applyTemplateDefaults($item, $defaults) {
+    $updates = [];
+    foreach ($defaults as $k => $v) {
+        if ($v === '' || $v === null) continue;
+        if (is_array($v) && empty($v)) continue;
+        $current = $item[$k] ?? null;
+        $isEmpty = $current === null || $current === '' || $current === [] || $current === 'Pendiente de definir';
+        if ($isEmpty) $updates[$k] = $v;
+    }
+    return $updates;
 }

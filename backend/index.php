@@ -688,6 +688,29 @@ if (preg_match('#^/api/smtp/bulkStatus/([a-zA-Z0-9_-]+)$#', $uri, $m) && $method
     exit;
 }
 
+// ═══════ Plantillas & Packs — acciones especiales ═══════
+if (preg_match('#^/api/compliance/packs/([^/]+)/apply-to-agents$#', $uri) && $method === 'POST') {
+    require_once __DIR__ . '/routes/compliance.php';
+    applyPackToAgents();
+    exit;
+}
+if (preg_match('#^/api/compliance/packs/preview-apply$#', $uri) && $method === 'POST') {
+    require_once __DIR__ . '/routes/compliance.php';
+    previewPackApply();
+    exit;
+}
+if (preg_match('#^/api/compliance/agents/([^/]+)/unassign-pack$#', $uri) && $method === 'POST') {
+    require_once __DIR__ . '/routes/compliance.php';
+    unassignPackFromAgent();
+    exit;
+}
+if (preg_match('#^/api/compliance/inventory/cluster$#', $uri) && $method === 'POST') {
+    require_once __DIR__ . '/routes/compliance.php';
+    clusterInventory();
+    exit;
+}
+
+// ═══════ Compliance CRUD (catch-all) ═══════
 if (preg_match('#^/api/invisia/compliance/.+$#', $uri) || preg_match('#^/api/compliance/.+$#', $uri)) {
     require_once __DIR__ . '/routes/compliance.php';
     crud();

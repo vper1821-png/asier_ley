@@ -194,6 +194,7 @@ $tabs = [
     ['id' => 'transfers', 'label' => 'Transferencias', 'icon' => 'globe', 'desc' => 'Transferencias internacionales · Art. 21'],
     ['id' => 'files', 'label' => 'Archivos', 'icon' => 'folder', 'desc' => 'Archivos detectados por los agentes'],
     ['id' => 'file-audit', 'label' => 'Auditoría', 'icon' => 'history', 'desc' => 'Trazabilidad de acceso a archivos'],
+    ['id' => 'templates', 'label' => 'Plantillas', 'icon' => 'clipboard', 'desc' => 'Packs y actividades RAT reutilizables'],
 ];
 $activeLabel = 'Compliance';
 foreach ($tabs as $t) { if ($t['id'] === $tab) $activeLabel = $t['label']; }
@@ -6315,6 +6316,503 @@ $isDpoOrDpd = in_array($currentRole, ['dpo', 'dpd', 'superadmin'], true) || !emp
             }
             </script>
 
+            <?php elseif ($tab === 'templates'): ?>
+<?php
+$packs = $fetchList('packs');
+if (!is_array($packs)) $packs = [];
+$templatesList = $fetchList('templates');
+if (!is_array($templatesList)) $templatesList = [];
+
+$tplByPack = [];
+foreach ($templatesList as $t) {
+    $pid = $t['packId'] ?? '__none__';
+    $tplByPack[$pid][] = $t;
+}
+
+$agentsList = $agents ?? [];
+foreach ($packs as &$p) {
+    $tplsOfPack = $tplByPack[$p['_id']] ?? [];
+    $p['_tplCount'] = count($tplsOfPack);
+    $assignedAgents = array_filter($agentsList, fn($a) => ($a['packId'] ?? '') === $p['_id']);
+    $p['_agentsCount'] = count($assignedAgents);
+}
+unset($p);
+?>
+
+<?php renderSectionHeader('Plantillas y Packs',
+    'Packs de actividades RAT reutilizables. Asigna un pack a los agentes y el sistema rellenará automáticamente el inventario.'); ?>
+
+<div class="flex gap-2 mb-5 border-b border-border-theme">
+    <button onclick="switchTplTab('packs')" id="tpl-tab-packs" class="px-4 py-2 text-[11px] font-semibold border-b-2 border-accent text-accent">Packs</button>
+    <button onclick="switchTplTab('assign')" id="tpl-tab-assign" class="px-4 py-2 text-[11px] font-semibold border-b-2 border-transparent text-text-muted hover:text-text-heading">Asignación</button>
+    <button onclick="switchTplTab('cluster')" id="tpl-tab-cluster" class="px-4 py-2 text-[11px] font-semibold border-b-2 border-transparent text-text-muted hover:text-text-heading">Clusterizar</button>
+</div>
+
+<!-- SUB-TAB: PACKS -->
+<div id="tpl-panel-packs" class="space-y-4">
+    <div class="flex justify-between items-center">
+        <p class="text-[11px] text-text-muted"><?= count($packs) ?> packs · <?= count($templatesList) ?> plantillas</p>
+        <div class="flex gap-2">
+            <button onclick="cpOpenPanel('pack-create-form')" class="cp-new-btn">+ Nuevo pack</button>
+            <button onclick="cpOpenPanel('template-create-form')" class="cp-new-btn">+ Nueva plantilla</button>
+        </div>
+    </div>
+
+    <?php if (empty($packs)): ?>
+        <div class="rounded-xl border border-dashed border-border-theme p-12 text-center">
+            <p class="text-[12px] text-text-subtle mb-2">Sin packs configurados.</p>
+            <p class="text-[10px] text-text-subtle">Crea un pack (ej: "Pack RRHH") y añade plantillas (Nómina, Reclutamiento, etc.).</p>
+        </div>
+    <?php else: ?>
+        <div class="space-y-3">
+            <?php foreach ($packs as $p):
+                $tplsOfPack = $tplByPack[$p['_id']] ?? [];
+            ?>
+            <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-4">
+                <div class="flex items-start justify-between gap-3 mb-3 pb-3 border-b border-border-theme/40">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <span class="w-10 h-10 rounded-lg bg-indigo-500/15 text-indigo-400 flex items-center justify-center flex-shrink-0">
+                            <?= cIcon('clipboard', 'w-5 h-5') ?>
+                        </span>
+                        <div class="min-w-0">
+                            <p class="text-[13px] font-semibold text-text-heading"><?= h($p['name'] ?? '') ?></p>
+                            <p class="text-[10px] text-text-subtle"><?= h($p['description'] ?? '') ?></p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <span class="text-[10px] text-text-subtle"><?= (int)$p['_tplCount'] ?> plantillas · <?= (int)$p['_agentsCount'] ?> agentes</span>
+                        <button onclick="deletePack('<?= h($p['_id']) ?>', '<?= h(addslashes($p['name'])) ?>')" class="p-1.5 rounded-lg text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-all"><?= cIcon('xmark', 'w-3.5 h-3.5') ?></button>
+                    </div>
+                </div>
+                <?php if (empty($tplsOfPack)): ?>
+                    <p class="text-[10px] text-text-subtle italic">Sin plantillas.</p>
+                <?php else: ?>
+                    <div class="space-y-1.5">
+                        <?php foreach ($tplsOfPack as $tpl): ?>
+                        <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-bg-base/40 border border-border-theme/30">
+                            <span class="w-1.5 h-1.5 rounded-full bg-accent"></span>
+                            <span class="text-[11px] font-medium text-text-heading flex-1 min-w-0 truncate"><?= h($tpl['name'] ?? '') ?></span>
+                            <span class="text-[9px] text-text-subtle font-mono truncate max-w-[180px]">
+                                <?php
+                                $rules = $tpl['matchRules'] ?? [];
+                                $summary = [];
+                                foreach (array_slice($rules, 0, 2) as $r) $summary[] = ($r['type'] ?? '?') . ':' . ($r['value'] ?? '');
+                                echo h(implode(' · ', $summary));
+                                if (count($rules) > 2) echo ' +' . (count($rules) - 2);
+                                ?>
+                            </span>
+                            <?php if (!empty($tpl['isFallback'])): ?>
+                                <span class="text-[8px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/20">fallback</span>
+                            <?php endif; ?>
+                            <button onclick="deleteTemplate('<?= h($tpl['_id']) ?>', '<?= h(addslashes($tpl['name'])) ?>')" class="p-1 rounded text-text-muted hover:text-red-400 transition-all"><?= cIcon('xmark', 'w-3 h-3') ?></button>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+            </div>
+            <?php endforeach; ?>
+        </div>
+    <?php endif; ?>
+</div>
+
+<!-- SUB-TAB: ASIGNACIÓN -->
+<div id="tpl-panel-assign" class="hidden">
+    <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-5">
+        <div class="flex items-center justify-between mb-4">
+            <p class="text-[12px] font-semibold text-white">Asignar pack a agentes</p>
+            <select id="assign-pack-selector" class="compliance-select max-w-xs">
+                <option value="">— Seleccionar pack —</option>
+                <?php foreach ($packs as $t): ?>
+                    <option value="<?= h($t['_id']) ?>"><?= h($t['name']) ?> (<?= (int)$t['_tplCount'] ?> plantillas)</option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-[12px]">
+                <thead>
+                    <tr class="border-b border-border-theme text-text-muted uppercase text-[10px] tracking-wider">
+                        <th class="text-left py-2 px-3 w-8"><input type="checkbox" id="assign-check-all" onchange="toggleAllAgents(this)"></th>
+                        <th class="text-left py-2 px-3">Agente</th>
+                        <th class="text-left py-2 px-3">Hostname</th>
+                        <th class="text-left py-2 px-3">Pack actual</th>
+                        <th class="text-left py-2 px-3">Items RAT</th>
+                        <th class="text-left py-2 px-3">Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($agentsList as $a):
+                        $packId = $a['packId'] ?? '';
+                        $packName = '—';
+                        foreach ($packs as $t) if (($t['_id'] ?? '') === $packId) { $packName = $t['name']; break; }
+                        $itemCount = count(array_filter($inventory, fn($i) => ($i['agentId'] ?? '') === ($a['agentId'] ?? '')));
+                    ?>
+                    <tr class="border-b border-border-theme/30 hover:bg-bg-base/30">
+                        <td class="py-2 px-3"><input type="checkbox" class="agent-checkbox" value="<?= h($a['agentId'] ?? '') ?>"></td>
+                        <td class="py-2 px-3 text-text-heading font-medium font-mono text-[11px]"><?= h($a['agentId'] ?? '') ?></td>
+                        <td class="py-2 px-3 text-text-muted"><?= h($a['hostname'] ?? '—') ?></td>
+                        <td class="py-2 px-3">
+                            <?php if ($packId): ?>
+                                <span class="inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-semibold rounded-md border bg-indigo-500/10 text-indigo-300 border-indigo-500/20"><?= h($packName) ?></span>
+                            <?php else: ?>
+                                <span class="text-[10px] text-text-subtle italic">Sin asignar</span>
+                            <?php endif; ?>
+                        </td>
+                        <td class="py-2 px-3 text-text-muted"><?= $itemCount ?></td>
+                        <td class="py-2 px-3">
+                            <span class="inline-block w-2 h-2 rounded-full <?= ($a['status'] ?? '') === 'online' ? 'bg-emerald-400' : 'bg-gray-500' ?>"></span>
+                            <span class="text-[10px] text-text-muted ml-1.5"><?= h($a['status'] ?? 'offline') ?></span>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="flex items-center justify-between mt-5 pt-4 border-t border-border-theme">
+            <label class="flex items-center gap-2 text-[11px] text-text-body">
+                <input type="checkbox" id="reapply-existing" class="w-4 h-4 rounded border-border-theme text-primary-600">
+                Aplicar también al inventario existente (solo campos vacíos)
+            </label>
+            <div class="flex gap-2">
+                <button onclick="previewPackApply()" class="px-4 py-2 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-body">Vista previa</button>
+                <button onclick="confirmPackApply()" class="px-4 py-2 rounded-lg text-[11px] font-semibold bg-gradient-to-r from-indigo-600 to-blue-600 text-white">Aplicar pack</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- SUB-TAB: CLUSTERIZAR -->
+<div id="tpl-panel-cluster" class="hidden">
+    <div class="rounded-xl border border-border-theme bg-bg-panel/60 p-5">
+        <div class="mb-4">
+            <p class="text-[13px] font-semibold text-white mb-1">Clusterizar inventario existente</p>
+            <p class="text-[11px] text-text-muted leading-relaxed">Agrupa miles de items del RAT (uno por archivo) en actividades consolidadas. Ejemplo: 6.000 archivos → ~20 actividades.</p>
+        </div>
+        <div class="flex gap-3 mb-4">
+            <select id="cluster-agent-filter" class="compliance-select">
+                <option value="">Todos los agentes</option>
+                <?php foreach ($agentsList as $a): ?>
+                    <option value="<?= h($a['agentId'] ?? '') ?>"><?= h($a['hostname'] ?? $a['agentId'] ?? '') ?></option>
+                <?php endforeach; ?>
+            </select>
+            <button onclick="previewCluster()" class="px-4 py-2 rounded-lg text-[11px] font-medium bg-bg-elevated border border-border-theme text-text-body">Analizar (sin cambios)</button>
+            <button onclick="applyCluster()" class="px-4 py-2 rounded-lg text-[11px] font-semibold bg-gradient-to-r from-amber-600 to-orange-600 text-white">Aplicar clusterización</button>
+        </div>
+        <div id="cluster-preview" class="hidden rounded-lg border border-border-theme/50 bg-bg-base/40 p-4 max-h-[500px] overflow-y-auto scrollbar-custom"></div>
+    </div>
+</div>
+
+<!-- DRAWER: Crear Pack -->
+<div id="pack-create-form" class="hidden rounded-xl border border-border-theme bg-bg-panel/60 p-5">
+    <h3 class="text-[14px] font-semibold text-white mb-4">Nuevo Pack</h3>
+    <form id="pack-create-form-inner" class="space-y-4">
+        <div class="compliance-form-row">
+            <div class="compliance-form-cell">
+                <label class="compliance-form-label">Nombre <span class="required">*</span></label>
+                <input type="text" name="name" required class="compliance-input" placeholder="Ej: Pack RRHH">
+            </div>
+            <div class="compliance-form-cell">
+                <label class="compliance-form-label">Color</label>
+                <select name="color" class="compliance-select">
+                    <option value="indigo">Indigo</option>
+                    <option value="pink">Rosa</option>
+                    <option value="emerald">Verde</option>
+                    <option value="amber">Ámbar</option>
+                </select>
+            </div>
+        </div>
+        <div class="compliance-form-cell">
+            <label class="compliance-form-label">Descripción</label>
+            <textarea name="description" rows="2" class="compliance-textarea"></textarea>
+        </div>
+        <div class="flex justify-end gap-2 pt-3 border-t border-border-theme">
+            <button type="button" onclick="cpClosePanel('pack-create-form')" class="px-4 py-2 rounded-lg text-[11px] bg-bg-elevated text-text-body border border-border-theme">Cancelar</button>
+            <button type="submit" class="px-4 py-2 rounded-lg text-[11px] font-semibold bg-gradient-to-r from-emerald-600 to-teal-600 text-white">Crear Pack</button>
+        </div>
+    </form>
+</div>
+
+<!-- DRAWER: Crear Plantilla -->
+<div id="template-create-form" class="hidden rounded-xl border border-border-theme bg-bg-panel/60 p-5">
+    <h3 class="text-[14px] font-semibold text-white mb-4">Nueva Plantilla</h3>
+    <form id="template-create-form-inner" class="space-y-4">
+        <div class="compliance-form-row">
+            <div class="compliance-form-cell">
+                <label class="compliance-form-label">Pack <span class="required">*</span></label>
+                <select name="packId" required class="compliance-select">
+                    <option value="">Seleccionar pack</option>
+                    <?php foreach ($packs as $p): ?>
+                        <option value="<?= h($p['_id']) ?>"><?= h($p['name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="compliance-form-cell">
+                <label class="compliance-form-label">Nombre <span class="required">*</span></label>
+                <input type="text" name="name" required class="compliance-input" placeholder="Ej: Nómina mensual">
+            </div>
+        </div>
+        <div class="compliance-form-cell">
+            <label class="compliance-form-label">Descripción</label>
+            <input type="text" name="description" class="compliance-input">
+        </div>
+
+        <fieldset class="compliance-fieldset">
+            <legend class="compliance-fieldset-legend">Match Rules</legend>
+            <div id="match-rules-container" class="space-y-2 mb-3"></div>
+            <button type="button" onclick="addMatchRuleRow()" class="text-[11px] text-accent hover:text-primary-300 font-medium">+ Añadir regla</button>
+        </fieldset>
+
+        <fieldset class="compliance-fieldset">
+            <legend class="compliance-fieldset-legend">Defaults (auto-llenado)</legend>
+            <div class="compliance-form-row">
+                <div class="compliance-form-cell">
+                    <label class="compliance-form-label">Finalidad</label>
+                    <input type="text" name="defaults[purpose]" class="compliance-input" placeholder="gestion_personal">
+                </div>
+                <div class="compliance-form-cell">
+                    <label class="compliance-form-label">Base de licitud</label>
+                    <select name="defaults[legalBasis]" class="compliance-select">
+                        <option value="">—</option>
+                        <option value="consentimiento">Consentimiento</option>
+                        <option value="ejecucion_contrato">Ejecución de contrato</option>
+                        <option value="obligacion_legal">Obligación legal</option>
+                        <option value="interes_legitimo">Interés legítimo</option>
+                    </select>
+                </div>
+            </div>
+            <div class="compliance-form-row mt-3">
+                <div class="compliance-form-cell">
+                    <label class="compliance-form-label">Riesgo</label>
+                    <select name="defaults[risk]" class="compliance-select">
+                        <option value="low">Bajo</option>
+                        <option value="medium">Medio</option>
+                        <option value="high">Alto</option>
+                        <option value="critical">Crítico</option>
+                    </select>
+                </div>
+                <div class="compliance-form-cell">
+                    <label class="compliance-form-label">Retención (días)</label>
+                    <input type="number" name="defaults[retentionDays]" class="compliance-input" placeholder="1825">
+                </div>
+            </div>
+        </fieldset>
+
+        <div class="flex justify-end gap-2 pt-3 border-t border-border-theme">
+            <button type="button" onclick="cpClosePanel('template-create-form')" class="px-4 py-2 rounded-lg text-[11px] bg-bg-elevated text-text-body border border-border-theme">Cancelar</button>
+            <button type="submit" class="px-4 py-2 rounded-lg text-[11px] font-semibold bg-gradient-to-r from-emerald-600 to-teal-600 text-white">Crear Plantilla</button>
+        </div>
+    </form>
+</div>
+
+<script>
+const AGENTS_ALL_TPL = <?= json_encode($agentsList, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+const PACKS_ALL_TPL = <?= json_encode($packs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+
+function switchTplTab(tab) {
+    ['packs', 'assign', 'cluster'].forEach(t => {
+        document.getElementById('tpl-panel-' + t).classList.toggle('hidden', t !== tab);
+        const btn = document.getElementById('tpl-tab-' + t);
+        if (btn) btn.className = t === tab
+            ? 'px-4 py-2 text-[11px] font-semibold border-b-2 border-accent text-accent'
+            : 'px-4 py-2 text-[11px] font-semibold border-b-2 border-transparent text-text-muted';
+    });
+}
+
+function toggleAllAgents(cb) {
+    document.querySelectorAll('.agent-checkbox').forEach(c => c.checked = cb.checked);
+}
+
+function getSelectedAgentsTpl() {
+    return Array.from(document.querySelectorAll('.agent-checkbox:checked')).map(c => c.value);
+}
+
+async function previewPackApply() {
+    const packId = document.getElementById('assign-pack-selector').value;
+    const agentIds = getSelectedAgentsTpl();
+    if (!packId) { alert('Selecciona un pack'); return; }
+    if (agentIds.length === 0) { alert('Selecciona al menos un agente'); return; }
+
+    const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/compliance/packs/preview-apply'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packId, agentIds, token: '<?= h($token) ?>' })
+    });
+    const data = await res.json();
+    if (!data.success) { alert(data.error || 'Error'); return; }
+    if (data.willChange === 0) { alert('No hay cambios que aplicar.'); return; }
+
+    const lines = data.byTemplate.map(t => `  · ${t.templateName}: ${t.items} items`).join('\n');
+    if (confirm(`Se actualizarán ${data.willChange} items (${data.skipped} omitidos).\n\n${lines}\n\n¿Aplicar?`)) {
+        confirmPackApply();
+    }
+}
+
+async function confirmPackApply() {
+    const packId = document.getElementById('assign-pack-selector').value;
+    const agentIds = getSelectedAgentsTpl();
+    const reapply = document.getElementById('reapply-existing').checked;
+    if (!packId || agentIds.length === 0) return;
+
+    const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/compliance/packs/' + packId + '/apply-to-agents'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentIds, reapplyExisting: reapply, token: '<?= h($token) ?>' })
+    });
+    const data = await res.json();
+    if (data.success) {
+        alert(`Pack aplicado a ${data.assigned} agentes. ${data.reapplied} items actualizados.`);
+        location.reload();
+    } else alert(data.error || 'Error');
+}
+
+async function previewCluster() {
+    const agentId = document.getElementById('cluster-agent-filter').value;
+    const body = { token: '<?= h($token) ?>', dryRun: true };
+    if (agentId) body.agentIds = [agentId];
+
+    const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/compliance/inventory/cluster'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (!data.success) { alert(data.error || 'Error'); return; }
+
+    const box = document.getElementById('cluster-preview');
+    box.classList.remove('hidden');
+    if (data.proposals.length === 0) {
+        box.innerHTML = '<p class="text-[11px] text-text-subtle text-center py-6">No hay grupos que puedan mergearse.</p>';
+        return;
+    }
+    box.innerHTML = `
+        <div class="mb-3 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+            <p class="text-[11px] text-emerald-300"><strong>${data.totalItems}</strong> items → <strong>${data.groups}</strong> grupos propuestos</p>
+        </div>
+        <div class="space-y-2">
+            ${data.proposals.map(p => `
+                <div class="px-3 py-2 rounded-lg bg-bg-panel border border-border-theme/40">
+                    <div class="flex items-center justify-between gap-2 mb-1">
+                        <span class="text-[11px] font-medium text-text-heading">${p.topPath ? p.topPath.toUpperCase() + ' — ' : ''}${p.templateName || 'Sin template'}</span>
+                        <span class="text-[9px] font-bold text-amber-400">${p.itemsToMerge} → 1</span>
+                    </div>
+                    <p class="text-[9px] text-text-subtle">${p.mergedSources} fuentes · ${p.mergedRecords} registros</p>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+async function applyCluster() {
+    if (!confirm('¿Clusterizar el inventario? No se puede deshacer.')) return;
+    const agentId = document.getElementById('cluster-agent-filter').value;
+    const body = { token: '<?= h($token) ?>', dryRun: false };
+    if (agentId) body.agentIds = [agentId];
+
+    const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/compliance/inventory/cluster'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (data.success) {
+        alert(`${data.merged} grupos mergeados, ${data.deleted} items eliminados.`);
+        location.reload();
+    } else alert(data.error || 'Error');
+}
+
+async function deletePack(id, name) {
+    if (!confirm(`¿Eliminar el pack "${name}"?`)) return;
+    const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/compliance/packs/' + id), {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: '<?= h($token) ?>' })
+    });
+    const data = await res.json();
+    if (data.success) location.reload(); else alert(data.error || 'Error');
+}
+
+async function deleteTemplate(id, name) {
+    if (!confirm(`¿Eliminar la plantilla "${name}"?`)) return;
+    const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/compliance/templates/' + id), {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: '<?= h($token) ?>' })
+    });
+    const data = await res.json();
+    if (data.success) location.reload(); else alert(data.error || 'Error');
+}
+
+function addMatchRuleRow() {
+    const container = document.getElementById('match-rules-container');
+    if (!container) return;
+    const row = document.createElement('div');
+    row.className = 'flex items-center gap-2 match-rule-row';
+    row.innerHTML = `
+        <select class="compliance-select rule-type" style="max-width:140px">
+            <option value="path">Path</option>
+            <option value="hostname">Hostname</option>
+            <option value="extension">Extensión</option>
+            <option value="category">Categoría</option>
+        </select>
+        <input type="text" class="compliance-input rule-value flex-1" placeholder="*/Nominas/*">
+        <button type="button" onclick="this.closest('.match-rule-row').remove()" class="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10">✕</button>
+    `;
+    container.appendChild(row);
+}
+
+document.getElementById('pack-create-form-inner')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const fd = new FormData(this);
+    const payload = { token: '<?= h($token) ?>' };
+    fd.forEach((v, k) => payload[k] = v);
+    const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/compliance/packs'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.success) location.reload(); else alert(data.error || 'Error');
+});
+
+document.getElementById('template-create-form-inner')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const fd = new FormData(this);
+    const payload = { token: '<?= h($token) ?>' };
+    fd.forEach((v, k) => {
+        if (k.startsWith('defaults[')) {
+            const key = k.replace('defaults[', '').replace(']', '');
+            if (!payload.defaults) payload.defaults = {};
+            payload.defaults[key] = v;
+        } else payload[k] = v;
+    });
+    const rules = [];
+    document.querySelectorAll('.match-rule-row').forEach(row => {
+        const type = row.querySelector('.rule-type').value;
+        const value = row.querySelector('.rule-value').value.trim();
+        if (value) rules.push({ type, value });
+    });
+    payload.matchRules = rules;
+    payload.matchLogic = 'OR';
+    payload.priority = 100;
+    payload.active = true;
+
+    const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/compliance/templates'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.success) location.reload(); else alert(data.error || 'Error');
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+    if (document.getElementById('match-rules-container')) addMatchRuleRow();
+});
+</script>
+
+<?php endif; ?>            
+
+
+
             <?php elseif ($tab === 'file-audit'): ?>
             <!-- ═══ SECCIÓN AUDITORÍA DE ARCHIVOS ═══ -->
             <?php
@@ -6446,7 +6944,7 @@ $isDpoOrDpd = in_array($currentRole, ['dpo', 'dpd', 'superadmin'], true) || !emp
 
     <script>
     // ═══ Panel lateral derecho para formularios de creación ═══
-    const CP_PANEL_IDS = ['inventory-create-form','consent-create-form','breach-create-form','dpia-create-form','processor-create-form','transfer-create-form','pseudo-create-form','training-create-form'];
+    const CP_PANEL_IDS = ['inventory-create-form','consent-create-form','breach-create-form','dpia-create-form','processor-create-form','transfer-create-form','pseudo-create-form','training-create-form','pack-create-form','template-create-form'];
 
     function cpOpenPanel(id) {
         const el = document.getElementById(id);

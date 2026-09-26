@@ -169,71 +169,79 @@ class AgentWebSocket implements MessageComponentInterface {
     private function handleRegister(ConnectionInterface $conn, $data) {
         $token = $data['token'] ?? $data['accessToken'] ?? '';
         $agentId = $data['agentId'] ?? '';
+        $templateHint = $data['template_id'] ?? null;
 
-        if (empty($token)) {
-            $conn->send(json_encode([
-                'type' => 'error',
-                'payload' => ['message' => 'Token requerido']
-            ]));
-            $conn->close();
-            return;
-        }
-
-        if (empty($agentId)) {
-            $conn->send(json_encode([
-                'type' => 'error',
-                'payload' => ['message' => 'AgentId requerido']
-            ]));
+        if (empty($token) || empty($agentId)) {
+            $conn->send(json_encode(['type' => 'error', 'payload' => ['message' => 'Token y agentId requeridos']]));
             $conn->close();
             return;
         }
 
         $decoded = Auth::verifyToken($token);
         if (!$decoded) {
-            $conn->send(json_encode([
-                'type' => 'error',
-                'payload' => ['message' => 'Token inválido o expirado']
-            ]));
+            $conn->send(json_encode(['type' => 'error', 'payload' => ['message' => 'Token inválido o expirado']]));
             $conn->close();
             return;
         }
 
         $userId = $decoded['userId'] ?? '';
-
         $conn->userId = $userId;
         $conn->agentId = $agentId;
         $this->agentSessions[$agentId] = $conn;
 
         if ($this->db) {
             $existing = $this->db->findOne('agents', ['agentId' => $agentId, 'userId' => $userId]);
+
             if (!$existing) {
+                $packId = null;
+                $templateIds = [];
+
+                if ($templateHint) {
+                    $pack = $this->db->findOne('compliance_packs', [
+                        '_id' => $templateHint, 'userId' => $userId, 'active' => true,
+                    ]);
+                    if ($pack) {
+                        $packId = (string)$pack['_id'];
+                        $tpls = $this->db->find('compliance_templates', ['packId' => $packId, 'active' => true]);
+                        $templateIds = array_map(fn($t) => (string)$t['_id'], $tpls);
+                    }
+                }
+
                 $this->db->insertOne('agents', [
-                    'userId' => $userId,
-                    'agentId' => $agentId,
-                    'status' => 'online',
-                    'lastSeen' => date('c'),
-                    'createdAt' => date('c'),
+                    'userId'              => $userId,
+                    'agentId'             => $agentId,
+                    'status'              => 'online',
+                    'lastSeen'            => date('c'),
+                    'createdAt'           => date('c'),
+                    'hostname'            => $data['hostname'] ?? $agentId,
+                    'platform'            => $data['platform'] ?? '',
+                    'packId'              => $packId,
+                    'templateIds'         => $templateIds,
+                    'packAssignedAt'      => $packId ? date('c') : null,
+                    'packAssignedBy'      => null,
+                    'packAssignedByEmail' => $packId ? 'install-hint' : null,
                 ]);
+
+                echo "✅ Agente nuevo registrado: {$agentId}" . ($packId ? " con pack {$packId}" : " (sin pack)") . "\n";
             } else {
                 $this->db->updateOne('agents', ['agentId' => $agentId, 'userId' => $userId], [
-                    'status' => 'online',
-                    'lastSeen' => date('c'),
-                    'userId' => $userId
+                    'status' => 'online', 'lastSeen' => date('c'),
                 ]);
+                if ($templateHint && ($existing['packId'] ?? null) !== $templateHint) {
+                    echo "ℹ️  Agente {$agentId} envió hint '{$templateHint}' pero BD tiene '{$existing['packId']}'. Ignorando hint.\n";
+                }
             }
         }
 
         echo "✅ Agente registrado: {$agentId} (usuario: {$userId})\n";
         $conn->send(json_encode([
             'type' => 'registered',
-            'payload' => [
-                'agentId' => $agentId,
-                'message' => 'Agente registrado correctamente'
-            ]
+            'payload' => ['agentId' => $agentId, 'message' => 'Agente registrado correctamente']
         ]));
 
         $this->sendPendingCommands($agentId);
     }
+
 
     // ─── HANDLER: FILE_DETECTED ─────────────────────────────────────
 
@@ -664,150 +672,319 @@ class AgentWebSocket implements MessageComponentInterface {
     // Tanto handleFileDetected como handleInventoryItem lo llaman.
     //
     private function processFileDetection($userId, $agentId, $fileData) {
-        if (!$this->db) {
-            throw new \Exception('Base de datos no disponible');
-        }
+        if (!$this->db) throw new \Exception('Base de datos no disponible');
         $db = $this->db;
 
-        $required = ['path', 'hash'];
-        foreach ($required as $field) {
-            if (empty($fileData[$field])) {
-                throw new \Exception("Campo '$field' requerido");
-            }
-        }
+        $path = $fileData['path'] ?? '';
+        $hash = $fileData['hash'] ?? '';
+        if (!$path || !$hash) throw new \Exception('path y hash requeridos');
 
-        // 1. Buscar si ya existe
+        $hostname   = $fileData['hostname'] ?? 'unknown';
+        $extension  = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $sensitive  = !empty($fileData['sensitive']);
+        $personalData = $fileData['personalData'] ?? [];
+        $rowCount   = (int)($fileData['rowCount'] ?? 0);
+
+        // 1. Guardar archivo
         $existing = $db->findOne('compliance_files', [
-            'agentId'    => $agentId,
-            'path'       => $fileData['path'],
-            'sourceType' => 'agent'
+            'agentId' => $agentId, 'path' => $path, 'sourceType' => 'agent'
         ]);
 
-        $existingInventoryId = $existing['analysisResult']['inventoryId'] ?? null;
-
-        $hostname     = $fileData['hostname'] ?? 'unknown';
-        $sensitive    = !empty($fileData['sensitive']);
-        $personalData = $fileData['personalData'] ?? [];
-        $extension    = strtolower(pathinfo($fileData['path'], PATHINFO_EXTENSION));
-
-        // 2. Construir documento del archivo
-        $analysisResult = [
-            'rowCount'   => (int)($fileData['rowCount'] ?? 0),
-            'headers'    => array_keys($personalData),
-            'patterns'   => $personalData,
-            'sensitive'  => $sensitive,
-            'analyzedAt' => date('c'),
-            'analyzedBy' => 'agent',
-            'user'       => $fileData['user'] ?? null,
-        ];
-        if ($existingInventoryId) {
-            $analysisResult['inventoryId'] = $existingInventoryId;
-        }
-
-        $doc = [
-            'userId'         => $userId,
-            'sourceType'     => 'agent',
-            'agentId'        => $agentId,
-            'hostname'       => $hostname,
-            'path'           => $fileData['path'],
-            'originalName'   => basename($fileData['path']),
-            'ext'            => $extension,
-            'size'           => (int)($fileData['size'] ?? 0),
-            'hash'           => $fileData['hash'],
-            'mimeType'       => $fileData['mimeType'] ?? 'application/octet-stream',
-            'status'         => 'analyzed',
-            'user'           => $fileData['user'] ?? null,
-            'analysisResult' => $analysisResult,
-            'createdAt'      => $existing['createdAt'] ?? date('c'),
-            'updatedAt'      => date('c'),
+        $fileDoc = [
+            'userId' => $userId, 'sourceType' => 'agent', 'agentId' => $agentId,
+            'hostname' => $hostname, 'path' => $path,
+            'originalName' => basename($path), 'ext' => $extension,
+            'size' => (int)($fileData['size'] ?? 0), 'hash' => $hash,
+            'status' => 'analyzed',
+            'user' => $fileData['user'] ?? null,
+            'analysisResult' => [
+                'rowCount' => $rowCount, 'headers' => array_keys($personalData),
+                'patterns' => $personalData, 'sensitive' => $sensitive,
+                'analyzedAt' => date('c'), 'analyzedBy' => 'agent',
+            ],
+            'updatedAt' => date('c'),
         ];
 
         if ($existing) {
-            $db->updateOne('compliance_files', ['_id' => $existing['_id']], $doc);
+            $db->updateOne('compliance_files', ['_id' => $existing['_id']], $fileDoc);
             $fileId = $existing['_id'];
-            $inventoryId = $existingInventoryId;
         } else {
-            $inserted = $db->insertOne('compliance_files', $doc);
-            $fileId = $inserted['_id'];
-            $inventoryId = null;
+            $fileDoc['createdAt'] = date('c');
+            $fileId = $db->insertOne('compliance_files', $fileDoc)['_id'];
         }
 
-        // 3. Categorías únicas (de personalData + categories directas)
-        $categories = [];
-        foreach ($personalData as $col => $types) {
-            if (is_array($types)) {
-                $categories = array_merge($categories, $types);
-            } elseif (is_string($types)) {
-                $categories[] = $types;
-            }
-        }
-        if (!empty($fileData['categories']) && is_array($fileData['categories'])) {
-            $categories = array_merge($categories, $fileData['categories']);
-        }
-        $categories = array_values(array_unique(array_filter($categories)));
+        // 2. Categorías
+        $categories = $this->extractCategories($personalData);
 
-        // 4. Inventario (RAT) — INCLUYE agentId, hostname, extension
-        $inventoryData = [
-            'userId'         => $userId,
-            'sourceType'     => 'file',
-            'sourceId'       => $fileId,
-            'agentId'        => $agentId,
-            'hostname'       => $hostname,
-            'path'           => $fileData['path'],
-            'extension'      => $extension,
-            'name'           => '📄 ' . basename($fileData['path']),
-            'dataCategories' => implode(', ', $categories),
-            'records'        => (int)($fileData['rowCount'] ?? 0),
-            'sensitive'      => $sensitive,
-            'legalBasis'     => 'Pendiente de definir',
-            'active'         => true,
-            'storage'        => $hostname,
-            'user'           => $fileData['user'] ?? null,
-            'updatedAt'      => date('c'),
-        ];
+        // 3. Resolver plantilla (motor 3 capas)
+        $resolved = $this->resolveTemplateForFile($userId, $agentId, [
+            'path' => $path, 'hostname' => $hostname, 'extension' => $extension,
+            'categories' => $categories, 'sensitive' => $sensitive,
+        ]);
 
-        if ($inventoryId) {
-            $db->updateOne('compliance_inventory', ['_id' => $inventoryId], $inventoryData);
-        } else {
-            $inventoryData['createdAt'] = date('c');
-            $inv = $db->insertOne('compliance_inventory', $inventoryData);
-            $db->updateOne('compliance_files', ['_id' => $fileId], [
-                'analysisResult.inventoryId' => $inv['_id']
+        $templateId = $resolved['templateId'];
+
+        // 4. Buscar actividad existente (agregación)
+        $activity = null;
+        if ($templateId) {
+            $activity = $db->findOne('compliance_inventory', [
+                'userId' => $userId, 'agentId' => $agentId, 'templateApplied' => $templateId,
             ]);
         }
 
-        // 5. Auditoría de archivos
+        if ($activity) {
+            // AGREGAR
+            $sources = $activity['sources'] ?? [];
+            if (empty($sources) && !empty($activity['path'])) {
+                $sources = [[
+                    'fileId' => $activity['sourceId'] ?? '',
+                    'path' => $activity['path'],
+                    'records' => (int)($activity['records'] ?? 0),
+                    'detectedAt' => $activity['createdAt'] ?? date('c'),
+                ]];
+            }
+
+            $already = false;
+            foreach ($sources as $s) {
+                if (($s['fileId'] ?? '') === (string)$fileId) { $already = true; break; }
+            }
+            if (!$already) {
+                $sources[] = [
+                    'fileId' => (string)$fileId, 'path' => $path,
+                    'records' => $rowCount, 'detectedAt' => date('c'), 'hash' => $hash,
+                ];
+            }
+
+            $existingCats = is_array($activity['dataCategories'] ?? null)
+                ? $activity['dataCategories']
+                : array_filter(array_map('trim', explode(',', (string)($activity['dataCategories'] ?? ''))));
+            $mergedCats = array_values(array_unique(array_filter(array_merge($existingCats, $categories))));
+
+            $exts = $activity['fileExtensions'] ?? [];
+            if (!in_array($extension, $exts)) $exts[] = $extension;
+
+            $db->updateOne('compliance_inventory', ['_id' => $activity['_id']], [
+                'sources' => $sources,
+                'fileCount' => count($sources),
+                'recordCount' => (int)($activity['recordCount'] ?? $activity['records'] ?? 0) + $rowCount,
+                'dataCategories' => implode(', ', $mergedCats),
+                'fileExtensions' => $exts,
+                'sensitive' => !empty($activity['sensitive']) || $sensitive,
+                'lastSeenAt' => date('c'), 'updatedAt' => date('c'),
+            ]);
+
+            $db->updateOne('compliance_files', ['_id' => $fileId], [
+                'analysisResult.inventoryId' => (string)$activity['_id'],
+            ]);
+        } else {
+            // CREAR nueva
+            $defaults = $resolved['defaults'] ?? [];
+
+            $inventoryDoc = array_merge([
+                'userId' => $userId, 'agentId' => $agentId, 'hostname' => $hostname,
+                'path' => $path, 'extension' => $extension,
+                'name' => $resolved['templateName'] ?: ('📄 ' . basename($path)),
+                'sourceType' => 'agent', 'sourceId' => (string)$fileId,
+                'sources' => [[
+                    'fileId' => (string)$fileId, 'path' => $path,
+                    'records' => $rowCount, 'detectedAt' => date('c'), 'hash' => $hash,
+                ]],
+                'fileCount' => 1, 'recordCount' => $rowCount, 'records' => $rowCount,
+                'fileExtensions' => [$extension],
+                'dataCategories' => implode(', ', $categories),
+                'sensitive' => $sensitive, 'active' => true,
+                'storage' => $hostname, 'user' => $fileData['user'] ?? null,
+                'firstSeenAt' => date('c'), 'lastSeenAt' => date('c'),
+                'templateApplied' => $templateId, 'templateName' => $resolved['templateName'],
+                'templateMode' => $resolved['mode'], 'templateAppliedAt' => date('c'),
+                'needsReview' => ($resolved['mode'] !== null),
+                'createdAt' => date('c'), 'updatedAt' => date('c'),
+            ], $defaults);
+
+            $inv = $db->insertOne('compliance_inventory', $inventoryDoc);
+            $db->updateOne('compliance_files', ['_id' => $fileId], [
+                'analysisResult.inventoryId' => (string)$inv['_id'],
+            ]);
+        }
+
+        // 5. Auditoría
         $db->insertOne('file_audit_logs', [
-            'userId'     => $userId,
-            'agentId'    => $agentId,
-            'hostname'   => $hostname,
-            'path'       => $fileData['path'],
-            'user'       => $fileData['user'] ?? null,
-            'detectedAt' => date('c'),
-            'categories' => $categories,
-            'sensitive'  => $sensitive,
-            'rowCount'   => (int)($fileData['rowCount'] ?? 0),
-            'fileType'   => $fileData['fileType'] ?? $extension,
-            'hash'       => $fileData['hash'],
-            'status'     => 'processed',
+            'userId' => $userId, 'agentId' => $agentId, 'hostname' => $hostname,
+            'path' => $path, 'user' => $fileData['user'] ?? null,
+            'detectedAt' => date('c'), 'categories' => $categories,
+            'sensitive' => $sensitive, 'rowCount' => $rowCount,
+            'fileType' => $fileData['fileType'] ?? $extension,
+            'hash' => $hash, 'status' => 'processed',
+            'templateApplied' => $templateId, 'templateMode' => $resolved['mode'],
         ]);
 
-        // 6. Auditoría general
         $db->insertOne('audit_logs', [
-            'userId'  => $userId,
-            'action'  => 'file_detected_by_agent',
+            'userId' => $userId, 'action' => 'file_detected_by_agent',
             'details' => [
-                'agentId'    => $agentId,
-                'path'       => $fileData['path'],
-                'user'       => $fileData['user'] ?? null,
-                'sensitive'  => $sensitive,
-                'categories' => $categories,
+                'agentId' => $agentId, 'path' => $path,
+                'template' => $resolved['templateName'], 'mode' => $resolved['mode'],
+                'sensitive' => $sensitive, 'categories' => $categories,
             ],
             'createdAt' => date('c'),
         ]);
 
         return ['fileId' => $fileId];
     }
+
+
+        // ═══════════════════════════════════════════════════════════════
+    // MOTOR DE RESOLUCIÓN DE PLANTILLA (3 capas + learning)
+    // ═══════════════════════════════════════════════════════════════
+
+    private function resolveTemplateForFile($userId, $agentId, $ctx) {
+        if (!$this->db) return ['defaults' => [], 'mode' => null, 'templateId' => null];
+        $db = $this->db;
+
+        // CAPA 0: Learning cache
+        $parts = preg_split('#[\\\\/]+#', $ctx['path'] ?? '');
+        $topPath = strtolower($parts[1] ?? '');
+        $subPath = strtolower($parts[2] ?? '');
+        $catSig = implode('|', array_map('strtolower', $ctx['categories'] ?? []));
+        $signature = $topPath . '/' . $subPath . '::' . $catSig;
+
+        $learned = $db->findOne('compliance_cluster_learning', [
+            'userId' => $userId, 'agentId' => $agentId, 'signature' => $signature,
+        ]);
+        if ($learned && !empty($learned['templateId'])) {
+            $tpl = $db->findOne('compliance_templates', ['_id' => $learned['templateId'], 'active' => true]);
+            if ($tpl) {
+                $db->updateOne('compliance_cluster_learning', ['_id' => $learned['_id']], [
+                    'hitCount' => ((int)($learned['hitCount'] ?? 0)) + 1,
+                    'lastSeenAt' => date('c'),
+                ]);
+                return [
+                    'defaults' => $tpl['defaults'] ?? [], 'templateId' => (string)$tpl['_id'],
+                    'templateName' => $tpl['name'] ?? '', 'mode' => 'learning',
+                ];
+            }
+        }
+
+        // CAPA 1: Plantillas del agente
+        $agent = $db->findOne('agents', ['agentId' => $agentId, 'userId' => $userId]);
+        $agentTplIds = $agent['templateIds'] ?? [];
+
+        $templates = [];
+        foreach ($agentTplIds as $tid) {
+            $t = $db->findOne('compliance_templates', ['_id' => $tid, 'active' => true]);
+            if ($t) $templates[] = $t;
+        }
+        usort($templates, fn($a, $b) => ($b['priority'] ?? 0) <=> ($a['priority'] ?? 0));
+
+        foreach ($templates as $tpl) {
+            if (!empty($tpl['isFallback'])) continue;
+            if ($this->matchTemplateRulesWs($tpl, $ctx)) {
+                return [
+                    'defaults' => $tpl['defaults'] ?? [], 'templateId' => (string)$tpl['_id'],
+                    'templateName' => $tpl['name'] ?? '', 'mode' => 'agent',
+                ];
+            }
+        }
+        foreach ($templates as $tpl) {
+            if (!empty($tpl['isFallback'])) {
+                return [
+                    'defaults' => $tpl['defaults'] ?? [], 'templateId' => (string)$tpl['_id'],
+                    'templateName' => $tpl['name'] ?? '', 'mode' => 'agent_fallback',
+                ];
+            }
+        }
+
+        // CAPA 2: Plantillas globales
+        $globalTpls = $db->find('compliance_templates', [
+            'userId' => $userId, 'active' => true, 'isGlobal' => true,
+        ]);
+        usort($globalTpls, fn($a, $b) => ($b['priority'] ?? 0) <=> ($a['priority'] ?? 0));
+        foreach ($globalTpls as $tpl) {
+            if ($this->matchTemplateRulesWs($tpl, $ctx)) {
+                return [
+                    'defaults' => $tpl['defaults'] ?? [], 'templateId' => (string)$tpl['_id'],
+                    'templateName' => $tpl['name'] ?? '', 'mode' => 'global',
+                ];
+            }
+        }
+
+        // CAPA 3: Inferencia
+        return [
+            'defaults' => $this->inferDefaults($ctx), 'templateId' => null,
+            'templateName' => 'auto-inferencia', 'mode' => 'inference',
+        ];
+    }
+
+    private function matchTemplateRulesWs($tpl, $ctx) {
+        $rules = $tpl['matchRules'] ?? [];
+        if (empty($rules)) return false;
+        $logic = $tpl['matchLogic'] ?? 'OR';
+        $results = [];
+        foreach ($rules as $r) {
+            $type = $r['type'] ?? ''; $value = $r['value'] ?? ''; $ok = false;
+            if ($type === 'path')          $ok = fnmatch($value, $ctx['path'] ?? '', FNM_CASEFOLD);
+            elseif ($type === 'hostname')  $ok = fnmatch($value, $ctx['hostname'] ?? '', FNM_CASEFOLD);
+            elseif ($type === 'extension') {
+                $exts = array_map('trim', explode(',', strtolower($value)));
+                $ok = in_array(strtolower($ctx['extension'] ?? ''), $exts, true);
+            } elseif ($type === 'category') {
+                $want = array_map('trim', explode(',', strtolower($value)));
+                $have = array_map('strtolower', $ctx['categories'] ?? []);
+                $ok = !empty(array_intersect($want, $have));
+            }
+            $results[] = $ok;
+        }
+        return $logic === 'AND' ? !in_array(false, $results, true) : in_array(true, $results, true);
+    }
+
+    private function extractCategories($personalData) {
+        $cats = [];
+        foreach ($personalData as $col => $types) {
+            if (is_array($types)) $cats = array_merge($cats, $types);
+            elseif (is_string($types)) $cats[] = $types;
+        }
+        return array_values(array_unique(array_filter($cats)));
+    }
+
+    private function inferDefaults($ctx) {
+        $path = strtolower($ctx['path'] ?? '');
+        $cats = array_map('strtolower', $ctx['categories'] ?? []);
+        $sens = !empty($ctx['sensitive']);
+
+        $purpose = null;
+        if (preg_match('/(cliente|crm|venta|factur|invoice|pedido)/', $path))         $purpose = 'gestion_clientes';
+        elseif (preg_match('/(nomina|emplead|rrhh|payroll|personal)/', $path))       $purpose = 'gestion_personal';
+        elseif (preg_match('/(marketing|campaign|newsletter|promo)/', $path))        $purpose = 'marketing';
+        elseif (preg_match('/(paciente|salud|clinic|medic|ficha)/', $path))          $purpose = 'gestion_pacientes';
+        elseif (preg_match('/(contab|balance|libro|financ|tesor)/', $path))          $purpose = 'gestion_financiera';
+        elseif (preg_match('/(proveedor|compra|orden_compra)/', $path))              $purpose = 'gestion_proveedores';
+
+        $subjects = [];
+        if (array_intersect($cats, ['identificacion','contacto','financieros'])) $subjects[] = 'clientes';
+        if (array_intersect($cats, ['laborales','financieros']))                 $subjects[] = 'empleados';
+        if (in_array('salud', $cats, true))                                      $subjects[] = 'pacientes';
+        if (in_array('ninos', $cats, true))                                      $subjects[] = 'ninos';
+        if (empty($subjects)) $subjects = ['publico_general'];
+
+        $risk = 'low';
+        if ($sens) $risk = 'high';
+        if ($sens && in_array('ninos', $cats, true)) $risk = 'critical';
+        if (array_intersect($cats, ['biometricos','geneticos','salud'])) $risk = 'critical';
+
+        $retention = 1825;
+        if (in_array('financieros', $cats, true)) $retention = 2190;
+        if (in_array('salud', $cats, true))       $retention = 3650;
+        if (in_array('ninos', $cats, true))       $retention = 3650;
+
+        return [
+            'purpose' => $purpose, 'subjectCategories' => $subjects, 'risk' => $risk,
+            'retentionDays' => $retention, 'legalBasis' => 'Pendiente de definir',
+            'recipients' => ['no_se_comunica'], 'treatmentFrequency' => 'ocasional',
+            'accessControl' => 'interno_solo',
+            'notes' => 'Auto-generado por inferencia. Requiere revisión del DPO.',
+        ];
+    }
+
+
 
     // ─── HANDLER: FILE_DELETED ─────────────────────────────────────
 

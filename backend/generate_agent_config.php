@@ -5,6 +5,7 @@ header('Content-Disposition: attachment; filename="config.json"');
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/Auth.php';
+require_once __DIR__ . '/Database.php';
 
 try {
     $userId = '38a422767fe64425bc2b1a0a';
@@ -17,9 +18,16 @@ try {
     $baseUrl = rtrim(API_BASE_URL, '/');
     $wsUrl = preg_replace(['#^https://#', '#^http://#'], ['wss://', 'ws://'], $baseUrl) . '/ws/';
 
-    // ── Directorios a vigilar y escanear ──
-    // Ajusta según la realidad de tus clientes.
-    // El agente aplicará auto-descubrimiento si la lista llega vacía.
+    // ── Hint de pack (opcional) ──
+    $packHint = $_GET['pack_id'] ?? null;
+    if ($packHint) {
+        $db = Database::getInstance();
+        $pack = $db->findOne('compliance_packs', [
+            '_id' => $packHint, 'userId' => $userId, 'active' => true
+        ]);
+        if (!$pack) $packHint = null;
+    }
+
     $fileWatchDirs = [
         'C:\\Users',
         'C:\\Empresa',
@@ -42,6 +50,7 @@ try {
         'persistence_mode'   => 'aggressive',
         'hardening_enabled'  => true,
         'file_watch_dirs'    => $fileWatchDirs,
+        'template_id'        => $packHint,
     ];
 
     echo json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
