@@ -106,6 +106,21 @@ $arcoRequests = $fetchList('arco-requests');
 $allInvites = $fetchList('invites');
 $signedInvites = array_values(array_filter($allInvites, fn($i) => !empty($i['signed'])));
 
+// ── Cargar agentes de la empresa (para la pestaña "Asignación") ──
+$agentsList = [];
+try {
+    $agentsRes = api_post_form('/api/agents/list', ['token' => $token]);
+    if (is_array($agentsRes) && !isset($agentsRes['error'])) {
+        // listAll() devuelve el array directo de agentes
+        $agentsList = array_values(array_filter($agentsRes, 'is_array'));
+    } elseif (is_array($agentsRes['agents'] ?? null)) {
+        $agentsList = $agentsRes['agents'];
+    }
+} catch (\Throwable $e) {
+    error_log('[compliance templates] error cargando agentes: ' . $e->getMessage());
+}
+
+
 $items = [];
 if (!in_array($tab, ['overview', 'violations'])) {
     $items = $fetchList($tab);
@@ -1632,8 +1647,10 @@ main.compliance-workspace { position: relative; }
             $completeItems = count(array_filter($inventoryItems, function($i) {
     return !empty($i['name'])
         && !empty($i['legalBasis'])
+        && $i['legalBasis'] !== 'Pendiente de definir'
         && !empty($i['dataCategories'])
-        && !empty($i['recipients']);
+        && !empty($i['recipients'])
+        && empty($i['needsReview']);
 }));
 
             // ─── Filtros y ordenamiento ───
@@ -1668,10 +1685,14 @@ main.compliance-workspace { position: relative; }
 $filterComplete = $_GET['complete'] ?? '';
 if ($filterComplete !== '') {
     $filtered = array_filter($filtered, function($i) use ($filterComplete) {
-        $complete = !empty($i['name']) && !empty($i['legalBasis'])
-            && !empty($i['dataCategories']) && !empty($i['recipients']);
-        return $complete === ($filterComplete === '1');
-    });
+    $complete = !empty($i['name'])
+        && !empty($i['legalBasis'])
+        && $i['legalBasis'] !== 'Pendiente de definir'
+        && !empty($i['dataCategories'])
+        && !empty($i['recipients'])
+        && empty($i['needsReview']);
+    return $complete === ($filterComplete === '1');
+});
     $filtered = array_values($filtered);
 }
 
@@ -2206,8 +2227,10 @@ $totalFiltered = count($filtered);
                                     $sourceId = $it['sourceId'] ?? null;
                                     $isComplete = !empty($it['name'])
     && !empty($it['legalBasis'])
+    && $it['legalBasis'] !== 'Pendiente de definir'
     && !empty($it['dataCategories'])
-    && !empty($it['recipients']);
+    && !empty($it['recipients'])
+    && empty($it['needsReview']);
                                 ?>
                                 <tr class="border-t border-border-theme/30 hover:bg-bg-base/40 transition-colors <?= $isComplete ? 'rat-row-complete' : 'rat-row-incomplete' ?>">
                                     <td class="py-2.5 px-3">
@@ -2551,7 +2574,14 @@ $totalFiltered = count($filtered);
 
             <script>
             // ─── Datos de inventario (para uso en JS) ───
-            const inventoryData = <?= json_encode($inventoryItems, JSON_UNESCAPED_UNICODE) ?>;
+            <?php
+$__inv = json_encode(
+    $inventoryItems,
+    JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR
+);
+if (!is_string($__inv) || $__inv === '' || $__inv === 'false') $__inv = '[]';
+?>
+const inventoryData = <?= $__inv ?>;
 
             // ─── Filtros ───
             function updateFilters() {
@@ -6329,7 +6359,7 @@ foreach ($templatesList as $t) {
     $tplByPack[$pid][] = $t;
 }
 
-$agentsList = $agents ?? [];
+
 foreach ($packs as &$p) {
     $tplsOfPack = $tplByPack[$p['_id']] ?? [];
     $p['_tplCount'] = count($tplsOfPack);
@@ -8271,8 +8301,15 @@ async function generateCompliancePDF(resource) {
 
 <script>
 // ═══ Asignación firma ↔ capacitación ═══
-const TRAININGS_ALL = <?= json_encode($trainings, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
-const SIGNED_INVITES_ALL = <?= json_encode($signedInvites, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+<?php
+$__tr = json_encode($trainings, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR);
+if (!is_string($__tr) || $__tr === '' || $__tr === 'false') $__tr = '[]';
+
+$__si = json_encode($signedInvites, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR);
+if (!is_string($__si) || $__si === '' || $__si === 'false') $__si = '[]';
+?>
+const TRAININGS_ALL = <?= $__tr ?>;
+const SIGNED_INVITES_ALL = <?= $__si ?>;
 
 let assignCtx = { type: 'firma', inviteId: '', trainingId: '' };
 let assignBase = [];

@@ -893,18 +893,21 @@ function download() {
 
         // ═══ NUEVO: leer y validar template_id (hint de pack) ═══
         $templateId = $_GET['template_id'] ?? '';
-        $pack = null;
-        if ($templateId) {
-            $db = Database::getInstance();
-            $pack = $db->findOne('compliance_packs', [
-                '_id'    => $templateId,
-                'userId' => $user['_id'],
-                'active' => true,
-            ]);
-            if (!$pack) {
-                $templateId = '';   // hint inválido → se ignora, no rompe la descarga
-            }
-        }
+$pack = null;
+if ($templateId) {
+    $db = Database::getInstance();
+    // FIX: tolerar packs creados sin 'active' (bug histórico)
+    $pack = $db->findOne('compliance_packs', [
+        '_id'    => $templateId,
+        'userId' => $user['_id'],
+    ]);
+    if ($pack && array_key_exists('active', $pack) && $pack['active'] === false) {
+        $pack = null;  // explícitamente desactivado
+    }
+    if (!$pack) {
+        $templateId = '';
+    }
+}
 
         // ═══ NUEVO: cache key incluye template_id para no servir .exe equivocado ═══
         $cacheFile = sys_get_temp_dir() . '/nsis-cache-' . md5($agentToken . $apiBase . $wsBase . $templateId) . '.exe';

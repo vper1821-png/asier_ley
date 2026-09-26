@@ -738,19 +738,27 @@ function crud() {
         return;
     }
 
-    if ($method === 'POST' && !$id) {
-        $item = $body;
-        unset($item['token']);
-        $item['userId'] = $user['_id'];
-        $item['createdAt'] = date('c');
-        if ($resource === 'invites') {
-            $item['token'] = bin2hex(random_bytes(16));
-            $item['signed'] = false;
-        }
-        $created = $db->insertOne($collection, $item);
-        json_response(['success' => true, $resource => $created]);
-        return;
+if ($method === 'POST' && !$id) {
+    $item = $body;
+    unset($item['token']);
+    $item['userId'] = $user['_id'];
+    $item['createdAt'] = date('c');
+
+    if ($resource === 'invites') {
+        $item['token'] = bin2hex(random_bytes(16));
+        $item['signed'] = false;
     }
+
+    // ✅ FIX: packs y templates siempre nacen activos
+    if (($resource === 'packs' || $resource === 'templates')
+        && !array_key_exists('active', $item)) {
+        $item['active'] = true;
+    }
+
+    $created = $db->insertOne($collection, $item);
+    json_response(['success' => true, $resource => $created]);
+    return;
+}
 
     if ($method === 'PUT' && $id) {
         $filter = ['_id' => $id];
@@ -1790,10 +1798,15 @@ function applyPackToAgents() {
     $reapply  = !empty($body['reapplyExisting']);
     if (!is_array($agentIds) || empty($agentIds)) json_error('agentIds requerido (array)');
 
-    $pack = $db->findOne('compliance_packs', ['_id' => $packId, 'userId' => $user['_id']]);
-    if (!$pack) json_error('pack no encontrado', 404);
+$pack = $db->findOne('compliance_packs', ['_id' => $packId, 'userId' => $user['_id']]);
+if (!$pack || (array_key_exists('active', $pack) && $pack['active'] === false)) {
+    json_error('pack no encontrado', 404);
+}
 
-    $templates = $db->find('compliance_templates', ['packId' => $packId, 'active' => true]);
+$templatesAll = $db->find('compliance_templates', ['packId' => $packId]);
+$templates = array_values(array_filter($templatesAll, function ($t) {
+    return !array_key_exists('active', $t) || $t['active'] !== false;
+}));
     $templateIds = array_map(fn($t) => (string)$t['_id'], $templates);
     if (empty($templateIds)) json_error('el pack no tiene plantillas activas', 400);
 
@@ -1878,7 +1891,10 @@ function previewPackApply() {
     $pack = $db->findOne('compliance_packs', ['_id' => $packId, 'userId' => $user['_id']]);
     if (!$pack) json_error('pack no encontrado', 404);
 
-    $templates = $db->find('compliance_templates', ['packId' => $packId, 'active' => true]);
+    $templatesAll = $db->find('compliance_templates', ['packId' => $packId]);
+$templates = array_values(array_filter($templatesAll, function ($t) {
+    return !array_key_exists('active', $t) || $t['active'] !== false;
+}));
 
     $preview = []; $willChange = 0; $skipped = 0; $byTemplate = [];
 
