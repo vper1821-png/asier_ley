@@ -4311,7 +4311,7 @@ $isDpoOrDpd = in_array($currentRole, ['dpo', 'dpd', 'superadmin'], true) || !emp
 </div>
 <?php endif; ?>
 
-            <?php elseif ($tab === 'processors'): ?> ///////////////////////////////////////////////////////////
+            <?php elseif ($tab === 'processors'): ?> 
             <?php
             $procItems = $fetchList('processors');
             if (!is_array($procItems)) $procItems = [];
@@ -6848,7 +6848,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 
-<?php endif; ?>            
 
 
 
