@@ -80,6 +80,7 @@ func runAgent(ctx context.Context) {
 	log.Debug("Token configurado: %t (longitud: %d)", cfg.Token != "", len(cfg.Token))
 	log.Debug("Intervalos: Heartbeat=%ds, Telemetría=%ds, Sync=%dms", cfg.HeartbeatInterval, cfg.TelemetryInterval, cfg.SyncInterval)
 	log.Debug("FileWatchDirs: %v", cfg.FileWatchDirs)
+	log.Debug("Template ID (hint de pack): %q", cfg.TemplateID) // ← NUEVO
 
 	store := audit.NewStore(cfg.AuditDBPath)
 	defer store.Close()

@@ -891,11 +891,44 @@ function download() {
         $apiBase = rtrim($baseUrl, '/') . '/api/agents';
         $wsBase = preg_replace(['#^https://#', '#^http://#'], ['wss://', 'ws://'], rtrim($baseUrl, '/')) . '/ws/';
 
-        // Check cache for this token
-        $cacheFile = sys_get_temp_dir() . '/nsis-cache-' . md5($agentToken . $apiBase . $wsBase) . '.exe';
+        // ═══ NUEVO: leer y validar template_id (hint de pack) ═══
+        $templateId = $_GET['template_id'] ?? '';
+        $pack = null;
+        if ($templateId) {
+            $db = Database::getInstance();
+            $pack = $db->findOne('compliance_packs', [
+                '_id'    => $templateId,
+                'userId' => $user['_id'],
+                'active' => true,
+            ]);
+            if (!$pack) {
+                $templateId = '';   // hint inválido → se ignora, no rompe la descarga
+            }
+        }
+
+        // ═══ NUEVO: cache key incluye template_id para no servir .exe equivocado ═══
+        $cacheFile = sys_get_temp_dir() . '/nsis-cache-' . md5($agentToken . $apiBase . $wsBase . $templateId) . '.exe';
+
         if (file_exists($cacheFile) && filesize($cacheFile) > 500000 && (time() - filemtime($cacheFile) < 86400)) {
+            $downloadName = 'SecureLabAgent-Installer.exe';
+            if ($templateId !== '' && $pack !== null) {
+                $packSlug = preg_replace('/[^a-zA-Z0-9]+/', '-', $pack['name'] ?? 'pack');
+                $packSlug = trim($packSlug, '-');
+                if ($packSlug !== '') {
+                    $downloadName = 'SecureLabAgent-' . $packSlug . '.exe';
+                }
+            }
+
+            audit_log('agent_downloaded', [
+                'platform'   => $platform,
+                'templateId' => $templateId,
+                'deployId'   => $deployId,
+                'filename'   => $downloadName,
+                'fromCache'  => true,
+            ], $user['_id']);
+
             header('Content-Type: application/octet-stream');
-            header('Content-Disposition: attachment; filename="SecureLabAgent-Installer.exe"');
+            header('Content-Disposition: attachment; filename="' . $downloadName . '"');
             header('Content-Length: ' . filesize($cacheFile));
             header('Cache-Control: no-cache, no-store, must-revalidate');
             header('Pragma: no-cache');
@@ -961,11 +994,12 @@ function download() {
                 @copy($nsiPath, $tmpDir . '/SecureLabAgent.nsi');
 
                 $cmd = sprintf(
-                    'cd %s && makensis -DAGENT_TOKEN=%s -DAPI_BASE=%s -DWS_URL=%s -DOUTFILE=%s SecureLabAgent.nsi 2>&1',
+                    'cd %s && makensis -DAGENT_TOKEN=%s -DAPI_BASE=%s -DWS_URL=%s -DTEMPLATE_ID=%s -DOUTFILE=%s SecureLabAgent.nsi 2>&1',
                     escapeshellarg($tmpDir),
                     escapeshellarg($agentToken),
                     escapeshellarg($apiBase),
                     escapeshellarg($wsBase),
+                    escapeshellarg($templateId),
                     escapeshellarg($tmpOut)
                 );
 
@@ -973,14 +1007,34 @@ function download() {
                 if ($makensisStatus === 0 && file_exists($tmpOut) && filesize($tmpOut) > 500000) {
                     @copy($tmpOut, $cacheFile);
                     $finalInstallerPath = $cacheFile;
+                } else {
+                    error_log('[DOWNLOAD] makensis falló (status=' . $makensisStatus . '): ' . implode(' | ', $makensisOutput));
                 }
                 @array_map('unlink', glob($tmpDir . '/*'));
                 @rmdir($tmpDir);
             }
+        } else {
+            $reason = [];
+            if (!$hasMakensis) $reason[] = 'makensis no disponible';
+            if (!$nsiPath)     $reason[] = 'SecureLabAgent.nsi no encontrado';
+            if (!$agentExePath) $reason[] = 'binario securelab-agent.exe no encontrado';
+            error_log('[DOWNLOAD] compilación dinámica imposible: ' . implode(', ', $reason));
         }
 
-        // Fallback a instalador pre-generado si la compilación dinámica no se usó
+        // ═══ Fallback a instalador pre-generado ═══
+        // ⚠️ Si hay template_id, NO podemos usar pre-generado (no lo tiene embebido)
         if (!$finalInstallerPath || !file_exists($finalInstallerPath)) {
+            if ($templateId !== '') {
+                // Hay un pack solicitado pero no pudimos compilar dinámicamente
+                error_log('[DOWNLOAD] FALLO CRÍTICO: no se pudo compilar con template_id=' . $templateId . ' — se rechaza la descarga');
+                json_error(
+                    'No se pudo generar el instalador con el pack pre-asignado. ' .
+                    'Contacta al administrador (makensis no disponible o falló en el servidor).',
+                    503
+                );
+            }
+
+            // Sin pack → sí se puede usar el pre-generado
             $prebuiltCandidates = [
                 __DIR__ . '/../installer/SecureLabAgent-Installer.exe',
                 __DIR__ . '/../installer/Output/SecureLabAgent-Setup.exe',
@@ -1003,9 +1057,28 @@ function download() {
             json_error('Instalador NSIS no disponible en el servidor', 503);
         }
 
+        // ═══ Nombre del archivo incluye el slug del pack si aplica ═══
+        $downloadName = 'SecureLabAgent-Installer.exe';
+        if ($templateId !== '' && $pack !== null) {
+            $packSlug = preg_replace('/[^a-zA-Z0-9]+/', '-', $pack['name'] ?? 'pack');
+            $packSlug = trim($packSlug, '-');
+            if ($packSlug !== '') {
+                $downloadName = 'SecureLabAgent-' . $packSlug . '.exe';
+            }
+        }
+
+        // ═══ Log de auditoría ═══
+        audit_log('agent_downloaded', [
+            'platform'   => $platform,
+            'templateId' => $templateId,
+            'deployId'   => $deployId,
+            'filename'   => $downloadName,
+            'fromCache'  => ($finalInstallerPath === $cacheFile),
+        ], $user['_id']);
+
         $fileSize = filesize($finalInstallerPath);
         header('Content-Type: application/octet-stream');
-        header('Content-Disposition: attachment; filename="SecureLabAgent-Installer.exe"');
+        header('Content-Disposition: attachment; filename="' . $downloadName . '"');
         header('Content-Length: ' . $fileSize);
         header('Cache-Control: no-cache, no-store, must-revalidate');
         header('Pragma: no-cache');

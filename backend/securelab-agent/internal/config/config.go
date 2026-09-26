@@ -40,6 +40,7 @@ type Config struct {
 	PersistenceMode   string   `json:"persistence_mode"`
 	HardeningEnabled  bool     `json:"hardening_enabled"`
 	Platform          string   `json:"platform"`
+	TemplateID        string   `json:"template_id"` // ← NUEVO: hint de pack
 	PasswordPolicy    struct {
 		MinLength      int  `json:"min_length"`
 		RequireUpper   bool `json:"require_upper"`
@@ -84,6 +85,7 @@ type fileConfig struct {
 	HardeningEnabled     *bool    `json:"hardening_enabled"`
 	HardeningEnabledAlt  *bool    `json:"hardeningEnabled"`
 	Platform             *string  `json:"platform"`
+	TemplateID           *string  `json:"template_id"` // ← NUEVO
 	PasswordPolicy       *struct {
 		MinLength      int  `json:"min_length"`
 		RequireUpper   bool `json:"require_upper"`
@@ -334,6 +336,10 @@ func loadConfigFile(cfg *Config) {
 	}
 	if f.PasswordPolicy != nil && f.PasswordPolicy.MinLength > 0 {
 		cfg.PasswordPolicy = *f.PasswordPolicy
+	}
+	// ← NUEVO: hint de pack (puede ser vacío)
+	if f.TemplateID != nil && *f.TemplateID != "" {
+		cfg.TemplateID = *f.TemplateID
 	}
 }
 

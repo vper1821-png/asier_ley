@@ -12,7 +12,8 @@ import (
 
 	"os/exec"
 	"runtime"
-	"securelab-agent/internal/audit"
+	"securelab-agent/internal/audit" // ← NUEVO
+	"securelab-agent/internal/config"
 	"securelab-agent/internal/logger"
 	"securelab-agent/internal/models"
 	"securelab-agent/internal/queue"
@@ -147,14 +148,31 @@ func (c *Client) sendRegister() error {
 	if len(tokPreview) > 20 {
 		tokPreview = tokPreview[:20] + "..."
 	}
-	c.log.Info("WS: preparando mensaje register (token: %s, agentID: %s)", tokPreview, c.agentID)
+
+	// ← NUEVO: leer hint de pack desde config.json
+	cfg := config.Load()
+	templateHint := ""
+	if cfg != nil {
+		templateHint = cfg.TemplateID
+	}
+
+	c.log.Info("WS: preparando mensaje register (token: %s, agentID: %s, templateHint: %q)",
+		tokPreview, c.agentID, templateHint)
+
+	// Construir payload base
+	payload := map[string]string{
+		"token":   c.token,
+		"agentId": c.agentID,
+	}
+
+	// ← NUEVO: solo añadir template_id si viene del config (evita enviar campo vacío)
+	if templateHint != "" {
+		payload["template_id"] = templateHint
+	}
 
 	msg := map[string]interface{}{
-		"type": "register",
-		"payload": map[string]string{
-			"token":   c.token,
-			"agentId": c.agentID,
-		},
+		"type":    "register",
+		"payload": payload,
 	}
 
 	c.mu.Lock()

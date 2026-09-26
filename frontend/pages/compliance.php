@@ -6381,7 +6381,18 @@ unset($p);
                     </div>
                     <div class="flex items-center gap-2 flex-shrink-0">
                         <span class="text-[10px] text-text-subtle"><?= (int)$p['_tplCount'] ?> plantillas · <?= (int)$p['_agentsCount'] ?> agentes</span>
-                        <button onclick="deletePack('<?= h($p['_id']) ?>', '<?= h(addslashes($p['name'])) ?>')" class="p-1.5 rounded-lg text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-all"><?= cIcon('xmark', 'w-3.5 h-3.5') ?></button>
+                        
+                        <!-- ═══ NUEVO: descargar agente pre-configurado con este pack ═══ -->
+                        <button onclick="downloadAgentWithPack('<?= h($p['_id']) ?>', '<?= h(addslashes($p['name'])) ?>')"
+                                class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold bg-gradient-to-r from-emerald-600 to-teal-600 text-white hover:from-emerald-500 hover:to-teal-500 transition-all"
+                                title="Descargar agente con este pack pre-asignado">
+                            <?= cIcon('fileText', 'w-3 h-3') ?>
+                            Descargar agente
+                        </button>
+                        
+                        <button onclick="deletePack('<?= h($p['_id']) ?>', '<?= h(addslashes($p['name'])) ?>')" class="p-1.5 rounded-lg text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-all" title="Eliminar pack">
+                            <?= cIcon('xmark', 'w-3.5 h-3.5') ?>
+                        </button>
                     </div>
                 </div>
                 <?php if (empty($tplsOfPack)): ?>
@@ -6803,6 +6814,34 @@ document.getElementById('template-create-form-inner')?.addEventListener('submit'
     const data = await res.json();
     if (data.success) location.reload(); else alert(data.error || 'Error');
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// Descargar agente pre-configurado con un pack
+// ═══════════════════════════════════════════════════════════════════
+function downloadAgentWithPack(packId, packName) {
+    // Detectar plataforma del visitante
+    const ua = navigator.userAgent.toLowerCase();
+    let platform = 'win-x64';   // default
+    if (ua.includes('mac')) {
+        platform = ua.includes('arm') ? 'mac-arm64' : 'mac-x64';
+    } else if (ua.includes('linux')) {
+        platform = 'linux-x64';
+    }
+
+    const confirmed = confirm(
+        `¿Descargar el agente pre-configurado con el pack "${packName}"?\n\n` +
+        `Plataforma detectada: ${platform}\n` +
+        `Este instalador incluirá el pack asignado automáticamente.`
+    );
+    if (!confirmed) return;
+
+    const url = '/api-proxy.php?path=' + encodeURIComponent(
+        `/api/agents/download/${platform}?template_id=${packId}`
+    ) + '&token=<?= h($token) ?>';
+
+    // Abrir en nueva pestaña para descargar sin salir
+    window.open(url, '_blank');
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     if (document.getElementById('match-rules-container')) addMatchRuleRow();

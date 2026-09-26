@@ -1,7 +1,7 @@
 ; ==============================================================================
 ; SecureLab Agent Installer - NSIS Script (makensis)
 ; Compilar en Linux / Windows:
-;   makensis -DAGENT_TOKEN="<token>" SecureLabAgent.nsi
+;   makensis -DAGENT_TOKEN="<token>" -DTEMPLATE_ID="<pack_id>" SecureLabAgent.nsi
 ; ==============================================================================
 
 !include "MUI2.nsh"
@@ -12,7 +12,10 @@
 !define PRODUCT_VERSION "2.0.0"
 !define COMPANY_NAME "SecureLab"
 
+; ══════════════════════════════════════════════════════════════════════════
 ; Parámetros configurables en tiempo de compilación
+; Todos tienen default para que makensis no falle si no se pasan
+; ══════════════════════════════════════════════════════════════════════════
 !ifndef AGENT_TOKEN
   !define AGENT_TOKEN ""
 !endif
@@ -33,6 +36,14 @@
   !define OUTFILE "SecureLabAgent-Installer.exe"
 !endif
 
+; ══════════════════════════════════════════════════════════════════════════
+; NUEVO: hint de pack (template_id) — se embebe en config.json
+; Si viene vacío, el agente simplemente no envía hint al registrarse
+; ══════════════════════════════════════════════════════════════════════════
+!ifndef TEMPLATE_ID
+  !define TEMPLATE_ID ""
+!endif
+
 ; Configuración general
 Name "${PRODUCT_NAME}"
 OutFile "${OUTFILE}"
@@ -42,8 +53,6 @@ RequestExecutionLevel admin
 SetCompressor /SOLID zlib
 Unicode true
 BrandingText "SecureLab Agent Installer v${PRODUCT_VERSION}"
-
-; Icono por defecto de NSIS (evita bug de parsing en makensis Linux)
 
 ; Páginas del instalador
 !insertmacro MUI_PAGE_LICENSE "LICENSE.txt"
@@ -74,12 +83,15 @@ Section "SecureLab Agent" SEC01
   CreateDirectory "$ALLUSERSPROFILE\SecureLab Agent\data"
   nsExec::ExecToLog 'icacls "$ALLUSERSPROFILE\SecureLab Agent" /grant "SYSTEM:(OI)(CI)F" /grant "Administrators:(OI)(CI)F" /grant "Users:(OI)(CI)M" /T'
   
-  ; Generar config.json con las rutas correctas y el token
+  ; ══════════════════════════════════════════════════════════════════════════
+  ; Generar config.json con las rutas correctas, token y hint de pack
+  ; ══════════════════════════════════════════════════════════════════════════
   FileOpen $0 "$INSTDIR\config.json" w
   FileWrite $0 '{$\r$\n'
   FileWrite $0 '  "api_base": "${API_BASE}",$\r$\n'
   FileWrite $0 '  "ws_url": "${WS_URL}",$\r$\n'
   FileWrite $0 '  "token": "${AGENT_TOKEN}",$\r$\n'
+  FileWrite $0 '  "template_id": "${TEMPLATE_ID}",$\r$\n'
   FileWrite $0 '  "heartbeat_interval": 5,$\r$\n'
   FileWrite $0 '  "agent_version": "${PRODUCT_VERSION}",$\r$\n'
   FileWrite $0 '  "log_level": "debug",$\r$\n'
