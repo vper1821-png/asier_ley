@@ -182,27 +182,37 @@ function heartbeat() {
     // NUEVO: recoger comandos pendientes para este agente
     // ═══════════════════════════════════════════════════════════════
     $pendingCommandsOut = [];
-    try {
-        $pendingCmds = $db->find('agent_commands', [
-            'agentId'  => $agentId,
-            'executed' => ['$in' => [false, null]],
-        ]);
+try {
+    $staleThreshold = date('c', time() - 30);
 
-        foreach ($pendingCmds as $cmd) {
-            $pendingCommandsOut[] = [
-                'command'   => $cmd['command'] ?? '',
-                'params'    => $cmd['params'] ?? [],
-                'commandId' => (string)($cmd['_id'] ?? ''),
-            ];
-            // Marcar como enviado por heartbeat para no reenviarlo en el próximo
-            $db->updateOne('agent_commands', ['_id' => $cmd['_id']], [
-                'sentViaHeartbeat' => true,
-                'sentViaHeartbeatAt' => date('c'),
-            ]);
-        }
-    } catch (\Throwable $e) {
-        error_log('[heartbeat] error leyendo agent_commands: ' . $e->getMessage());
+    $pendingCmds = $db->find('agent_commands', [
+        'agentId'  => $agentId,
+        'executed' => ['$in' => [false, null]],
+        '$or' => [
+            ['sentAt' => null],
+            ['sentAt' => ['$exists' => false]],
+            ['sentAt' => ['$lt' => $staleThreshold]],
+        ],
+    ]);
+
+    foreach ($pendingCmds as $cmd) {
+        $pendingCommandsOut[] = [
+            'command'   => $cmd['command'] ?? '',
+            'params'    => $cmd['params']  ?? [],
+            'commandId' => (string)($cmd['_id'] ?? ''),
+        ];
+
+        // Marcar como enviado por heartbeat (mismo campo que usa el WS timer)
+        $db->updateOne('agent_commands', ['_id' => $cmd['_id']], [
+            'sentAt'             => date('c'),
+            'sentViaHeartbeat'   => true,
+            'sentViaHeartbeatAt' => date('c'),
+            'sentCount'          => ((int)($cmd['sentCount'] ?? 0)) + 1,
+        ]);
     }
+} catch (\Throwable $e) {
+    error_log('[heartbeat] error leyendo agent_commands: ' . $e->getMessage());
+}
 
     json_response([
         'error' => '',
@@ -1372,7 +1382,7 @@ TMPL, [
 // ═══════════════════════════════════════════════════════════════════════
 
 // GET/POST /api/agents/{id}/scan-state
-// Devuelve qué sabe el backend sobre el escaneo inicial de ese agente.
+// Devuelve el estado del escaneo inicial normalizado.
 function scanState() {
     $user = Auth::requireAuth();
     $db = Database::getInstance();
@@ -1384,13 +1394,17 @@ function scanState() {
     $agent = $db->findOne('agents', ['agentId' => $agentId]);
     if (!$agent) json_error('agente no encontrado', 404);
 
-    $state = $agent['scanState'] ?? [
-        'completed'        => false,
-        'started_at'       => null,
-        'completed_at'     => null,
-        'total_files'      => 0,
-        'sensitive_files'  => 0,
-        'duration_seconds' => 0,
+    // Normalización defensiva: cualquier variante de tipo se convierte a su forma canónica
+    $raw = $agent['scanState'] ?? [];
+    if (!is_array($raw)) $raw = [];
+
+    $state = [
+        'completed'        => filter_var($raw['completed'] ?? false, FILTER_VALIDATE_BOOLEAN),
+        'started_at'       => $raw['started_at']       ?? null,
+        'completed_at'     => $raw['completed_at']     ?? null,
+        'total_files'      => (int)($raw['total_files']      ?? 0),
+        'sensitive_files'  => (int)($raw['sensitive_files']  ?? 0),
+        'duration_seconds' => (int)($raw['duration_seconds'] ?? 0),
     ];
 
     json_response([

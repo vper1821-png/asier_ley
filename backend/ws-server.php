@@ -123,6 +123,10 @@ class AgentWebSocket implements MessageComponentInterface {
                 case 'data_response':
                     $this->handleDataResponse($from, $payload);
                     break;
+                case 'scan_state':
+                    $this->handleScanState($from, $payload);
+                    break; 
+
                 default:
                     echo "⚠️ Tipo de mensaje desconocido: {$type}\n";
                     $from->send(json_encode([
@@ -583,6 +587,59 @@ private function bsonToArray($v) {
         }
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+// FIX: recibir y persistir estado del escaneo inicial
+// ═══════════════════════════════════════════════════════════════════
+private function handleScanState(ConnectionInterface $from, $data)
+{
+    $agentId = $from->agentId ?? ($data['agentId'] ?? '');
+    if (!$agentId || !$this->db) {
+        echo "⚠️ scan_state ignorado: sin agentId o sin BD\n";
+        return;
+    }
+
+    // Normalizar defensivamente: siempre guardar bool/int, nunca string
+    $norm = [
+        'completed'        => $this->toBool($data['completed'] ?? false),
+        'started_at'       => $data['started_at']       ?? null,
+        'completed_at'     => $data['completed_at']     ?? null,
+        'total_files'      => (int)($data['total_files']      ?? 0),
+        'sensitive_files'  => (int)($data['sensitive_files']  ?? 0),
+        'duration_seconds' => (int)($data['duration_seconds'] ?? 0),
+    ];
+
+    try {
+        $this->db->updateOne('agents', ['agentId' => $agentId], [
+            'scanState'   => $norm,
+            'scanStateAt' => date('c'),
+        ]);
+
+        echo "📊 scan_state recibido: {$agentId} "
+           . "completed=" . ($norm['completed'] ? 'true' : 'false')
+           . " total_files={$norm['total_files']}"
+           . " sensitive={$norm['sensitive_files']}"
+           . " source=" . ($data['source'] ?? 'unknown') . "\n";
+
+        $from->send(json_encode([
+            'type' => 'scan_state_ack',
+            'payload' => ['ok' => true, 'ts' => time()],
+        ]));
+    } catch (\Throwable $e) {
+        echo "❌ scan_state ERROR guardando: " . $e->getMessage() . "\n";
+    }
+}
+
+    /** Convierte cualquier valor a booleano real. */
+    private function toBool($v): bool
+    {
+    if (is_bool($v)) return $v;
+    if (is_numeric($v)) return ((int)$v) !== 0;
+    if (is_string($v)) {
+        return in_array(strtolower($v), ['1','true','yes','si','sí','done','completed'], true);
+    }
+    return false;
+    }
+
     // ─── SYNC ──────────────────────────────────────────────────────
 
     private function handleSync(ConnectionInterface $from) {
@@ -683,31 +740,37 @@ private function bsonToArray($v) {
     // ─── COMANDOS PENDIENTES ──────────────────────────────────────
 
     private function sendPendingCommands($agentId) {
-        if (!$this->db) return;
+    if (!$this->db) return;
 
-        $commands = $this->db->find('agent_commands', [
-            'agentId' => $agentId,
-            'executed' => ['$in' => [false, null]],
-        ]);
+    $conn = $this->agentSessions[$agentId] ?? null;
+    if (!$conn) return;
 
-        foreach ($commands as $cmd) {
-            $conn = $this->agentSessions[$agentId] ?? null;
-            if (!$conn) break;
+    $cmds = $this->db->find('agent_commands', [
+        'agentId'  => $agentId,
+        'executed' => ['$in' => [false, null]],
+    ]);
 
-            try {
-                $conn->send(json_encode([
-                    'type' => 'command',
-                    'payload' => [
-                        'command'   => $cmd['command'],
-                        'params'    => $cmd['params'] ?? [],
-                        'commandId' => $cmd['_id'],
-                    ]
-                ]));
-            } catch (\Throwable $e) {
-                echo "⚠️ No se pudo enviar comando a {$agentId}: " . $e->getMessage() . "\n";
-            }
+    foreach ($cmds as $cmd) {
+        try {
+            // Marcar ANTES de enviar
+            $this->db->updateOne('agent_commands', ['_id' => $cmd['_id']], [
+                'sentAt'    => date('c'),
+                'sentCount' => ((int)($cmd['sentCount'] ?? 0)) + 1,
+            ]);
+
+            $conn->send(json_encode([
+                'type' => 'command',
+                'payload' => [
+                    'command'   => $cmd['command'],
+                    'params'    => $cmd['params'] ?? [],
+                    'commandId' => (string)$cmd['_id'],
+                ]
+            ]));
+        } catch (\Throwable $e) {
+            echo "⚠️ No se pudo enviar comando a {$agentId}: " . $e->getMessage() . "\n";
         }
     }
+}
 
     // ═══════════════════════════════════════════════════════════════
     // PROCESAMIENTO DE DETECCIÓN DE ARCHIVO
@@ -1271,38 +1334,60 @@ $server = IoServer::factory(
     3839
 );
 
-// ─── PUSH DIRECTO: Polling MongoDB cada 1s para comandos pendientes ───
+// ─── PUSH DIRECTO: Polling optimizado con marca-atómica ───
+// Reduce el intervalo de 1.0s a 0.3s y marca el comando como enviado
+// ANTES de enviarlo, evitando la race condition de comandos duplicados.
 $agentWsRef = $agentWs;
-$server->loop->addPeriodicTimer(1.0, function () use ($agentWsRef) {
+$server->loop->addPeriodicTimer(0.3, function () use ($agentWsRef) {
     $sessions = $agentWsRef->getAgentSessions();
     if (empty($sessions)) return;
 
     $db = $agentWsRef->getDb();
     if (!$db) return;
 
+    // Umbral de reenvío: si un comando fue marcado como enviado hace
+    // más de 30s y sigue sin ejecutarse, lo reenviamos.
+    // Esto cubre el caso "WS se cayó a mitad del envío".
+    $staleThreshold = date('c', time() - 30);
+
     foreach ($sessions as $agentId => $conn) {
+        // Solo comandos NO enviados aún, o enviados hace >30s
         $cmds = $db->find('agent_commands', [
-            'agentId' => $agentId,
+            'agentId'  => $agentId,
             'executed' => ['$in' => [false, null]],
+            '$or' => [
+                ['sentAt' => null],
+                ['sentAt' => ['$exists' => false]],
+                ['sentAt' => ['$lt' => $staleThreshold]],
+            ],
         ]);
+
         if (empty($cmds)) continue;
 
         $count = 0;
         foreach ($cmds as $cmd) {
-            $count++;
             try {
+                // ── Marcar ANTES de enviar para evitar doble envío ──
+                $db->updateOne('agent_commands', ['_id' => $cmd['_id']], [
+                    'sentAt'    => date('c'),
+                    'sentCount' => ((int)($cmd['sentCount'] ?? 0)) + 1,
+                ]);
+
                 $conn->send(json_encode([
                     'type' => 'command',
                     'payload' => [
                         'command'   => $cmd['command'],
                         'params'    => $cmd['params'] ?? [],
-                        'commandId' => $cmd['_id'],
+                        'commandId' => (string)$cmd['_id'],
                     ]
                 ]));
+
+                $count++;
             } catch (\Throwable $e) {
                 echo "⚠️ No se pudo enviar PUSH a {$agentId}: " . $e->getMessage() . "\n";
             }
         }
+
         if ($count > 0) {
             echo "⚡ PUSH: {$count} comandos a {$agentId}\n";
         }

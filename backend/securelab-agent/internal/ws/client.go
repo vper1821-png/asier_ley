@@ -40,6 +40,9 @@ type Client struct {
 	cancel            context.CancelFunc
 	wg                sync.WaitGroup
 	dbConnectionsChan chan []map[string]interface{}
+	// ─── FIX comandos duplicados ───
+	recentCommands map[string]time.Time
+	recentMu       sync.Mutex
 }
 
 func NewClient(url, token string, log *logger.Logger, q *queue.Queue) *Client {
@@ -55,6 +58,7 @@ func NewClient(url, token string, log *logger.Logger, q *queue.Queue) *Client {
 		ctx:               ctx,
 		cancel:            cancel,
 		dbConnectionsChan: make(chan []map[string]interface{}, 10),
+		recentCommands:    make(map[string]time.Time), // ← FIX
 	}
 }
 
@@ -457,6 +461,29 @@ func (c *Client) SendSync() {
 	c.sendPriority("sync", map[string]interface{}{})
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// FIX: reportar estado del escaneo inicial al backend
+// ═══════════════════════════════════════════════════════════════════
+// SendScanState envía el estado del escaneo inicial (iniciado/completado)
+// al backend vía WebSocket. Es lo que permite que el panel web deje de
+// mostrar "pendiente de escaneo" cuando el agente ya terminó.
+func (c *Client) SendScanState(state map[string]interface{}) {
+	if state == nil {
+		state = make(map[string]interface{})
+	}
+	if _, ok := state["agentId"]; !ok {
+		state["agentId"] = c.agentID
+	}
+	if _, ok := state["ts"]; !ok {
+		state["ts"] = time.Now().Unix()
+	}
+
+	c.log.Info("WS: enviando scan_state (completed=%v, total=%v, source=%v)",
+		state["completed"], state["total_files"], state["source"])
+
+	c.sendPriority("scan_state", state)
+}
+
 func (c *Client) StartSyncLoop(interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	go func() {
@@ -548,6 +575,13 @@ func (c *Client) handleSyncResponse(msg map[string]interface{}) {
 			if command == "" {
 				continue
 			}
+
+			// ─── FIX: misma deduplicación que handleCommand ───
+			if c.isDuplicateCommand(commandId) {
+				c.log.Debug("WS: comando duplicado (sync) ignorado: %s", commandId)
+				continue
+			}
+
 			go c.executeCommandAsync(command, params, commandId)
 		}
 	}
@@ -570,6 +604,12 @@ func (c *Client) handleCommand(msg map[string]interface{}) {
 	command, _ := payload["command"].(string)
 	params, _ := payload["params"].(map[string]interface{})
 	commandId, _ := payload["commandId"].(string)
+
+	// ─── FIX: evitar ejecutar el mismo comando más de una vez ───
+	if c.isDuplicateCommand(commandId) {
+		c.log.Debug("WS: comando duplicado ignorado: %s", commandId)
+		return
+	}
 
 	go c.executeCommandAsync(command, params, commandId)
 }
@@ -825,4 +865,40 @@ func (c *Client) SendFileDeleted(ev audit.FileEvent) {
 		"deletedAt":    time.Now(),
 	}
 	c.send("file_deleted", payload)
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// FIX comandos duplicados: deduplicación por commandId
+// ═══════════════════════════════════════════════════════════════════
+// isDuplicateCommand devuelve true si ese commandId fue procesado en
+// los últimos 5 minutos. Evita que el mismo comando se ejecute varias
+// veces si llega por el WS timer Y por el heartbeat/sync.
+func (c *Client) isDuplicateCommand(commandId string) bool {
+	if commandId == "" {
+		return false // sin ID no podemos deduplicar
+	}
+
+	c.recentMu.Lock()
+	defer c.recentMu.Unlock()
+
+	now := time.Now()
+	if lastSeen, exists := c.recentCommands[commandId]; exists {
+		if now.Sub(lastSeen) < 5*time.Minute {
+			return true
+		}
+	}
+
+	c.recentCommands[commandId] = now
+
+	// Limpieza: si hay demasiadas entradas, borrar las más viejas
+	if len(c.recentCommands) > 500 {
+		cutoff := now.Add(-10 * time.Minute)
+		for id, t := range c.recentCommands {
+			if t.Before(cutoff) {
+				delete(c.recentCommands, id)
+			}
+		}
+	}
+
+	return false
 }

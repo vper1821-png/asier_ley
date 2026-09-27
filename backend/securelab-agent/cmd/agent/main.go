@@ -151,16 +151,47 @@ func runAgent(ctx context.Context) {
 		if store.InitialScanCompleted() {
 			info := store.InitialScanInfo()
 			log.Info("✅ Escaneo inicial ya realizado previamente — NO se re-escanea")
+
+			var totalFiles int64
+			var sensitiveFiles int64
+			var durationSec int64
+			var completedAt string
+			var startedAt string
+
 			if v, ok := info["completed_at"].(string); ok {
+				completedAt = v
 				log.Info("   Completado el: %s", v)
 			}
+			if v, ok := info["started_at"].(string); ok {
+				startedAt = v
+			}
 			if v, ok := info["total_files"].(int64); ok {
+				totalFiles = v
 				log.Info("   Archivos escaneados en su momento: %d", v)
 			}
 			if v, ok := info["sensitive_files"].(int64); ok {
+				sensitiveFiles = v
 				log.Info("   Archivos sensibles detectados: %d", v)
 			}
+			if v, ok := info["duration_seconds"].(int64); ok {
+				durationSec = v
+			}
+
 			log.Info("   → El FileMonitor cubre cambios en tiempo real")
+
+			// ─── FIX: re-enviar estado al backend por si se perdió ───
+			if wsClient != nil {
+				wsClient.SendScanState(map[string]interface{}{
+					"completed":        true,
+					"started_at":       startedAt,
+					"completed_at":     completedAt,
+					"total_files":      totalFiles,
+					"sensitive_files":  sensitiveFiles,
+					"duration_seconds": durationSec,
+					"source":           "already_completed_resend",
+				})
+				log.Info("📊 scan_state reenviado al backend")
+			}
 			return
 		}
 
@@ -168,10 +199,20 @@ func runAgent(ctx context.Context) {
 			log.Warn("No se pudo guardar el estado de inicio: %v", err)
 		}
 
+		scanStartTime := time.Now()
+
+		// ─── FIX: reportar INICIO del escaneo al backend ───
+		if wsClient != nil {
+			wsClient.SendScanState(map[string]interface{}{
+				"completed":  false,
+				"started_at": scanStartTime.UTC().Format(time.RFC3339),
+				"source":     "scan_started",
+			})
+		}
+
 		scanCfg := scanner.DefaultInitialScanConfig()
 		scanCfg.CustomDirs = cfg.FileWatchDirs
 
-		startTime := time.Now()
 		log.Info("🚀 PRIMER escaneo masivo de datos sensibles...")
 		log.Info("   Timeout: %v | MaxFiles: %d | MaxDepth: %d",
 			scanCfg.ScanTimeout, scanCfg.MaxFiles, scanCfg.MaxDepth)
@@ -188,9 +229,23 @@ func runAgent(ctx context.Context) {
 			return
 		}
 
-		duration := int64(time.Since(startTime).Seconds())
+		duration := int64(time.Since(scanStartTime).Seconds())
 		if err := store.MarkInitialScanCompleted(scanned, sensitive, duration); err != nil {
 			log.Error("Error guardando estado de completado: %v", err)
+		}
+
+		// ─── FIX: reportar FIN del escaneo al backend ───
+		if wsClient != nil {
+			wsClient.SendScanState(map[string]interface{}{
+				"completed":        true,
+				"started_at":       scanStartTime.UTC().Format(time.RFC3339),
+				"completed_at":     time.Now().UTC().Format(time.RFC3339),
+				"total_files":      scanned,
+				"sensitive_files":  sensitive,
+				"duration_seconds": duration,
+				"source":           "scan_completed",
+			})
+			log.Info("📊 scan_state enviado al backend (completed=true)")
 		}
 
 		log.Info("=============================================================")
