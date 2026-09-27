@@ -106,12 +106,11 @@ $arcoRequests = $fetchList('arco-requests');
 $allInvites = $fetchList('invites');
 $signedInvites = array_values(array_filter($allInvites, fn($i) => !empty($i['signed'])));
 
-// ── Cargar agentes de la empresa (para la pestaña "Asignación") ──
+// ── FIX C: cargar agentes de la empresa (para "Asignación" de Plantillas) ──
 $agentsList = [];
 try {
     $agentsRes = api_post_form('/api/agents/list', ['token' => $token]);
     if (is_array($agentsRes) && !isset($agentsRes['error'])) {
-        // listAll() devuelve el array directo de agentes
         $agentsList = array_values(array_filter($agentsRes, 'is_array'));
     } elseif (is_array($agentsRes['agents'] ?? null)) {
         $agentsList = $agentsRes['agents'];
@@ -1645,13 +1644,13 @@ main.compliance-workspace { position: relative; }
                 'low' => count(array_filter($inventoryItems, fn($i) => ($i['risk'] ?? '') === 'low' || empty($i['risk']))),
             ];
             $completeItems = count(array_filter($inventoryItems, function($i) {
-    return !empty($i['name'])
-        && !empty($i['legalBasis'])
-        && $i['legalBasis'] !== 'Pendiente de definir'
-        && !empty($i['dataCategories'])
-        && !empty($i['recipients'])
-        && empty($i['needsReview']);
-}));
+                return !empty($i['name'])
+                    && !empty($i['legalBasis'])
+                    && $i['legalBasis'] !== 'Pendiente de definir'
+                    && !empty($i['dataCategories'])
+                    && !empty($i['recipients'])
+                    && empty($i['needsReview']);
+            }));
 
             // ─── Filtros y ordenamiento ───
             $search = $_GET['search'] ?? '';
@@ -1685,14 +1684,14 @@ main.compliance-workspace { position: relative; }
 $filterComplete = $_GET['complete'] ?? '';
 if ($filterComplete !== '') {
     $filtered = array_filter($filtered, function($i) use ($filterComplete) {
-    $complete = !empty($i['name'])
-        && !empty($i['legalBasis'])
-        && $i['legalBasis'] !== 'Pendiente de definir'
-        && !empty($i['dataCategories'])
-        && !empty($i['recipients'])
-        && empty($i['needsReview']);
-    return $complete === ($filterComplete === '1');
-});
+        $complete = !empty($i['name'])
+            && !empty($i['legalBasis'])
+            && $i['legalBasis'] !== 'Pendiente de definir'
+            && !empty($i['dataCategories'])
+            && !empty($i['recipients'])
+            && empty($i['needsReview']);
+        return $complete === ($filterComplete === '1');
+    });
     $filtered = array_values($filtered);
 }
 
@@ -2226,11 +2225,11 @@ $totalFiltered = count($filtered);
                                         : '<svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>';
                                     $sourceId = $it['sourceId'] ?? null;
                                     $isComplete = !empty($it['name'])
-    && !empty($it['legalBasis'])
-    && $it['legalBasis'] !== 'Pendiente de definir'
-    && !empty($it['dataCategories'])
-    && !empty($it['recipients'])
-    && empty($it['needsReview']);
+                                        && !empty($it['legalBasis'])
+                                        && $it['legalBasis'] !== 'Pendiente de definir'
+                                        && !empty($it['dataCategories'])
+                                        && !empty($it['recipients'])
+                                        && empty($it['needsReview']);
                                 ?>
                                 <tr class="border-t border-border-theme/30 hover:bg-bg-base/40 transition-colors <?= $isComplete ? 'rat-row-complete' : 'rat-row-incomplete' ?>">
                                     <td class="py-2.5 px-3">
@@ -2575,13 +2574,13 @@ $totalFiltered = count($filtered);
             <script>
             // ─── Datos de inventario (para uso en JS) ───
             <?php
-$__inv = json_encode(
-    $inventoryItems,
-    JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR
-);
-if (!is_string($__inv) || $__inv === '' || $__inv === 'false') $__inv = '[]';
-?>
-const inventoryData = <?= $__inv ?>;
+            $__inv = json_encode(
+                $inventoryItems,
+                JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR
+            );
+            if (!is_string($__inv) || $__inv === '' || $__inv === 'false') $__inv = '[]';
+            ?>
+            const inventoryData = <?= $__inv ?>;
 
             // ─── Filtros ───
             function updateFilters() {
@@ -2756,9 +2755,15 @@ const inventoryData = <?= $__inv ?>;
 
                 document.getElementById('edit-item-id').value = itemId;
                 document.getElementById('edit-name').value = item.name || '';
-                document.getElementById('edit-code').value = item.code || '';
-                document.getElementById('edit-controllerName').value = item.controllerName || '';
-                document.getElementById('edit-processorName').value = item.processorName || '';
+                document.getElementById('edit-code').value = item.code
+                    || ('RAT-' + String(itemId).substring(0, 6).toUpperCase());
+
+                // FIX C: defaults para controller/processor si vienen vacíos
+                document.getElementById('edit-controllerName').value =
+                    item.controllerName || '<?= h($config['companyName'] ?? '') ?>';
+                document.getElementById('edit-processorName').value =
+                    item.processorName || '<?= h($config['dpdName'] ?? '') ?>';
+
                 document.getElementById('edit-purpose').value = item.purpose || '';
                 document.getElementById('edit-legalBasis').value = item.legalBasis || '';
                 document.getElementById('edit-legitimateInterest').value = item.legitimateInterest || '';
@@ -2774,13 +2779,19 @@ const inventoryData = <?= $__inv ?>;
                 document.getElementById('edit-accessControl').value = item.accessControl || 'interno_solo';
 
                 const tm = item.technicalMeasures;
-                document.getElementById('edit-technicalMeasures').value = Array.isArray(tm) ? tm.join(', ') : (tm || '');
+                document.getElementById('edit-technicalMeasures').value =
+                    (Array.isArray(tm) && tm.length > 0)
+                        ? tm.join(', ')
+                        : (tm || 'cifrado_reposo, acceso_controlado, auditoria_accesos');
 
                 document.getElementById('edit-retentionDays').value = item.retentionDays || '';
                 document.getElementById('edit-risk').value = item.risk || 'low';
                 document.getElementById('edit-sensitive').value = (item.sensitive == 1 || item.sensitive === true) ? '1' : '0';
                 document.getElementById('edit-childrenData').value = (item.childrenData == 1 || item.childrenData === true) ? '1' : '0';
-                document.getElementById('edit-storage').value = item.storage || '';
+                document.getElementById('edit-storage').value =
+                    (item.storage && item.storage !== 'unknown')
+                        ? item.storage
+                        : ((item.hostname && item.hostname !== 'unknown') ? item.hostname : 'equipo-local');
                 document.getElementById('edit-notes').value = item.notes || '';
                 document.getElementById('edit-evidenceUrl').value = item.evidenceUrl || '';
 

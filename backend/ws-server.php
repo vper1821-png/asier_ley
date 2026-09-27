@@ -213,7 +213,7 @@ class AgentWebSocket implements MessageComponentInterface {
                     'status'              => 'online',
                     'lastSeen'            => date('c'),
                     'createdAt'           => date('c'),
-                    'hostname'            => $data['hostname'] ?? $agentId,
+                    'hostname'            => !empty($data['hostname']) ? $data['hostname'] : ($conn->remoteAddress ?? 'equipo-local'),
                     'platform'            => $data['platform'] ?? '',
                     'packId'              => $packId,
                     'templateIds'         => $templateIds,
@@ -679,7 +679,16 @@ class AgentWebSocket implements MessageComponentInterface {
         $hash = $fileData['hash'] ?? '';
         if (!$path || !$hash) throw new \Exception('path y hash requeridos');
 
-        $hostname   = $fileData['hostname'] ?? 'unknown';
+        // ── FIX D: resolver hostname real desde la colección agents ──
+        $hostname = trim((string)($fileData['hostname'] ?? ''));
+        if ($hostname === '' || $hostname === 'unknown' || str_starts_with($hostname, 'AGT-')) {
+            $agent = $db->findOne('agents', ['agentId' => $agentId, 'userId' => $userId]);
+            $hostname = $agent['hostname'] ?? '';
+            if ($hostname === '' || $hostname === 'unknown' || str_starts_with($hostname, 'AGT-')) {
+                $hostname = $fileData['user'] ?? 'equipo-local';
+            }
+        }
+
         $extension  = strtolower(pathinfo($path, PATHINFO_EXTENSION));
         $sensitive  = !empty($fileData['sensitive']);
         $personalData = $fileData['personalData'] ?? [];
@@ -727,8 +736,24 @@ class AgentWebSocket implements MessageComponentInterface {
         // 4. Buscar actividad existente (agregación)
         $activity = null;
         if ($templateId) {
+            // Con plantilla → agrupa por templateId
             $activity = $db->findOne('compliance_inventory', [
                 'userId' => $userId, 'agentId' => $agentId, 'templateApplied' => $templateId,
+            ]);
+        } else {
+            // Sin plantilla → agrupa por carpeta padre
+            $parentDir = dirname($path);
+            $folderName = basename($parentDir);
+            if (in_array(strtolower($folderName), ['desktop', 'documents', 'downloads', 'users', 'public'], true)) {
+                $folderName = 'Archivos ' . ucfirst(strtolower($folderName));
+            }
+            $friendlyName = '📁 ' . $folderName;
+
+            $activity = $db->findOne('compliance_inventory', [
+                'userId' => $userId,
+                'agentId' => $agentId,
+                'name' => $friendlyName,
+                'templateApplied' => null,
             ]);
         }
 
@@ -777,13 +802,42 @@ class AgentWebSocket implements MessageComponentInterface {
                 'analysisResult.inventoryId' => (string)$activity['_id'],
             ]);
         } else {
-            // CREAR nueva
+            // CREAR nueva actividad
             $defaults = $resolved['defaults'] ?? [];
+
+            // ── FIX A: nombre descriptivo ──
+            $fileName = basename($path);
+            $isRealTemplate = !empty($resolved['templateName'])
+                           && $resolved['templateName'] !== 'auto-inferencia';
+
+            if (!$isRealTemplate) {
+                $parentDir = dirname($path);
+                $folderName = basename($parentDir);
+                if (in_array(strtolower($folderName), ['desktop', 'documents', 'downloads', 'users', 'public'], true)) {
+                    $folderName = 'Archivos ' . ucfirst(strtolower($folderName));
+                }
+                $friendlyName = '📁 ' . $folderName;
+            } else {
+                $friendlyName = '📄 ' . $fileName;
+            }
+
+            // Código único RAT
+            $autoCode = 'RAT-' . strtoupper(substr(md5($path . $agentId), 0, 6));
+
+            // Config del usuario para defaults
+            $userConfig  = $db->findOne('compliance_config', ['userId' => $userId]) ?? [];
+            $companyName = $userConfig['companyName'] ?? '';
+            $dpdName     = $userConfig['dpdName'] ?? '';
 
             $inventoryDoc = array_merge([
                 'userId' => $userId, 'agentId' => $agentId, 'hostname' => $hostname,
                 'path' => $path, 'extension' => $extension,
-                'name' => $resolved['templateName'] ?: ('📄 ' . basename($path)),
+                'name' => $friendlyName,
+                'code' => $autoCode,
+                'controllerName' => $companyName,
+                'processorName' => $dpdName,
+                'storage' => $hostname !== 'unknown' ? $hostname : ($fileData['user'] ?? 'equipo-local'),
+                'technicalMeasures' => ['cifrado_reposo', 'acceso_controlado', 'auditoria_accesos'],
                 'sourceType' => 'agent', 'sourceId' => (string)$fileId,
                 'sources' => [[
                     'fileId' => (string)$fileId, 'path' => $path,
@@ -793,7 +847,7 @@ class AgentWebSocket implements MessageComponentInterface {
                 'fileExtensions' => [$extension],
                 'dataCategories' => implode(', ', $categories),
                 'sensitive' => $sensitive, 'active' => true,
-                'storage' => $hostname, 'user' => $fileData['user'] ?? null,
+                'user' => $fileData['user'] ?? null,
                 'firstSeenAt' => date('c'), 'lastSeenAt' => date('c'),
                 'templateApplied' => $templateId, 'templateName' => $resolved['templateName'],
                 'templateMode' => $resolved['mode'], 'templateAppliedAt' => date('c'),
