@@ -16,19 +16,42 @@ if (!defined('API_BASE_URL')) define('API_BASE_URL', getenv('API_BASE_URL') ?: '
 // ─── Función auxiliar para obtener userIds de la empresa ───
 function getCompanyUserIds($user, $db) {
     $isSuperAdmin = !empty($user['isAdmin']) || ($user['role'] ?? '') === 'superadmin';
-    if ($isSuperAdmin) {
-        return null;
-    }
+    if ($isSuperAdmin) return null;
+
     $userRecord = $db->findOne('users', ['_id' => $user['_id']]);
-    if (!$userRecord) {
-        json_error('Usuario no encontrado');
-    }
+    if (!$userRecord) json_error('Usuario no encontrado');
+
+    // ✅ SIEMPRE incluir el userId actual, y luego sumar los de la empresa
+    $userIds = [(string)$user['_id']];
+
     $companyId = $userRecord['companyId'] ?? $user['_id'];
+
+    // Trae usuarios por companyId
     $users = $db->find('users', ['companyId' => $companyId]);
-    $userIds = array_map('strval', array_column($users, '_id'));
-    if (empty($userIds)) {
-        $userIds = [(string)$user['_id']];
+    foreach ($users as $u) {
+        $uid = (string)($u['_id'] ?? '');
+        if ($uid !== '' && !in_array($uid, $userIds, true)) {
+            $userIds[] = $uid;
+        }
     }
+
+    // ✅ ADEMÁS: si esta empresa tiene agentes con OTROS userIds, incluirlos también
+    // (cubre el caso de agentes heredados de una cuenta anterior)
+    $agents = $db->find('agents', ['userId' => ['$in' => $userIds]]);
+    $agentIds = array_filter(array_column($agents, 'agentId'));
+    if (!empty($agentIds)) {
+        // Recolecta cualquier userId que haya creado items vía estos agentes
+        foreach (['compliance_inventory', 'compliance_files', 'file_audit_logs'] as $col) {
+            $others = $db->find($col, ['agentId' => ['$in' => $agentIds]], ['limit' => 5000]);
+            foreach ($others as $it) {
+                $uid = (string)($it['userId'] ?? '');
+                if ($uid !== '' && !in_array($uid, $userIds, true)) {
+                    $userIds[] = $uid;
+                }
+            }
+        }
+    }
+
     return $userIds;
 }
 
