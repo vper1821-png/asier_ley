@@ -2378,7 +2378,8 @@ $totalFiltered = count($filtered);
 
                     <div class="flex-1 overflow-y-auto p-6 scrollbar-custom">
                         <form id="inventory-edit-form" class="space-y-4">
-                            
+                            <input type="hidden" name="item_id" id="edit-item-id">
+
                                                     <!-- ═══ SECCIÓN 0: Archivos agrupados en esta actividad ═══ -->
                             <div id="edit-sources-section" class="rounded-lg border border-cyan-500/25 bg-cyan-500/[0.03] p-4 mb-2">
                                 <div class="flex items-center justify-between mb-3">
@@ -2763,9 +2764,18 @@ $totalFiltered = count($filtered);
             // ─── Modal: Edición (completo) ───
             function openInventoryEditModal(itemId) {
                 const item = inventoryData.find(i => i._id === itemId);
-                if (!item) return;
+                if (!item) {
+                    alert('No se encontró el registro (id: ' + itemId + ')');
+                    return;
+                }
 
-                document.getElementById('edit-item-id').value = itemId;
+                // Helper: set seguro (no crashea si el elemento no existe)
+                const setVal = (id, value) => {
+                    const el = document.getElementById(id);
+                    if (el) el.value = value;
+                };
+
+                setVal('edit-item-id', itemId);
                                 // ═══ Renderizar los archivos agrupados ═══
                 const sourcesList = document.getElementById('edit-sources-list');
                 const sourcesCount = document.getElementById('edit-sources-count');
@@ -2842,7 +2852,8 @@ $totalFiltered = count($filtered);
                 document.getElementById('edit-evidenceUrl').value = item.evidenceUrl || '';
 
                 // ✅ Destinatarios (Art. 14.1.d) — ahora con checkboxes
-const recipients = Array.isArray(item.recipients) ? item.recipients : [];
+
+                const recipients = Array.isArray(item.recipients) ? item.recipients : [];
 document.querySelectorAll('#edit-recipients input[name="recipients"]').forEach(cb => {
     cb.checked = recipients.includes(cb.value);
 });
