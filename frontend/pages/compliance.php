@@ -6497,25 +6497,62 @@ unset($p);
                     <p class="text-[10px] text-text-subtle italic">Sin plantillas.</p>
                 <?php else: ?>
                     <div class="space-y-1.5">
-                        <?php foreach ($tplsOfPack as $tpl): ?>
-                        <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-bg-base/40 border border-border-theme/30">
-                            <span class="w-1.5 h-1.5 rounded-full bg-accent"></span>
-                            <span class="text-[11px] font-medium text-text-heading flex-1 min-w-0 truncate"><?= h($tpl['name'] ?? '') ?></span>
-                            <span class="text-[9px] text-text-subtle font-mono truncate max-w-[180px]">
-                                <?php
-                                $rules = $tpl['matchRules'] ?? [];
-                                $summary = [];
-                                foreach (array_slice($rules, 0, 2) as $r) $summary[] = ($r['type'] ?? '?') . ':' . ($r['value'] ?? '');
-                                echo h(implode(' · ', $summary));
-                                if (count($rules) > 2) echo ' +' . (count($rules) - 2);
-                                ?>
-                            </span>
-                            <?php if (!empty($tpl['isFallback'])): ?>
-                                <span class="text-[8px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/20">fallback</span>
-                            <?php endif; ?>
-                            <button onclick="deleteTemplate('<?= h($tpl['_id']) ?>', '<?= h(addslashes($tpl['name'])) ?>')" class="p-1 rounded text-text-muted hover:text-red-400 transition-all"><?= cIcon('xmark', 'w-3 h-3') ?></button>
-                        </div>
-                        <?php endforeach; ?>
+                        <?php foreach ($tplsOfPack as $tpl):
+    $tplDefaults = $tpl['defaults'] ?? [];
+    $hasPurpose    = !empty($tplDefaults['purpose']);
+    $hasLegalBasis = !empty($tplDefaults['legalBasis']);
+    $missing = [];
+    if (!$hasPurpose)    $missing[] = 'finalidad';
+    if (!$hasLegalBasis) $missing[] = 'base legal';
+?>
+<div class="px-3 py-2 rounded-lg bg-bg-base/40 border <?= !empty($missing) ? 'border-amber-500/30' : 'border-border-theme/30' ?>">
+    <div class="flex items-center gap-2">
+        <span class="w-1.5 h-1.5 rounded-full flex-shrink-0 <?= !empty($missing) ? 'bg-amber-400' : 'bg-accent' ?>"></span>
+        <span class="text-[11px] font-medium text-text-heading truncate flex-shrink-0 max-w-[200px]"><?= h($tpl['name'] ?? '') ?></span>
+        <?php if (!empty($missing)): ?>
+            <span class="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/20 whitespace-nowrap" title="Falta: <?= h(implode(', ', $missing)) ?>">
+                ⚠ Falta <?= h(implode(' + ', $missing)) ?>
+            </span>
+        <?php else: ?>
+            <span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 whitespace-nowrap">✓ Completa</span>
+        <?php endif; ?>
+        <?php if (!empty($tpl['isFallback'])): ?>
+            <span class="text-[8px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/20">fallback</span>
+        <?php endif; ?>
+        <span class="flex-1"></span>
+        <button type="button" onclick='openTemplateEditor(<?= json_encode($tpl, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>)'
+                class="p-1 rounded text-cyan-400 hover:bg-cyan-500/10 transition-all flex-shrink-0"
+                title="Editar plantilla">
+            <?= cIcon('pen', 'w-3.5 h-3.5') ?>
+        </button>
+        <button type="button" onclick="deleteTemplate('<?= h($tpl['_id']) ?>', '<?= h(addslashes($tpl['name'])) ?>')"
+                class="p-1 rounded text-text-muted hover:text-red-400 transition-all flex-shrink-0"><?= cIcon('xmark', 'w-3 h-3') ?></button>
+    </div>
+    <div class="flex items-center gap-2 mt-0.5 text-[9px] text-text-subtle pl-3.5">
+        <?php if ($hasPurpose): ?>
+            <span><b class="text-text-muted">Finalidad:</b> <?= h($tplDefaults['purpose']) ?></span>
+        <?php else: ?>
+            <span class="text-amber-400"><b>Finalidad:</b> ⚠ sin definir</span>
+        <?php endif; ?>
+        <span class="text-text-subtle">·</span>
+        <?php if ($hasLegalBasis): ?>
+            <span><b class="text-text-muted">Base:</b> <?= h($tplDefaults['legalBasis']) ?></span>
+        <?php else: ?>
+            <span class="text-amber-400"><b>Base:</b> ⚠ sin definir</span>
+        <?php endif; ?>
+        <?php if (!empty($tpl['matchRules'])): ?>
+            <span class="text-text-subtle">·</span>
+            <span class="font-mono"><?php
+                $rules = $tpl['matchRules'];
+                $summary = [];
+                foreach (array_slice($rules, 0, 2) as $r) $summary[] = ($r['type'] ?? '?') . ':' . ($r['value'] ?? '');
+                echo h(implode(' · ', $summary));
+                if (count($rules) > 2) echo ' +' . (count($rules) - 2);
+            ?></span>
+        <?php endif; ?>
+    </div>
+</div>
+<?php endforeach; ?>
                     </div>
                 <?php endif; ?>
             </div>
@@ -6642,81 +6679,239 @@ unset($p);
     </form>
 </div>
 
-<!-- DRAWER: Crear Plantilla -->
+<!-- DRAWER: Crear Plantilla (redirige al editor) -->
 <div id="template-create-form" class="hidden rounded-xl border border-border-theme bg-bg-panel/60 p-5">
-    <h3 class="text-[14px] font-semibold text-white mb-4">Nueva Plantilla</h3>
-    <form id="template-create-form-inner" class="space-y-4">
-        <div class="compliance-form-row">
-            <div class="compliance-form-cell">
-                <label class="compliance-form-label">Pack <span class="required">*</span></label>
-                <select name="packId" required class="compliance-select">
-                    <option value="">Seleccionar pack</option>
-                    <?php foreach ($packs as $p): ?>
-                        <option value="<?= h($p['_id']) ?>"><?= h($p['name']) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <div class="compliance-form-cell">
-                <label class="compliance-form-label">Nombre <span class="required">*</span></label>
-                <input type="text" name="name" required class="compliance-input" placeholder="Ej: Nómina mensual">
-            </div>
-        </div>
-        <div class="compliance-form-cell">
-            <label class="compliance-form-label">Descripción</label>
-            <input type="text" name="description" class="compliance-input">
-        </div>
-
-        <fieldset class="compliance-fieldset">
-            <legend class="compliance-fieldset-legend">Match Rules</legend>
-            <div id="match-rules-container" class="space-y-2 mb-3"></div>
-            <button type="button" onclick="addMatchRuleRow()" class="text-[11px] text-accent hover:text-primary-300 font-medium">+ Añadir regla</button>
-        </fieldset>
-
-        <fieldset class="compliance-fieldset">
-            <legend class="compliance-fieldset-legend">Defaults (auto-llenado)</legend>
-            <div class="compliance-form-row">
-                <div class="compliance-form-cell">
-                    <label class="compliance-form-label">Finalidad</label>
-                    <input type="text" name="defaults[purpose]" class="compliance-input" placeholder="gestion_personal">
-                </div>
-                <div class="compliance-form-cell">
-                    <label class="compliance-form-label">Base de licitud</label>
-                    <select name="defaults[legalBasis]" class="compliance-select">
-                        <option value="">—</option>
-                        <option value="consentimiento">Consentimiento</option>
-                        <option value="ejecucion_contrato">Ejecución de contrato</option>
-                        <option value="obligacion_legal">Obligación legal</option>
-                        <option value="interes_legitimo">Interés legítimo</option>
-                    </select>
-                </div>
-            </div>
-            <div class="compliance-form-row mt-3">
-                <div class="compliance-form-cell">
-                    <label class="compliance-form-label">Riesgo</label>
-                    <select name="defaults[risk]" class="compliance-select">
-                        <option value="low">Bajo</option>
-                        <option value="medium">Medio</option>
-                        <option value="high">Alto</option>
-                        <option value="critical">Crítico</option>
-                    </select>
-                </div>
-                <div class="compliance-form-cell">
-                    <label class="compliance-form-label">Retención (días)</label>
-                    <input type="number" name="defaults[retentionDays]" class="compliance-input" placeholder="1825">
-                </div>
-            </div>
-        </fieldset>
-
-        <div class="flex justify-end gap-2 pt-3 border-t border-border-theme">
-            <button type="button" onclick="cpClosePanel('template-create-form')" class="px-4 py-2 rounded-lg text-[11px] bg-bg-elevated text-text-body border border-border-theme">Cancelar</button>
-            <button type="submit" class="px-4 py-2 rounded-lg text-[11px] font-semibold bg-gradient-to-r from-emerald-600 to-teal-600 text-white">Crear Plantilla</button>
-        </div>
-    </form>
+    <div class="text-center py-6">
+        <p class="text-[12px] text-text-muted mb-3">Para crear una plantilla completa (con finalidad, base legal y reglas de matcheo), usa el editor.</p>
+        <button type="button" onclick="openTemplateEditor({})" class="px-4 py-2 rounded-lg text-[11px] font-semibold bg-gradient-to-r from-emerald-600 to-teal-600 text-white">
+            Abrir editor de plantillas
+        </button>
+    </div>
 </div>
 
 <script>
+// ═══════════════════════════════════════════════════════════════════
+// CONSTANTES GLOBALES DEL MÓDULO DE PLANTILLAS
+// ═══════════════════════════════════════════════════════════════════
+const SL_TOKEN = '<?= h($token) ?>';
+
 const AGENTS_ALL_TPL = <?= json_encode($agentsList, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
-const PACKS_ALL_TPL = <?= json_encode($packs, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+const PACKS_ALL_TPL  = <?= json_encode($packs,      JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+
+// Fallback defensivo: si escHtml() ya está definido en otro <script>, lo respetamos.
+// Si no, lo definimos aquí para que openTemplateEditor() nunca explote.
+if (typeof window.escHtml !== 'function') {
+    window.escHtml = function (str) {
+        return String(str == null ? '' : str).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EDITOR DE PLANTILLAS
+// ═══════════════════════════════════════════════════════════════════
+function openTemplateEditor(tpl) {
+    tpl = tpl || {};
+    document.getElementById('template-editor-title').textContent = tpl._id
+        ? 'Editar: ' + (tpl.name || 'plantilla')
+        : 'Nueva plantilla';
+
+    document.getElementById('tpl-editor-id').value = tpl._id || '';
+    document.getElementById('tpl-editor-name').value = tpl.name || '';
+    document.getElementById('tpl-editor-description').value = tpl.description || '';
+    document.getElementById('tpl-editor-priority').value = tpl.priority ?? 100;
+    document.getElementById('tpl-editor-matchLogic').value = tpl.matchLogic || 'OR';
+    document.getElementById('tpl-editor-active').checked = tpl.active !== false;
+    document.getElementById('tpl-editor-isFallback').checked = !!tpl.isFallback;
+    document.getElementById('tpl-editor-isGlobal').checked = !!tpl.isGlobal;
+    document.getElementById('tpl-editor-delete-btn').classList.toggle('hidden', !tpl._id);
+
+    // Pack selector
+    const packSel = document.getElementById('tpl-editor-pack');
+    packSel.innerHTML = '<option value="">— Sin pack —</option>' +
+        (PACKS_ALL_TPL || []).map(p =>
+            '<option value="' + p._id + '">' + escHtml(p.name) + '</option>'
+        ).join('');
+    packSel.value = tpl.packId || '';
+
+    // Defaults
+    const d = tpl.defaults || {};
+    document.getElementById('tpl-editor-purpose').value = d.purpose || '';
+    document.getElementById('tpl-editor-legalBasis').value = d.legalBasis || '';
+    document.getElementById('tpl-editor-risk').value = d.risk || '';
+    document.getElementById('tpl-editor-retentionDays').value = d.retentionDays ?? '';
+    document.getElementById('tpl-editor-dataCategories').value =
+        Array.isArray(d.dataCategories) ? d.dataCategories.join(', ') : (d.dataCategories || '');
+    document.getElementById('tpl-editor-subjectCategories').value =
+        Array.isArray(d.subjectCategories) ? d.subjectCategories.join(', ') : (d.subjectCategories || '');
+    document.getElementById('tpl-editor-treatmentFrequency').value = d.treatmentFrequency || '';
+    document.getElementById('tpl-editor-notes').value = d.notes || '';
+
+    const recipients = Array.isArray(d.recipients) ? d.recipients : [];
+    document.querySelectorAll('#tpl-editor-recipients input[type="checkbox"]').forEach(cb => {
+        cb.checked = recipients.includes(cb.value);
+    });
+
+    // Match rules
+    const rules = tpl.matchRules || [];
+    const rulesC = document.getElementById('tpl-editor-rules');
+    rulesC.innerHTML = '';
+    if (rules.length === 0) tplEditorAddRule();
+    else rules.forEach(r => tplEditorAddRule(r.type, r.value));
+
+    updateTplEditorWarnings();
+    document.getElementById('tpl-editor-error').classList.add('hidden');
+    const modal = document.getElementById('template-editor-modal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+
+function closeTemplateEditor() {
+    const modal = document.getElementById('template-editor-modal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+}
+
+function tplEditorAddRule(type, value) {
+    type = type || 'path';
+    value = value || '';
+    const c = document.getElementById('tpl-editor-rules');
+    const row = document.createElement('div');
+    row.className = 'flex items-center gap-2 tpl-editor-rule-row';
+    row.innerHTML =
+        '<select class="compliance-select rule-type" style="max-width:140px">' +
+            '<option value="path">Path</option>' +
+            '<option value="hostname">Hostname</option>' +
+            '<option value="extension">Extensión</option>' +
+            '<option value="category">Categoría</option>' +
+        '</select>' +
+        '<input type="text" class="compliance-input rule-value flex-1" placeholder="*/Nominas/*" value="' + escHtml(value) + '">' +
+        '<button type="button" onclick="this.closest(\'.tpl-editor-rule-row\').remove(); updateTplEditorWarnings();" class="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10">✕</button>';
+    row.querySelector('.rule-type').value = type;
+    c.appendChild(row);
+}
+
+function updateTplEditorWarnings() {
+    const purpose    = document.getElementById('tpl-editor-purpose').value;
+    const legalBasis = document.getElementById('tpl-editor-legalBasis').value;
+    const missing = [];
+    if (!purpose)    missing.push('finalidad');
+    if (!legalBasis) missing.push('base legal');
+    const w = document.getElementById('tpl-editor-missing-warning');
+    if (missing.length) {
+        w.textContent = '⚠ Falta: ' + missing.join(' + ');
+        w.className = 'text-[9px] font-normal text-amber-400';
+    } else {
+        w.textContent = '✓ Completa';
+        w.className = 'text-[9px] font-normal text-emerald-400';
+    }
+}
+
+async function saveTemplateEditor() {
+    const id = document.getElementById('tpl-editor-id').value;
+    const packId = document.getElementById('tpl-editor-pack').value;
+    const name = document.getElementById('tpl-editor-name').value.trim();
+    const errorEl = document.getElementById('tpl-editor-error');
+    errorEl.classList.add('hidden');
+
+    if (!name) {
+        errorEl.textContent = 'El nombre es obligatorio.';
+        errorEl.classList.remove('hidden');
+        return;
+    }
+
+    const purpose = document.getElementById('tpl-editor-purpose').value;
+    const legalBasis = document.getElementById('tpl-editor-legalBasis').value;
+    if (!purpose || !legalBasis) {
+        if (!confirm('Faltan finalidad o base legal. Los ítems generados por esta plantilla quedarán como "Incompleto". ¿Guardar igualmente?')) return;
+    }
+
+    const matchRules = [];
+    document.querySelectorAll('#tpl-editor-rules .tpl-editor-rule-row').forEach(row => {
+        const type = row.querySelector('.rule-type').value;
+        const value = row.querySelector('.rule-value').value.trim();
+        if (value) matchRules.push({ type: type, value: value });
+    });
+
+    const recipients = [];
+    document.querySelectorAll('#tpl-editor-recipients input:checked').forEach(cb => recipients.push(cb.value));
+
+    const splitList = s => String(s || '').split(',').map(x => x.trim()).filter(Boolean);
+
+    const defaults = {
+        purpose: purpose || '',
+        legalBasis: legalBasis || '',
+        risk: document.getElementById('tpl-editor-risk').value || '',
+        retentionDays: parseInt(document.getElementById('tpl-editor-retentionDays').value) || null,
+        dataCategories: splitList(document.getElementById('tpl-editor-dataCategories').value),
+        subjectCategories: splitList(document.getElementById('tpl-editor-subjectCategories').value),
+        recipients: recipients,
+        treatmentFrequency: document.getElementById('tpl-editor-treatmentFrequency').value || '',
+        notes: document.getElementById('tpl-editor-notes').value || '',
+    };
+
+    const payload = {
+        token: SL_TOKEN,
+        name: name,
+        description: document.getElementById('tpl-editor-description').value,
+        packId: packId || null,
+        defaults: defaults,
+        matchRules: matchRules,
+        matchLogic: document.getElementById('tpl-editor-matchLogic').value,
+        priority: parseInt(document.getElementById('tpl-editor-priority').value) || 100,
+        active: document.getElementById('tpl-editor-active').checked,
+        isFallback: document.getElementById('tpl-editor-isFallback').checked,
+        isGlobal: document.getElementById('tpl-editor-isGlobal').checked,
+    };
+
+    const btn = document.getElementById('tpl-editor-save-btn');
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Guardando...';
+
+    try {
+        const path = id
+            ? '/api/compliance/templates/' + encodeURIComponent(id)
+            : '/api/compliance/templates';
+        const method = id ? 'PUT' : 'POST';
+        const res = await fetch('/api-proxy.php?path=' + encodeURIComponent(path), {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+            closeTemplateEditor();
+            location.reload();
+        } else {
+            errorEl.textContent = data.error || 'Error al guardar.';
+            errorEl.classList.remove('hidden');
+        }
+    } catch (e) {
+        errorEl.textContent = 'Error de conexión: ' + e.message;
+        errorEl.classList.remove('hidden');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+    }
+}
+
+async function deleteTemplateFromEditor() {
+    const id = document.getElementById('tpl-editor-id').value;
+    if (!id) return;
+    if (!confirm('¿Eliminar esta plantilla? Los ítems ya generados conservarán sus datos.')) return;
+    closeTemplateEditor();
+    deleteTemplate(id, '');
+}
+
+document.addEventListener('click', function (e) {
+    if (e.target.id === 'template-editor-modal') closeTemplateEditor();
+});
+
+document.getElementById('tpl-editor-purpose')?.addEventListener('change', updateTplEditorWarnings);
+document.getElementById('tpl-editor-legalBasis')?.addEventListener('change', updateTplEditorWarnings);
+
 
 function switchTplTab(tab) {
     ['packs', 'assign', 'cluster'].forEach(t => {
@@ -6766,13 +6961,25 @@ async function confirmPackApply() {
     const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/compliance/packs/' + packId + '/apply-to-agents'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agentIds, reapplyExisting: reapply, token: '<?= h($token) ?>' })
+        body: JSON.stringify({ agentIds: agentIds, reapplyExisting: reapply, token: SL_TOKEN })
     });
     const data = await res.json();
-    if (data.success) {
-        alert(`Pack aplicado a ${data.assigned} agentes. ${data.reapplied} items actualizados.`);
-        location.reload();
-    } else alert(data.error || 'Error');
+    if (!data.success) { alert(data.error || 'Error'); return; }
+
+    let msg = 'Pack aplicado a ' + data.assigned + ' agente(s).\n';
+    if (reapply) {
+        msg += data.reapplied + ' ítems actualizados, ' + (data.skipped || 0) + ' omitidos (sin match).\n';
+    }
+    if (data.templatesMissingFields && data.templatesMissingFields.length > 0) {
+        msg += '\n⚠ Plantillas incompletas detectadas:\n';
+        data.templatesMissingFields.forEach(function (t) {
+            msg += '  · ' + t.templateName + ': falta ' + t.missing.join(' + ') + '\n';
+        });
+        msg += '\nLos ítems generados por estas plantillas quedarán marcados como "Incompleto".\n';
+        msg += 'Edita las plantillas para asignar finalidad y base legal.';
+    }
+    alert(msg);
+    location.reload();
 }
 
 async function previewCluster() {
@@ -6852,23 +7059,7 @@ async function deleteTemplate(id, name) {
     if (data.success) location.reload(); else alert(data.error || 'Error');
 }
 
-function addMatchRuleRow() {
-    const container = document.getElementById('match-rules-container');
-    if (!container) return;
-    const row = document.createElement('div');
-    row.className = 'flex items-center gap-2 match-rule-row';
-    row.innerHTML = `
-        <select class="compliance-select rule-type" style="max-width:140px">
-            <option value="path">Path</option>
-            <option value="hostname">Hostname</option>
-            <option value="extension">Extensión</option>
-            <option value="category">Categoría</option>
-        </select>
-        <input type="text" class="compliance-input rule-value flex-1" placeholder="*/Nominas/*">
-        <button type="button" onclick="this.closest('.match-rule-row').remove()" class="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10">✕</button>
-    `;
-    container.appendChild(row);
-}
+
 
 document.getElementById('pack-create-form-inner')?.addEventListener('submit', async function(e) {
     e.preventDefault();
@@ -6883,35 +7074,7 @@ document.getElementById('pack-create-form-inner')?.addEventListener('submit', as
     if (data.success) location.reload(); else alert(data.error || 'Error');
 });
 
-document.getElementById('template-create-form-inner')?.addEventListener('submit', async function(e) {
-    e.preventDefault();
-    const fd = new FormData(this);
-    const payload = { token: '<?= h($token) ?>' };
-    fd.forEach((v, k) => {
-        if (k.startsWith('defaults[')) {
-            const key = k.replace('defaults[', '').replace(']', '');
-            if (!payload.defaults) payload.defaults = {};
-            payload.defaults[key] = v;
-        } else payload[k] = v;
-    });
-    const rules = [];
-    document.querySelectorAll('.match-rule-row').forEach(row => {
-        const type = row.querySelector('.rule-type').value;
-        const value = row.querySelector('.rule-value').value.trim();
-        if (value) rules.push({ type, value });
-    });
-    payload.matchRules = rules;
-    payload.matchLogic = 'OR';
-    payload.priority = 100;
-    payload.active = true;
 
-    const res = await fetch('/api-proxy.php?path=' + encodeURIComponent('/api/compliance/templates'), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    });
-    const data = await res.json();
-    if (data.success) location.reload(); else alert(data.error || 'Error');
-});
 
 // ═══════════════════════════════════════════════════════════════════
 // Descargar agente pre-configurado con un pack
@@ -6941,9 +7104,7 @@ function downloadAgentWithPack(packId, packName) {
     window.open(url, '_blank');
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    if (document.getElementById('match-rules-container')) addMatchRuleRow();
-});
+
 </script>
 
 
@@ -9528,5 +9689,196 @@ async function downloadDpiaPDF(id) {
 
 
 </script>
+
+<!-- ═══ Editor de Plantillas ═══ -->
+<div id="template-editor-modal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-[80] p-4">
+    <div class="bg-bg-panel border border-border-theme rounded-2xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-border-theme flex-shrink-0">
+            <div>
+                <h3 id="template-editor-title" class="text-[15px] font-semibold text-white">Editor de plantilla</h3>
+                <p class="text-[11px] text-text-subtle mt-0.5">Reglas de matcheo + valores por defecto del RAT</p>
+            </div>
+            <button onclick="closeTemplateEditor()" class="text-text-muted hover:text-white p-1.5 rounded-lg hover:bg-bg-elevated">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-6 space-y-4 scrollbar-custom">
+            <input type="hidden" id="tpl-editor-id">
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="compliance-form-label">Nombre <span class="text-red-400">*</span></label>
+                    <input type="text" id="tpl-editor-name" class="compliance-input w-full" placeholder="Ej: Nómina mensual">
+                </div>
+                <div>
+                    <label class="compliance-form-label">Pack</label>
+                    <select id="tpl-editor-pack" class="compliance-select w-full"></select>
+                </div>
+            </div>
+
+            <div>
+                <label class="compliance-form-label">Descripción</label>
+                <input type="text" id="tpl-editor-description" class="compliance-input w-full" placeholder="Ej: Nómina y liquidación de sueldos del personal">
+            </div>
+
+            <fieldset class="rounded-lg border border-border-theme/50 bg-bg-base/30 p-4">
+                <legend class="text-[11px] font-bold text-indigo-300 uppercase tracking-wider px-1">Match Rules — cuándo aplicar</legend>
+                <div id="tpl-editor-rules" class="space-y-2 mb-3"></div>
+                <button type="button" onclick="tplEditorAddRule()" class="text-[11px] text-accent hover:text-primary-300 font-medium">+ Añadir regla</button>
+                <p class="text-[9px] text-text-subtle mt-2">Acepta comodines: <code class="text-indigo-400">*/Nominas/*</code>, <code class="text-indigo-400">*\\RRHH\\*</code>. El sistema normaliza barras, mayúsculas y tildes automáticamente.</p>
+            </fieldset>
+
+            <fieldset class="rounded-lg border border-border-theme/50 bg-bg-base/30 p-4">
+                <legend class="text-[11px] font-bold text-indigo-300 uppercase tracking-wider px-1 flex items-center gap-2">
+                    Defaults — se autocompletan en el RAT
+                    <span id="tpl-editor-missing-warning" class="text-[9px] font-normal text-amber-400"></span>
+                </legend>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="compliance-form-label">Finalidad <span class="text-red-400">*</span></label>
+                        <select id="tpl-editor-purpose" class="compliance-select w-full">
+                            <option value="">— Seleccionar —</option>
+                            <optgroup label="Clientes / Comercial">
+                                <option value="gestion_clientes">Gestión de clientes y facturación</option>
+                                <option value="marketing">Marketing y comunicaciones</option>
+                                <option value="soporte">Soporte técnico</option>
+                                <option value="cobranza">Cobranza</option>
+                            </optgroup>
+                            <optgroup label="Empleados / RRHH">
+                                <option value="gestion_personal">Gestión de personal y nómina</option>
+                                <option value="reclutamiento">Reclutamiento y selección</option>
+                                <option value="capacitacion">Capacitación</option>
+                                <option value="evaluacion_desempeno">Evaluación de desempeño</option>
+                                <option value="seguridad_social">Seguridad social y prevención</option>
+                            </optgroup>
+                            <optgroup label="Legales / Regulatorio">
+                                <option value="cumplimiento_legal">Cumplimiento legal</option>
+                                <option value="auditoria">Auditoría y control interno</option>
+                            </optgroup>
+                            <optgroup label="Otras">
+                                <option value="investigacion">Investigación y desarrollo</option>
+                                <option value="seguridad">Seguridad física/lógica</option>
+                                <option value="videovigilancia">Videovigilancia</option>
+                                <option value="otro">Otra</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="compliance-form-label">Base de licitud <span class="text-red-400">*</span></label>
+                        <select id="tpl-editor-legalBasis" class="compliance-select w-full">
+                            <option value="">— Seleccionar —</option>
+                            <option value="consentimiento">Consentimiento (Art. 12)</option>
+                            <option value="ejecucion_contrato">Ejecución de contrato (Art. 13.1.a)</option>
+                            <option value="obligacion_legal">Obligación legal (Art. 13.1.b)</option>
+                            <option value="interes_vital">Interés vital (Art. 13.1.c)</option>
+                            <option value="interes_publico">Interés público (Art. 13.1.d)</option>
+                            <option value="interes_legitimo">Interés legítimo (Art. 13.1.e)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    <div>
+                        <label class="compliance-form-label">Nivel de riesgo</label>
+                        <select id="tpl-editor-risk" class="compliance-select w-full">
+                            <option value="">— Sin definir —</option>
+                            <option value="low">Bajo</option>
+                            <option value="medium">Medio</option>
+                            <option value="high">Alto</option>
+                            <option value="critical">Crítico</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="compliance-form-label">Días de retención</label>
+                        <input type="number" id="tpl-editor-retentionDays" class="compliance-input w-full" min="0" placeholder="1825">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    <div>
+                        <label class="compliance-form-label">Categorías de datos</label>
+                        <input type="text" id="tpl-editor-dataCategories" class="compliance-input w-full" placeholder="identificacion, contacto, laborales">
+                    </div>
+                    <div>
+                        <label class="compliance-form-label">Categorías de titulares</label>
+                        <input type="text" id="tpl-editor-subjectCategories" class="compliance-input w-full" placeholder="empleados, postulantes">
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <label class="compliance-form-label">Destinatarios (Art. 14.1.d)</label>
+                    <div class="compliance-checkbox-grid" id="tpl-editor-recipients">
+                        <label class="compliance-checkbox-chip"><input type="checkbox" value="no_se_comunica"><span>No se comunican</span></label>
+                        <label class="compliance-checkbox-chip"><input type="checkbox" value="encargados"><span>Encargados</span></label>
+                        <label class="compliance-checkbox-chip"><input type="checkbox" value="proveedores_ti"><span>Proveedores TI</span></label>
+                        <label class="compliance-checkbox-chip"><input type="checkbox" value="autoridades"><span>Autoridades</span></label>
+                        <label class="compliance-checkbox-chip"><input type="checkbox" value="auditores"><span>Auditores</span></label>
+                        <label class="compliance-checkbox-chip"><input type="checkbox" value="bancos"><span>Bancos</span></label>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    <div>
+                        <label class="compliance-form-label">Frecuencia</label>
+                        <select id="tpl-editor-treatmentFrequency" class="compliance-select w-full">
+                            <option value="">— Sin definir —</option>
+                            <option value="continua">Continua (24/7)</option>
+                            <option value="diaria">Diaria</option>
+                            <option value="semanal">Semanal</option>
+                            <option value="mensual">Mensual</option>
+                            <option value="ocasional">Ocasional</option>
+                            <option value="unica">Única</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <label class="compliance-form-label">Notas</label>
+                    <textarea id="tpl-editor-notes" rows="2" class="compliance-textarea w-full" placeholder="Contexto para el DPO"></textarea>
+                </div>
+            </fieldset>
+
+            <fieldset class="rounded-lg border border-border-theme/50 bg-bg-base/30 p-4">
+                <legend class="text-[11px] font-bold text-indigo-300 uppercase tracking-wider px-1">Opciones avanzadas</legend>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="compliance-form-label">Prioridad (mayor = primero)</label>
+                        <input type="number" id="tpl-editor-priority" class="compliance-input w-full" value="100">
+                    </div>
+                    <div>
+                        <label class="compliance-form-label">Lógica de reglas</label>
+                        <select id="tpl-editor-matchLogic" class="compliance-select w-full">
+                            <option value="OR">OR (basta una regla)</option>
+                            <option value="AND">AND (todas las reglas)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="flex flex-wrap items-center gap-4 mt-3">
+                    <label class="flex items-center gap-2 text-[11px] text-text-body"><input type="checkbox" id="tpl-editor-active" class="w-4 h-4 rounded border-border-theme" checked> Activa</label>
+                    <label class="flex items-center gap-2 text-[11px] text-text-body"><input type="checkbox" id="tpl-editor-isFallback" class="w-4 h-4 rounded border-border-theme"> Fallback</label>
+                    <label class="flex items-center gap-2 text-[11px] text-text-body"><input type="checkbox" id="tpl-editor-isGlobal" class="w-4 h-4 rounded border-border-theme"> Global (todos los agentes)</label>
+                </div>
+            </fieldset>
+
+            <div id="tpl-editor-error" class="hidden rounded-lg bg-red-500/10 border border-red-500/30 p-3 text-[11px] text-red-400"></div>
+        </div>
+
+        <div class="flex justify-between items-center gap-2 px-6 py-4 border-t border-border-theme bg-bg-elevated/30 flex-shrink-0">
+            <button type="button" onclick="deleteTemplateFromEditor()" id="tpl-editor-delete-btn"
+                    class="px-3 py-2 rounded-lg text-[11px] font-medium bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all hidden">
+                Eliminar
+            </button>
+            <div class="flex gap-2 ml-auto">
+                <button type="button" onclick="closeTemplateEditor()" class="px-4 py-2 rounded-lg text-[11px] bg-bg-elevated text-text-body border border-border-theme">Cancelar</button>
+                <button type="button" onclick="saveTemplateEditor()" id="tpl-editor-save-btn"
+                        class="px-4 py-2 rounded-lg text-[11px] font-semibold bg-gradient-to-r from-emerald-600 to-teal-600 text-white">
+                    Guardar plantilla
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

@@ -166,82 +166,102 @@ class AgentWebSocket implements MessageComponentInterface {
 
     // ─── HANDLER: REGISTER ──────────────────────────────────────────
 
-    private function handleRegister(ConnectionInterface $conn, $data) {
-        $token = $data['token'] ?? $data['accessToken'] ?? '';
-        $agentId = $data['agentId'] ?? '';
-        $templateHint = $data['template_id'] ?? null;
+private function handleRegister(ConnectionInterface $conn, $data) {
+    $token = $data['token'] ?? $data['accessToken'] ?? '';
+    $agentId = $data['agentId'] ?? '';
+    $templateHint = $data['template_id'] ?? null;
 
-        if (empty($token) || empty($agentId)) {
-            $conn->send(json_encode(['type' => 'error', 'payload' => ['message' => 'Token y agentId requeridos']]));
-            $conn->close();
-            return;
-        }
-
-        $decoded = Auth::verifyToken($token);
-        if (!$decoded) {
-            $conn->send(json_encode(['type' => 'error', 'payload' => ['message' => 'Token inválido o expirado']]));
-            $conn->close();
-            return;
-        }
-
-        $userId = $decoded['userId'] ?? '';
-        $conn->userId = $userId;
-        $conn->agentId = $agentId;
-        $this->agentSessions[$agentId] = $conn;
-
-        if ($this->db) {
-            $existing = $this->db->findOne('agents', ['agentId' => $agentId, 'userId' => $userId]);
-
-            if (!$existing) {
-                $packId = null;
-                $templateIds = [];
-
-                if ($templateHint) {
-                    $pack = $this->db->findOne('compliance_packs', [
-                        '_id' => $templateHint, 'userId' => $userId, 'active' => true,
-                    ]);
-                    if ($pack) {
-                        $packId = (string)$pack['_id'];
-                        $tpls = $this->db->find('compliance_templates', ['packId' => $packId, 'active' => true]);
-                        $templateIds = array_map(fn($t) => (string)$t['_id'], $tpls);
-                    }
-                }
-
-                $this->db->insertOne('agents', [
-                    'userId'              => $userId,
-                    'agentId'             => $agentId,
-                    'status'              => 'online',
-                    'lastSeen'            => date('c'),
-                    'createdAt'           => date('c'),
-                    'hostname'            => !empty($data['hostname']) ? $data['hostname'] : ($conn->remoteAddress ?? 'equipo-local'),
-                    'platform'            => $data['platform'] ?? '',
-                    'packId'              => $packId,
-                    'templateIds'         => $templateIds,
-                    'packAssignedAt'      => $packId ? date('c') : null,
-                    'packAssignedBy'      => null,
-                    'packAssignedByEmail' => $packId ? 'install-hint' : null,
-                ]);
-
-                echo "✅ Agente nuevo registrado: {$agentId}" . ($packId ? " con pack {$packId}" : " (sin pack)") . "\n";
-            } else {
-                $this->db->updateOne('agents', ['agentId' => $agentId, 'userId' => $userId], [
-                    'status' => 'online', 'lastSeen' => date('c'),
-                ]);
-                if ($templateHint && ($existing['packId'] ?? null) !== $templateHint) {
-                    echo "ℹ️  Agente {$agentId} envió hint '{$templateHint}' pero BD tiene '{$existing['packId']}'. Ignorando hint.\n";
-                }
-            }
-        }
-
-        echo "✅ Agente registrado: {$agentId} (usuario: {$userId})\n";
-        $conn->send(json_encode([
-            'type' => 'registered',
-            'payload' => ['agentId' => $agentId, 'message' => 'Agente registrado correctamente']
-        ]));
-
-        $this->sendPendingCommands($agentId);
+    if (empty($token) || empty($agentId)) {
+        $conn->send(json_encode(['type' => 'error', 'payload' => ['message' => 'Token y agentId requeridos']]));
+        $conn->close();
+        return;
     }
 
+    $decoded = Auth::verifyToken($token);
+    if (!$decoded) {
+        $conn->send(json_encode(['type' => 'error', 'payload' => ['message' => 'Token inválido o expirado']]));
+        $conn->close();
+        return;
+    }
+
+    $userId = $decoded['userId'] ?? '';
+    $conn->userId = $userId;
+    $conn->agentId = $agentId;
+    $this->agentSessions[$agentId] = $conn;
+
+    // FIX #2: resolver hint UNA vez (helper compartido)
+    $hintPack = $this->resolvePackHint($templateHint, $userId);
+
+    if ($this->db) {
+        $existing = $this->db->findOne('agents', ['agentId' => $agentId, 'userId' => $userId]);
+
+        if (!$existing) {
+            $packId = $hintPack['id'] ?? null;
+            $templateIds = $hintPack['templateIds'] ?? [];
+
+            $this->db->insertOne('agents', [
+                'userId'              => $userId,
+                'agentId'             => $agentId,
+                'status'              => 'online',
+                'lastSeen'            => date('c'),
+                'createdAt'           => date('c'),
+                'hostname'            => !empty($data['hostname']) ? $data['hostname'] : ($conn->remoteAddress ?? 'equipo-local'),
+                'platform'            => $data['platform'] ?? '',
+                'packId'              => $packId,
+                'templateIds'         => $templateIds,
+                'packAssignedAt'      => $packId ? date('c') : null,
+                'packAssignedBy'      => null,
+                'packAssignedByEmail' => $packId ? 'install-hint' : null,
+            ]);
+
+            echo "✅ Agente nuevo registrado: {$agentId}" . ($packId ? " con pack {$packId} ({$hintPack['templateCount']} plantillas)" : " (sin pack)") . "\n";
+        } else {
+            $updates = ['status' => 'online', 'lastSeen' => date('c')];
+            $currentPackId = $existing['packId'] ?? null;
+
+            // FIX #2: aplicar hint si el agente NO tiene pack
+            if ($hintPack && empty($currentPackId)) {
+                $updates['packId']              = $hintPack['id'];
+                $updates['templateIds']         = $hintPack['templateIds'];
+                $updates['packAssignedAt']      = date('c');
+                $updates['packAssignedByEmail'] = 'install-hint';
+                echo "✅ Hint aplicado a agente existente {$agentId}: pack={$hintPack['id']}, {$hintPack['templateCount']} plantillas\n";
+            } elseif ($hintPack && $currentPackId !== $hintPack['id']) {
+                echo "ℹ️  Agente {$agentId} ya tiene pack '{$currentPackId}', hint '{$hintPack['id']}' ignorado\n";
+            }
+
+            $this->db->updateOne('agents', ['agentId' => $agentId, 'userId' => $userId], $updates);
+        }
+    }
+
+    echo "✅ Agente registrado: {$agentId} (usuario: {$userId})\n";
+    $conn->send(json_encode([
+        'type' => 'registered',
+        'payload' => ['agentId' => $agentId, 'message' => 'Agente registrado correctamente']
+    ]));
+
+    $this->sendPendingCommands($agentId);
+}
+
+
+/** FIX #2: helper único para resolver el hint de pack. */
+private function resolvePackHint($templateHint, $userId) {
+    if (!$this->db || !$templateHint) return null;
+    $pack = $this->db->findOne('compliance_packs', ['_id' => $templateHint, 'userId' => $userId]);
+    if (!$pack) return null;
+    if (array_key_exists('active', $pack) && $pack['active'] === false) return null;
+
+    $tpls = $this->db->find('compliance_templates', ['packId' => (string)$pack['_id']]);
+    $active = array_values(array_filter($tpls, function ($t) {
+        return !array_key_exists('active', $t) || $t['active'] !== false;
+    }));
+
+    return [
+        'id'            => (string)$pack['_id'],
+        'templateIds'   => array_map(fn($t) => (string)$t['_id'], $active),
+        'templateCount' => count($active),
+    ];
+}
 
     // ─── HANDLER: FILE_DETECTED ─────────────────────────────────────
 
@@ -860,7 +880,22 @@ class AgentWebSocket implements MessageComponentInterface {
                 'firstSeenAt' => date('c'), 'lastSeenAt' => date('c'),
                 'templateApplied' => $templateId, 'templateName' => $resolved['templateName'],
                 'templateMode' => $resolved['mode'], 'templateAppliedAt' => date('c'),
-                'needsReview' => ($resolved['mode'] !== null),
+                'needsReview' => ($resolved['mode'] === 'inference'),
+                'templateDebug' => [
+    'ctx' => [
+        'path'        => $path,
+        'hostname'    => $hostname,
+        'extension'   => $extension,
+        'categories'  => $categories,
+        'sensitive'   => $sensitive,
+    ],
+    'resolvedMode'         => $resolved['mode'],
+    'resolvedTemplateId'   => $resolved['templateId'],
+    'resolvedTemplateName' => $resolved['templateName'] ?? null,
+    'agentTemplateIds'     => $agentTplIds ?? [],
+    'defaultsKeys'         => array_keys($resolved['defaults'] ?? []),
+    'at'                   => date('c'),
+],
                 'createdAt' => date('c'), 'updatedAt' => date('c'),
             ], $defaults);
 
@@ -900,104 +935,152 @@ class AgentWebSocket implements MessageComponentInterface {
     // ═══════════════════════════════════════════════════════════════
 
     private function resolveTemplateForFile($userId, $agentId, $ctx) {
-        if (!$this->db) return ['defaults' => [], 'mode' => null, 'templateId' => null];
-        $db = $this->db;
+    if (!$this->db) return ['defaults' => [], 'mode' => null, 'templateId' => null, 'templateName' => null];
+    $db = $this->db;
 
-        // CAPA 0: Learning cache
-        $parts = preg_split('#[\\\\/]+#', $ctx['path'] ?? '');
-        $topPath = strtolower($parts[1] ?? '');
-        $subPath = strtolower($parts[2] ?? '');
-        $catSig = implode('|', array_map('strtolower', $ctx['categories'] ?? []));
-        $signature = $topPath . '/' . $subPath . '::' . $catSig;
+    // Normalización de la firma (learning cache)
+    $normPath = $this->normalizePath($ctx['path'] ?? '');
+    $parts    = preg_split('#[/]+#', $normPath);
+    $topPath  = strtolower($this->stripAccents($parts[1] ?? ''));
+    $subPath  = strtolower($this->stripAccents($parts[2] ?? ''));
+    $catSig   = implode('|', array_map(fn($c) => strtolower($this->stripAccents($c)), $ctx['categories'] ?? []));
+    $signature = $topPath . '/' . $subPath . '::' . $catSig;
 
-        $learned = $db->findOne('compliance_cluster_learning', [
-            'userId' => $userId, 'agentId' => $agentId, 'signature' => $signature,
-        ]);
-        if ($learned && !empty($learned['templateId'])) {
-            $tpl = $db->findOne('compliance_templates', ['_id' => $learned['templateId'], 'active' => true]);
-            if ($tpl) {
-                $db->updateOne('compliance_cluster_learning', ['_id' => $learned['_id']], [
-                    'hitCount' => ((int)($learned['hitCount'] ?? 0)) + 1,
-                    'lastSeenAt' => date('c'),
-                ]);
-                return [
-                    'defaults' => $tpl['defaults'] ?? [], 'templateId' => (string)$tpl['_id'],
-                    'templateName' => $tpl['name'] ?? '', 'mode' => 'learning',
-                ];
-            }
+    // CAPA 0: Learning cache
+    $learned = $db->findOne('compliance_cluster_learning', [
+        'userId' => $userId, 'agentId' => $agentId, 'signature' => $signature,
+    ]);
+    if ($learned && !empty($learned['templateId'])) {
+        // FIX #4: criterio consistente para active
+        $tpl = $db->findOne('compliance_templates', ['_id' => $learned['templateId']]);
+        if ($tpl && (!array_key_exists('active', $tpl) || $tpl['active'] !== false)) {
+            $db->updateOne('compliance_cluster_learning', ['_id' => $learned['_id']], [
+                'hitCount'   => ((int)($learned['hitCount'] ?? 0)) + 1,
+                'lastSeenAt' => date('c'),
+            ]);
+            return [
+                'defaults'     => $tpl['defaults'] ?? [],
+                'templateId'   => (string)$tpl['_id'],
+                'templateName' => $tpl['name'] ?? '',
+                'mode'         => 'learning',
+            ];
         }
-
-        // CAPA 1: Plantillas del agente
-        $agent = $db->findOne('agents', ['agentId' => $agentId, 'userId' => $userId]);
-        $agentTplIds = $agent['templateIds'] ?? [];
-
-        $templates = [];
-        foreach ($agentTplIds as $tid) {
-            $t = $db->findOne('compliance_templates', ['_id' => $tid, 'active' => true]);
-            if ($t) $templates[] = $t;
-        }
-        usort($templates, fn($a, $b) => ($b['priority'] ?? 0) <=> ($a['priority'] ?? 0));
-
-        foreach ($templates as $tpl) {
-            if (!empty($tpl['isFallback'])) continue;
-            if ($this->matchTemplateRulesWs($tpl, $ctx)) {
-                return [
-                    'defaults' => $tpl['defaults'] ?? [], 'templateId' => (string)$tpl['_id'],
-                    'templateName' => $tpl['name'] ?? '', 'mode' => 'agent',
-                ];
-            }
-        }
-        foreach ($templates as $tpl) {
-            if (!empty($tpl['isFallback'])) {
-                return [
-                    'defaults' => $tpl['defaults'] ?? [], 'templateId' => (string)$tpl['_id'],
-                    'templateName' => $tpl['name'] ?? '', 'mode' => 'agent_fallback',
-                ];
-            }
-        }
-
-        // CAPA 2: Plantillas globales
-        $globalTpls = $db->find('compliance_templates', [
-            'userId' => $userId, 'active' => true, 'isGlobal' => true,
-        ]);
-        usort($globalTpls, fn($a, $b) => ($b['priority'] ?? 0) <=> ($a['priority'] ?? 0));
-        foreach ($globalTpls as $tpl) {
-            if ($this->matchTemplateRulesWs($tpl, $ctx)) {
-                return [
-                    'defaults' => $tpl['defaults'] ?? [], 'templateId' => (string)$tpl['_id'],
-                    'templateName' => $tpl['name'] ?? '', 'mode' => 'global',
-                ];
-            }
-        }
-
-        // CAPA 3: Inferencia
-        return [
-            'defaults' => $this->inferDefaults($ctx), 'templateId' => null,
-            'templateName' => 'auto-inferencia', 'mode' => 'inference',
-        ];
     }
+
+    // CAPA 1: Plantillas del agente
+    $agent = $db->findOne('agents', ['agentId' => $agentId, 'userId' => $userId]);
+    $agentTplIds = $agent['templateIds'] ?? [];
+
+    $templates = [];
+    foreach ($agentTplIds as $tid) {
+        $t = $db->findOne('compliance_templates', ['_id' => $tid]);
+        // FIX #4
+        if ($t && (!array_key_exists('active', $t) || $t['active'] !== false)) {
+            $templates[] = $t;
+        }
+    }
+    usort($templates, fn($a, $b) => ($b['priority'] ?? 0) <=> ($a['priority'] ?? 0));
+
+    foreach ($templates as $tpl) {
+        if (!empty($tpl['isFallback'])) continue;
+        if ($this->matchTemplateRulesWs($tpl, $ctx)) {
+            return [
+                'defaults'     => $tpl['defaults'] ?? [],
+                'templateId'   => (string)$tpl['_id'],
+                'templateName' => $tpl['name'] ?? '',
+                'mode'         => 'agent',
+            ];
+        }
+    }
+    foreach ($templates as $tpl) {
+        if (!empty($tpl['isFallback'])) {
+            return [
+                'defaults'     => $tpl['defaults'] ?? [],
+                'templateId'   => (string)$tpl['_id'],
+                'templateName' => $tpl['name'] ?? '',
+                'mode'         => 'agent_fallback',
+            ];
+        }
+    }
+
+    // CAPA 2: Globales
+    $globalTpls = $db->find('compliance_templates', ['userId' => $userId, 'isGlobal' => true]);
+    $globalTpls = array_values(array_filter($globalTpls, function ($t) {
+        return !array_key_exists('active', $t) || $t['active'] !== false;
+    }));
+    usort($globalTpls, fn($a, $b) => ($b['priority'] ?? 0) <=> ($a['priority'] ?? 0));
+    foreach ($globalTpls as $tpl) {
+        if ($this->matchTemplateRulesWs($tpl, $ctx)) {
+            return [
+                'defaults'     => $tpl['defaults'] ?? [],
+                'templateId'   => (string)$tpl['_id'],
+                'templateName' => $tpl['name'] ?? '',
+                'mode'         => 'global',
+            ];
+        }
+    }
+
+    // CAPA 3: Inferencia
+    return [
+        'defaults'     => $this->inferDefaults($ctx),
+        'templateId'   => null,
+        'templateName' => 'auto-inferencia',
+        'mode'         => 'inference',
+    ];
+}
+
+    // FIX #3 y #5: normalización de paths y acentos para el matcher
+private function normalizePath($p) {
+    return str_replace('\\', '/', (string)$p);
+}
+
+private function stripAccents($s) {
+    static $map = [
+        'á'=>'a','é'=>'e','í'=>'i','ó'=>'o','ú'=>'u','ü'=>'u','ñ'=>'n',
+        'Á'=>'A','É'=>'E','Í'=>'I','Ó'=>'O','Ú'=>'U','Ü'=>'U','Ñ'=>'N',
+        'à'=>'a','è'=>'e','ì'=>'i','ò'=>'o','ù'=>'u',
+        'À'=>'A','È'=>'E','Ì'=>'I','Ò'=>'O','Ù'=>'U',
+    ];
+    return strtr((string)$s, $map);
+}
+
+
+
 
     private function matchTemplateRulesWs($tpl, $ctx) {
-        $rules = $tpl['matchRules'] ?? [];
-        if (empty($rules)) return false;
-        $logic = $tpl['matchLogic'] ?? 'OR';
-        $results = [];
-        foreach ($rules as $r) {
-            $type = $r['type'] ?? ''; $value = $r['value'] ?? ''; $ok = false;
-            if ($type === 'path')          $ok = fnmatch($value, $ctx['path'] ?? '', FNM_CASEFOLD);
-            elseif ($type === 'hostname')  $ok = fnmatch($value, $ctx['hostname'] ?? '', FNM_CASEFOLD);
-            elseif ($type === 'extension') {
-                $exts = array_map('trim', explode(',', strtolower($value)));
-                $ok = in_array(strtolower($ctx['extension'] ?? ''), $exts, true);
-            } elseif ($type === 'category') {
-                $want = array_map('trim', explode(',', strtolower($value)));
-                $have = array_map('strtolower', $ctx['categories'] ?? []);
-                $ok = !empty(array_intersect($want, $have));
-            }
-            $results[] = $ok;
+    $rules = $tpl['matchRules'] ?? [];
+    if (empty($rules)) return false;
+    $logic = strtoupper($tpl['matchLogic'] ?? 'OR');
+
+    $ctxPath     = $this->stripAccents($this->normalizePath($ctx['path'] ?? ''));
+    $ctxHostname = $this->stripAccents(strtolower((string)($ctx['hostname'] ?? '')));
+    $ctxExt      = strtolower(ltrim((string)($ctx['extension'] ?? ''), '.'));
+    $ctxCats     = array_map(fn($c) => strtolower($this->stripAccents($c)), $ctx['categories'] ?? []);
+
+    $results = [];
+    foreach ($rules as $r) {
+        $type  = $r['type'] ?? '';
+        $value = (string)($r['value'] ?? '');
+        $ok    = false;
+
+        if ($type === 'path') {
+            $pat = $this->stripAccents($this->normalizePath($value));
+            $ok = fnmatch($pat, $ctxPath, FNM_CASEFOLD)
+               || fnmatch($pat, '/' . ltrim($ctxPath, '/'), FNM_CASEFOLD);
+        } elseif ($type === 'hostname') {
+            $ok = fnmatch($this->stripAccents(strtolower($value)), $ctxHostname, FNM_CASEFOLD);
+        } elseif ($type === 'extension') {
+            $exts = array_map(fn($e) => ltrim(strtolower(trim($e)), '.'), explode(',', $value));
+            $ok = in_array($ctxExt, $exts, true);
+        } elseif ($type === 'category') {
+            $want = array_map(fn($c) => strtolower($this->stripAccents(trim($c))), explode(',', $value));
+            $ok = !empty(array_intersect($want, $ctxCats));
         }
-        return $logic === 'AND' ? !in_array(false, $results, true) : in_array(true, $results, true);
+        $results[] = $ok;
     }
+
+    return $logic === 'AND' ? !in_array(false, $results, true) : in_array(true, $results, true);
+}
 
     private function extractCategories($personalData) {
         $cats = [];

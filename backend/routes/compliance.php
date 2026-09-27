@@ -32,6 +32,21 @@ function getCompanyUserIds($user, $db) {
     return $userIds;
 }
 
+// FIX #3 y #5: helpers compartidos con el matcher de inventario
+function normalizePathForMatch($p) {
+    return str_replace('\\', '/', (string)$p);
+}
+
+function stripAccentsForMatch($s) {
+    static $map = [
+        'á'=>'a','é'=>'e','í'=>'i','ó'=>'o','ú'=>'u','ü'=>'u','ñ'=>'n',
+        'Á'=>'A','É'=>'E','Í'=>'I','Ó'=>'O','Ú'=>'U','Ü'=>'U','Ñ'=>'N',
+        'à'=>'a','è'=>'e','ì'=>'i','ò'=>'o','ù'=>'u',
+        'À'=>'A','È'=>'E','Ì'=>'I','Ò'=>'O','Ù'=>'U',
+    ];
+    return strtr((string)$s, $map);
+}
+
 // Helper para verificar si el usuario es DPO/DPD
 function isDpoOrDpd($user, $db) {
     if (!empty($user['isAdmin']) || ($user['role'] ?? '') === 'superadmin') {
@@ -560,6 +575,23 @@ function crud() {
         arcoCrud($user, $db, $method, $id, $action, $body);
         return;
     }
+    // ═══ FIX #7: aplicar UNA plantilla a UN ítem manualmente ═══
+if ($resource === 'inventory' && $id && $action === 'apply-template' && $method === 'POST') {
+    inventoryApplyTemplate($user, $db, $userIds, $isSuperAdmin, $id, $body);
+    return;
+}
+
+// ═══ FIX #1: migración retroactiva de needsReview ═══
+if ($resource === 'inventory' && $id === 'fix-needsreview' && $method === 'POST') {
+    fixInventoryNeedsReview($user, $db, $userIds, $isSuperAdmin);
+    return;
+}
+
+// ═══ Diagnóstico: por qué no matchea un ítem ═══
+if ($resource === 'inventory' && $id === 'diagnose' && $method === 'POST') {
+    inventoryDiagnose($user, $db, $userIds, $isSuperAdmin, $body);
+    return;
+}
 
     if ($resource === 'checklist') {
         $filter = $isSuperAdmin ? [] : ['userId' => ['$in' => $userIds]];
@@ -1803,6 +1835,7 @@ function applyPackToAgents() {
         json_error('pack no encontrado', 404);
     }
 
+    // FIX #4: criterio consistente para active
     $templatesAll = $db->find('compliance_templates', ['packId' => $packId]);
     $templates = array_values(array_filter($templatesAll, function ($t) {
         return !array_key_exists('active', $t) || $t['active'] !== false;
@@ -1810,13 +1843,33 @@ function applyPackToAgents() {
     $templateIds = array_map(fn($t) => (string)$t['_id'], $templates);
     if (empty($templateIds)) json_error('el pack no tiene plantillas activas', 400);
 
+    // FIX #7: diagnóstico de plantillas incompletas
+    $templatesMissingFields = [];
+    foreach ($templates as $t) {
+        $d = $t['defaults'] ?? [];
+        $missing = [];
+        if (empty($d['purpose']))    $missing[] = 'purpose';
+        if (empty($d['legalBasis'])) $missing[] = 'legalBasis';
+        if ($missing) {
+            $templatesMissingFields[] = [
+                'templateId'   => (string)$t['_id'],
+                'templateName' => $t['name'] ?? '',
+                'missing'      => $missing,
+            ];
+        }
+    }
+
     $now = date('c');
     $assignerEmail = $user['email'] ?? '';
-    $assigned = 0; $reapplied = 0;
+    $assigned = 0; $reapplied = 0; $skippedNoMatch = 0;
+    $details = [];
 
     foreach ($agentIds as $agentId) {
         $agent = $db->findOne('agents', ['agentId' => $agentId, 'userId' => $user['_id']]);
-        if (!$agent) continue;
+        if (!$agent) {
+            $details[] = ['agentId' => $agentId, 'status' => 'not_found'];
+            continue;
+        }
 
         $db->updateOne('agents', ['_id' => $agent['_id']], [
             'packId' => $packId, 'templateIds' => $templateIds,
@@ -1827,23 +1880,44 @@ function applyPackToAgents() {
 
         if ($reapply) {
             $items = $db->find('compliance_inventory', ['userId' => $user['_id'], 'agentId' => $agentId]);
+            $agentReapplied = 0;
+            $agentSkipped = 0;
+
             foreach ($items as $it) {
                 if (isset($it['needsReview']) && $it['needsReview'] === false) continue;
                 $resolved = resolveTemplateForInventoryItem($user['_id'], $agentId, $it, $templates);
-                if (!$resolved) continue;
+                if (!$resolved) {
+                    // FIX #6: logging para diagnóstico
+                    error_log("[applyPack] sin match: item={$it['_id']} path=" . ($it['path'] ?? ''));
+                    $agentSkipped++;
+                    continue;
+                }
 
                 $updates = applyTemplateDefaults($it, $resolved['defaults']);
                 if (!empty($updates)) {
-                    $updates['templateApplied'] = $resolved['templateId'];
-                    $updates['templateName'] = $resolved['templateName'];
-                    $updates['templateMode'] = 'manual_bulk';
-                    $updates['templateAppliedAt'] = $now;
-                    $updates['needsReview'] = true;
+                    $updates['templateApplied']    = $resolved['templateId'];
+                    $updates['templateName']       = $resolved['templateName'];
+                    $updates['templateMode']       = 'manual_bulk';
+                    $updates['templateAppliedAt']  = $now;
+                    // FIX #1: recalcular needsReview
+                    $updates['needsReview'] = !empty($resolved['defaults']['purpose'])
+                                           && !empty($resolved['defaults']['legalBasis'])
+                                           ? false : true;
                     $updates['updatedAt'] = $now;
                     $db->updateOne('compliance_inventory', ['_id' => $it['_id']], $updates);
-                    $reapplied++;
+                    $agentReapplied++;
+                } else {
+                    $agentSkipped++;
                 }
             }
+            $reapplied += $agentReapplied;
+            $skippedNoMatch += $agentSkipped;
+            $details[] = [
+                'agentId' => $agentId, 'status' => 'ok',
+                'reapplied' => $agentReapplied, 'skipped' => $agentSkipped,
+            ];
+        } else {
+            $details[] = ['agentId' => $agentId, 'status' => 'ok', 'reapplied' => 0];
         }
     }
 
@@ -1851,11 +1925,19 @@ function applyPackToAgents() {
 
     audit_log('pack_applied_to_agents', [
         'packId' => $packId, 'packName' => $pack['name'] ?? '',
-        'agents' => $assigned, 'reapplied' => $reapplied,
+        'agents' => $assigned, 'reapplied' => $reapplied, 'skipped' => $skippedNoMatch,
         'templateIds' => count($templateIds),
     ], $user['_id']);
 
-    json_response(['success' => true, 'assigned' => $assigned, 'reapplied' => $reapplied, 'templates' => count($templateIds)]);
+    json_response([
+        'success'                => true,
+        'assigned'               => $assigned,
+        'reapplied'              => $reapplied,
+        'skipped'                => $skippedNoMatch,
+        'templates'              => count($templateIds),
+        'templatesMissingFields' => $templatesMissingFields,
+        'details'                => $details,
+    ]);
 }
 
 function unassignPackFromAgent() {
@@ -2078,22 +2160,35 @@ function resolveTemplateForInventoryItem($userId, $agentId, $item, $templates) {
 function matchTemplateRules($tpl, $ctx) {
     $rules = $tpl['matchRules'] ?? [];
     if (empty($rules)) return false;
-    $logic = $tpl['matchLogic'] ?? 'OR';
+    $logic = strtoupper($tpl['matchLogic'] ?? 'OR');
+
+    $ctxPath     = stripAccentsForMatch(normalizePathForMatch($ctx['path'] ?? ''));
+    $ctxHostname = stripAccentsForMatch(strtolower((string)($ctx['hostname'] ?? '')));
+    $ctxExt      = strtolower(ltrim((string)($ctx['extension'] ?? ''), '.'));
+    $ctxCats     = array_map(fn($c) => strtolower(stripAccentsForMatch($c)), $ctx['categories'] ?? []);
+
     $results = [];
     foreach ($rules as $r) {
-        $type = $r['type'] ?? ''; $value = $r['value'] ?? ''; $ok = false;
-        if ($type === 'path') $ok = fnmatch($value, $ctx['path'] ?? '', FNM_CASEFOLD);
-        elseif ($type === 'hostname') $ok = fnmatch($value, $ctx['hostname'] ?? '', FNM_CASEFOLD);
-        elseif ($type === 'extension') {
-            $exts = array_map('trim', explode(',', strtolower($value)));
-            $ok = in_array(strtolower($ctx['extension'] ?? ''), $exts, true);
+        $type  = $r['type'] ?? '';
+        $value = (string)($r['value'] ?? '');
+        $ok    = false;
+
+        if ($type === 'path') {
+            $pat = stripAccentsForMatch(normalizePathForMatch($value));
+            $ok = fnmatch($pat, $ctxPath, FNM_CASEFOLD)
+               || fnmatch($pat, '/' . ltrim($ctxPath, '/'), FNM_CASEFOLD);
+        } elseif ($type === 'hostname') {
+            $ok = fnmatch(stripAccentsForMatch(strtolower($value)), $ctxHostname, FNM_CASEFOLD);
+        } elseif ($type === 'extension') {
+            $exts = array_map(fn($e) => ltrim(strtolower(trim($e)), '.'), explode(',', $value));
+            $ok = in_array($ctxExt, $exts, true);
         } elseif ($type === 'category') {
-            $want = array_map('trim', explode(',', strtolower($value)));
-            $have = array_map('strtolower', $ctx['categories'] ?? []);
-            $ok = !empty(array_intersect($want, $have));
+            $want = array_map(fn($c) => strtolower(stripAccentsForMatch(trim($c))), explode(',', $value));
+            $ok = !empty(array_intersect($want, $ctxCats));
         }
         $results[] = $ok;
     }
+
     return $logic === 'AND' ? !in_array(false, $results, true) : in_array(true, $results, true);
 }
 
@@ -2102,9 +2197,222 @@ function applyTemplateDefaults($item, $defaults) {
     foreach ($defaults as $k => $v) {
         if ($v === '' || $v === null) continue;
         if (is_array($v) && empty($v)) continue;
+
         $current = $item[$k] ?? null;
-        $isEmpty = $current === null || $current === '' || $current === [] || $current === 'Pendiente de definir';
+        $isEmpty = $current === null
+                || $current === ''
+                || $current === []
+                || $current === 'Pendiente de definir';
+
+        // purpose/legalBasis: tolerar strings sensibles si no tienen un valor real
+        if ($k === 'purpose' && is_string($current) && trim($current) === '') $isEmpty = true;
+        if ($k === 'legalBasis' && is_string($current) && trim($current) === '') $isEmpty = true;
+
         if ($isEmpty) $updates[$k] = $v;
     }
     return $updates;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// FIX #7: aplicar plantilla manualmente a un ítem
+// ═══════════════════════════════════════════════════════════════════
+function inventoryApplyTemplate($user, $db, $userIds, $isSuperAdmin, $itemId, $body) {
+    $filter = ['_id' => $itemId];
+    if (!$isSuperAdmin) $filter['userId'] = ['$in' => $userIds];
+
+    $item = $db->findOne('compliance_inventory', $filter);
+    if (!$item) json_error('item no encontrado', 404);
+
+    $templateId = $body['templateId'] ?? '';
+    if (!$templateId) json_error('templateId requerido');
+
+    $tpl = $db->findOne('compliance_templates', ['_id' => $templateId, 'userId' => $user['_id']]);
+    if (!$tpl) json_error('plantilla no encontrada', 404);
+    if (array_key_exists('active', $tpl) && $tpl['active'] === false) {
+        json_error('plantilla inactiva', 400);
+    }
+
+    $defaults = $tpl['defaults'] ?? [];
+    $force    = !empty($body['force']);
+
+    $updates = $force ? [] : applyTemplateDefaults($item, $defaults);
+    if ($force) {
+        foreach ($defaults as $k => $v) {
+            if ($v === '' || $v === null) continue;
+            if (is_array($v) && empty($v)) continue;
+            $updates[$k] = $v;
+        }
+    }
+
+    $updates['templateApplied']   = (string)$tpl['_id'];
+    $updates['templateName']      = $tpl['name'] ?? '';
+    $updates['templateMode']      = 'manual_single';
+    $updates['templateAppliedAt'] = date('c');
+    $updates['needsReview']       = !empty($defaults['purpose']) && !empty($defaults['legalBasis']) ? false : true;
+    $updates['updatedAt']         = date('c');
+    $updates['templateDebug']     = [
+        'resolvedMode'         => 'manual_single',
+        'resolvedTemplateId'   => (string)$tpl['_id'],
+        'resolvedTemplateName' => $tpl['name'] ?? '',
+        'force'                => $force,
+        'at'                   => date('c'),
+    ];
+
+    $db->updateOne('compliance_inventory', ['_id' => $itemId], $updates);
+
+    audit_log('inventory_template_applied', [
+        'itemId'     => $itemId,
+        'templateId' => $templateId,
+        'force'      => $force,
+    ], $user['_id']);
+
+    json_response([
+        'success'  => true,
+        'applied'  => $updates,
+        'template' => [
+            'id'   => (string)$tpl['_id'],
+            'name' => $tpl['name'] ?? '',
+        ],
+    ]);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// FIX #1: migración retroactiva de needsReview
+// ═══════════════════════════════════════════════════════════════════
+function fixInventoryNeedsReview($user, $db, $userIds, $isSuperAdmin) {
+    $filter = $isSuperAdmin ? [] : ['userId' => ['$in' => $userIds]];
+    $items = $db->find('compliance_inventory', $filter, ['limit' => 5000]);
+
+    $fixed = 0; $details = [];
+
+    foreach ($items as $it) {
+        $hasPurpose    = !empty($it['purpose']);
+        $hasLegalBasis = !empty($it['legalBasis']) && $it['legalBasis'] !== 'Pendiente de definir';
+        $hasCategories = !empty($it['dataCategories']);
+        $hasRecipients = !empty($it['recipients']);
+
+        $shouldBeComplete = $hasPurpose && $hasLegalBasis && $hasCategories && $hasRecipients;
+        $currentlyNeedsReview = !empty($it['needsReview']);
+
+        // Solo arreglar si está mal marcado y tiene todos los campos
+        if ($shouldBeComplete && $currentlyNeedsReview) {
+            $db->updateOne('compliance_inventory', ['_id' => $it['_id']], [
+                'needsReview' => false,
+                'reviewedAt'  => date('c'),
+                'reviewedBy'  => 'auto-fix-migration',
+                'updatedAt'   => date('c'),
+            ]);
+            $fixed++;
+            if (count($details) < 20) {
+                $details[] = ['id' => (string)$it['_id'], 'name' => $it['name'] ?? ''];
+            }
+        }
+    }
+
+    audit_log('inventory_needsreview_fixed', ['count' => $fixed, 'scanned' => count($items)], $user['_id']);
+    json_response([
+        'success' => true,
+        'scanned' => count($items),
+        'fixed'   => $fixed,
+        'details' => $details,
+    ]);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Diagnóstico del matcher para un ítem específico
+// ═══════════════════════════════════════════════════════════════════
+function inventoryDiagnose($user, $db, $userIds, $isSuperAdmin, $body) {
+    $itemId = $body['itemId'] ?? '';
+    if (!$itemId) json_error('itemId requerido');
+
+    $filter = ['_id' => $itemId];
+    if (!$isSuperAdmin) $filter['userId'] = ['$in' => $userIds];
+
+    $item = $db->findOne('compliance_inventory', $filter);
+    if (!$item) json_error('item no encontrado', 404);
+
+    $agentId = $item['agentId'] ?? '';
+    $agent = $db->findOne('agents', ['agentId' => $agentId, 'userId' => $user['_id']]);
+    $agentTplIds = $agent['templateIds'] ?? [];
+
+    $ctx = [
+        'path'        => $item['path'] ?? '',
+        'hostname'    => $item['hostname'] ?? '',
+        'extension'   => $item['extension'] ?? '',
+        'categories'  => is_array($item['dataCategories'] ?? null)
+                            ? $item['dataCategories']
+                            : array_filter(array_map('trim', explode(',', (string)($item['dataCategories'] ?? '')))),
+        'sensitive'   => !empty($item['sensitive']),
+    ];
+
+    $templates = [];
+    foreach ($agentTplIds as $tid) {
+        $t = $db->findOne('compliance_templates', ['_id' => $tid]);
+        if ($t) $templates[] = $t;
+    }
+    usort($templates, fn($a, $b) => ($b['priority'] ?? 0) <=> ($a['priority'] ?? 0));
+
+    $evaluation = [];
+    foreach ($templates as $tpl) {
+        $rules = $tpl['matchRules'] ?? [];
+        $ruleResults = [];
+        foreach ($rules as $r) {
+            $type  = $r['type'] ?? '';
+            $value = (string)($r['value'] ?? '');
+            $matched = false;
+
+            $ctxPath     = stripAccentsForMatch(normalizePathForMatch($ctx['path']));
+            $ctxHostname = stripAccentsForMatch(strtolower($ctx['hostname']));
+            $ctxExt      = strtolower(ltrim($ctx['extension'], '.'));
+            $ctxCats     = array_map(fn($c) => strtolower(stripAccentsForMatch($c)), $ctx['categories']);
+
+            if ($type === 'path') {
+                $pat = stripAccentsForMatch(normalizePathForMatch($value));
+                $matched = fnmatch($pat, $ctxPath, FNM_CASEFOLD)
+                        || fnmatch($pat, '/' . ltrim($ctxPath, '/'), FNM_CASEFOLD);
+            } elseif ($type === 'hostname') {
+                $matched = fnmatch(stripAccentsForMatch(strtolower($value)), $ctxHostname, FNM_CASEFOLD);
+            } elseif ($type === 'extension') {
+                $exts = array_map(fn($e) => ltrim(strtolower(trim($e)), '.'), explode(',', $value));
+                $matched = in_array($ctxExt, $exts, true);
+            } elseif ($type === 'category') {
+                $want = array_map(fn($c) => strtolower(stripAccentsForMatch(trim($c))), explode(',', $value));
+                $matched = !empty(array_intersect($want, $ctxCats));
+            }
+            $ruleResults[] = [
+                'type' => $type, 'value' => $value, 'matched' => $matched,
+            ];
+        }
+        $logic = strtoupper($tpl['matchLogic'] ?? 'OR');
+        $matchedAll = $logic === 'AND'
+            ? !in_array(false, array_column($ruleResults, 'matched'), true)
+            : in_array(true, array_column($ruleResults, 'matched'), true);
+
+        $evaluation[] = [
+            'templateId'    => (string)$tpl['_id'],
+            'templateName'  => $tpl['name'] ?? '',
+            'priority'      => $tpl['priority'] ?? 0,
+            'isFallback'    => !empty($tpl['isFallback']),
+            'active'        => !array_key_exists('active', $tpl) || $tpl['active'] !== false,
+            'matchLogic'    => $logic,
+            'rules'         => $ruleResults,
+            'matchedAll'    => $matchedAll,
+            'hasPurpose'    => !empty($tpl['defaults']['purpose']),
+            'hasLegalBasis' => !empty($tpl['defaults']['legalBasis']),
+        ];
+    }
+
+    json_response([
+        'success'            => true,
+        'item'               => [
+            'id' => $itemId, 'name' => $item['name'] ?? '', 'path' => $item['path'] ?? '',
+            'currentTemplateId'  => $item['templateApplied'] ?? null,
+            'currentTemplateName'=> $item['templateName'] ?? null,
+            'needsReview'        => !empty($item['needsReview']),
+            'templateDebug'      => $item['templateDebug'] ?? null,
+        ],
+        'agentTemplateIds'   => $agentTplIds,
+        'context'            => $ctx,
+        'evaluation'         => $evaluation,
+    ]);
 }
