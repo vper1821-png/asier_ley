@@ -220,7 +220,13 @@ func (w *fileWatcher) watch(ctx context.Context, readyWG *sync.WaitGroup) error 
 				Extension:   strings.ToLower(filepath.Ext(event.Name)),
 			}
 
-			w.log.Debug("FileWatcher: evento %s en %s (user=%s)", evType, event.Name, ev.User)
+			if evType == "delete" {
+				w.log.Info("FileWatcher: 🗑️  DELETE: %s", event.Name)
+			} else if evType == "move" {
+				w.log.Info("FileWatcher: ➡️  MOVE/RENAME: %s", event.Name)
+			} else {
+				w.log.Debug("FileWatcher: evento %s en %s (user=%s)", evType, event.Name, ev.User)
+			}
 
 			// Envío BLOQUEANTE con cancelación — nunca descarta en silencio
 			select {

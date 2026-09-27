@@ -852,18 +852,27 @@ func (c *Client) SendFileDeleted(ev audit.FileEvent) {
 		hostname = getHostname()
 	}
 
+	extension := ev.Extension
+	if extension == "" {
+		extension = getFileType(ev.Path)
+	}
+
 	payload := map[string]interface{}{
 		"agentId":      c.agentID,
-		"timestamp":    time.Now(),
+		"timestamp":    time.Now().Format(time.RFC3339),
 		"path":         ev.Path,
 		"hash":         ev.Hash,
 		"hostname":     hostname,
 		"user":         ev.User,
-		"extension":    ev.Extension,
+		"extension":    extension,
 		"sensitive":    ev.Sensitive,
 		"personalData": ev.PersonalData,
-		"deletedAt":    time.Now(),
+		"deletedAt":    time.Now().Format(time.RFC3339),
+		"eventType":    ev.EventType, // "delete" | "move" | "rename"
 	}
+
+	c.log.Info("WS: enviando file_deleted (path=%s, tipo=%s, hash=%s)",
+		ev.Path, ev.EventType, ev.Hash)
 	c.send("file_deleted", payload)
 }
 

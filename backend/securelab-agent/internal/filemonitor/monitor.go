@@ -137,8 +137,23 @@ func (m *Monitor) processEvents() {
 				m.log.Debug("FileMonitor: evento guardado localmente: %s", ev.Path)
 			}
 
-			// ── Manejo de DELETE ──
-			if ev.EventType == "delete" {
+			// ═══════════════════════════════════════════════════════════════
+			// MANEJO DE ELIMINACIÓN (delete / move / rename)
+			// ═══════════════════════════════════════════════════════════════
+			// En Windows, borrar al Recycle Bin genera un Rename, no un Remove.
+			// Por eso tratamos "delete" + "move" + "rename" como eliminación,
+			// salvo que el archivo siga existiendo en la misma ruta (rename in-place).
+			isDeletion := ev.EventType == "delete"
+			if ev.EventType == "move" || ev.EventType == "rename" {
+				if _, err := os.Stat(ev.Path); os.IsNotExist(err) {
+					isDeletion = true
+				} else {
+					m.log.Debug("FileMonitor: %s rename in-place (archivo existe): %s",
+						ev.EventType, ev.Path)
+				}
+			}
+
+			if isDeletion {
 				var deletedItem *audit.SensitiveInventoryItem
 				if m.store != nil {
 					if item, err := m.store.GetSensitiveInventoryByPath(ev.Path); err == nil {
@@ -146,21 +161,30 @@ func (m *Monitor) processEvents() {
 					}
 				}
 
-				if deletedItem != nil && deletedItem.Sensitive {
-					ev.Sensitive = true
+				if deletedItem != nil {
+					ev.Sensitive = deletedItem.Sensitive
 					ev.PersonalData = deletedItem.PersonalData
 					if ev.Hash == "" {
 						ev.Hash = deletedItem.Hash
 					}
-					m.wsClient.SendFileDeleted(ev)
-					m.log.Info("🗑️  Archivo sensible eliminado, notificando backend: %s (hash: %s)",
-						ev.Path, shortHash(ev.Hash))
+					if ev.Extension == "" && deletedItem.Extension != "" {
+						ev.Extension = deletedItem.Extension
+					}
+				}
+
+				// Enviar SIEMPRE al backend, incluso si no estaba trackeado
+				m.wsClient.SendFileDeleted(ev)
+
+				if deletedItem != nil && deletedItem.Sensitive {
+					m.log.Info("🗑️  Archivo sensible eliminado: %s (hash: %s, tipo: %s)",
+						ev.Path, shortHash(ev.Hash), ev.EventType)
+				} else if deletedItem != nil {
+					m.log.Info("🗑️  Archivo eliminado (trackeado, no sensible): %s", ev.Path)
 				} else {
-					m.log.Debug("FileMonitor: archivo eliminado (sin PII registrada): %s", ev.Path)
+					m.log.Info("🗑️  Archivo eliminado (no trackeado): %s", ev.Path)
 				}
 
 				m.forgetHash(ev.Path)
-
 				if m.store != nil {
 					_ = m.store.UpdateInventoryOnFileEvent(ev)
 				}

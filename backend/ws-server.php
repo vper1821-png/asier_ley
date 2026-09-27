@@ -1241,84 +1241,136 @@ private function stripAccents($s) {
 
     // ─── HANDLER: FILE_DELETED ─────────────────────────────────────
 
-    private function handleFileDeleted(ConnectionInterface $from, $data) {
-        $agentId = $from->agentId ?? $data['agentId'] ?? '';
-        $userId  = $from->userId ?? '';
-        $path    = $data['path'] ?? '';
-        $hash    = $data['hash'] ?? '';
+    private function handleFileDeleted(ConnectionInterface $from, $data)
+{
+    $agentId = $from->agentId ?? ($data['agentId'] ?? '');
+    $userId  = $from->userId ?? '';
+    $path    = $data['path'] ?? '';
+    $hash    = $data['hash'] ?? '';
 
-        if (!$agentId || !$userId || !$path) {
-            echo "⚠️ file_deleted ignorado: datos incompletos\n";
-            return;
-        }
+    if (!$agentId || !$userId || !$path) {
+        echo "⚠️ file_deleted ignorado: datos incompletos\n";
+        return;
+    }
+    if (!$this->db) {
+        echo "⚠️ file_deleted: sin BD disponible\n";
+        return;
+    }
 
-        if (!$this->db) {
-            echo "⚠️ file_deleted: sin BD disponible\n";
-            return;
-        }
+    $db  = $this->db;
+    $now = date('c');
 
-        $db  = $this->db;
-        $now = date('c');
+    // ═══ FIX: normalizar el path (Windows usa backslash) ═══
+    $pathNormalizado = str_replace('\\', '/', (string)$path);
+    $pathBackslash   = str_replace('/', '\\', (string)$path);
 
-        $existing = $db->findOne('compliance_files', [
-            'agentId' => $agentId,
-            'path'    => $path,
-            'userId'  => $userId,
-        ]);
+    // Búsqueda tolerante con ambas variantes
+    $existing = $db->findOne('compliance_files', [
+        'agentId' => $agentId,
+        'userId'  => $userId,
+        '$or' => [
+            ['path' => $pathNormalizado],
+            ['path' => $pathBackslash],
+            ['path' => $path],
+        ],
+    ]);
 
-        if (!$existing) {
-            echo "ℹ️  file_deleted: archivo no encontrado en BD: {$path}\n";
-            return;
-        }
+    $extension = $data['extension'] ?? strtolower(pathinfo($pathNormalizado, PATHINFO_EXTENSION));
 
-        $db->updateOne('compliance_files', ['_id' => $existing['_id']], [
-            'status'      => 'deleted',
-            'deletedAt'   => $now,
-            'deletedHash' => $hash,
-            'updatedAt'   => $now,
-        ]);
-
-        $inventoryId = $existing['analysisResult']['inventoryId'] ?? null;
-        if ($inventoryId) {
-            $db->updateOne('compliance_inventory', ['_id' => $inventoryId], [
-                'active'    => false,
-                'deletedAt' => $now,
-                'updatedAt' => $now,
-            ]);
-        }
-
-        // Extension real del evento (o derivada del path como fallback)
-        $extension = $data['extension'] ?? strtolower(pathinfo($path, PATHINFO_EXTENSION));
+    // ═══ FIX: registrar SIEMPRE, trackeado o no ═══
+    if (!$existing) {
+        echo "ℹ️  file_deleted (no trackeado): {$pathNormalizado}\n";
 
         $db->insertOne('file_audit_logs', [
-            'userId'     => $userId,
-            'agentId'    => $agentId,
-            'hostname'   => $data['hostname'] ?? 'unknown',
-            'path'       => $path,
-            'user'       => $data['user'] ?? null,
-            'detectedAt' => $now,
-            'categories' => array_keys($data['personalData'] ?? []),
-            'sensitive'  => !empty($data['sensitive']),
-            'fileType'   => $extension,
-            'hash'       => $hash,
-            'status'     => 'deleted',
-            'eventType'  => 'deleted',
+            'userId'      => $userId,
+            'agentId'     => $agentId,
+            'hostname'    => $data['hostname'] ?? 'unknown',
+            'path'        => $pathNormalizado,
+            'user'        => $data['user'] ?? null,
+            'detectedAt'  => $now,
+            'categories'  => array_keys($data['personalData'] ?? []),
+            'sensitive'   => !empty($data['sensitive']),
+            'fileType'    => $extension,
+            'hash'        => $hash,
+            'status'      => 'deleted_untracked',
+            'eventType'   => 'deleted',
+            'eventSource' => $data['eventType'] ?? 'delete',
+            'note'        => 'Archivo eliminado que no estaba registrado en inventario',
         ]);
 
         $db->insertOne('audit_logs', [
-            'userId'  => $userId,
-            'action'  => 'file_deleted_by_agent',
-            'details' => [
+            'userId'    => $userId,
+            'action'    => 'file_deleted_untracked',
+            'details'   => [
                 'agentId' => $agentId,
-                'path'    => $path,
+                'path'    => $pathNormalizado,
                 'hash'    => $hash,
                 'user'    => $data['user'] ?? null,
+                'source'  => $data['eventType'] ?? 'delete',
             ],
             'createdAt' => $now,
         ]);
 
-        echo "🗑️  Archivo marcado como eliminado: {$path}\n";
+        $from->send(json_encode([
+            'type' => 'file_deleted_ack',
+            'payload' => ['success' => true, 'untracked' => true],
+        ]));
+        return;
     }
+
+    // ── Archivo trackeado: flujo completo ──
+    $db->updateOne('compliance_files', ['_id' => $existing['_id']], [
+        'status'      => 'deleted',
+        'deletedAt'   => $now,
+        'deletedHash' => $hash,
+        'updatedAt'   => $now,
+    ]);
+
+    $inventoryId = $existing['analysisResult']['inventoryId'] ?? null;
+    if ($inventoryId) {
+        $db->updateOne('compliance_inventory', ['_id' => $inventoryId], [
+            'active'    => false,
+            'deletedAt' => $now,
+            'updatedAt' => $now,
+        ]);
+    }
+
+    $db->insertOne('file_audit_logs', [
+        'userId'      => $userId,
+        'agentId'     => $agentId,
+        'hostname'    => $data['hostname'] ?? 'unknown',
+        'path'        => $pathNormalizado,
+        'user'        => $data['user'] ?? null,
+        'detectedAt'  => $now,
+        'categories'  => array_keys($data['personalData'] ?? []),
+        'sensitive'   => !empty($data['sensitive']),
+        'fileType'    => $extension,
+        'hash'        => $hash,
+        'status'      => 'deleted',
+        'eventType'   => 'deleted',
+        'eventSource' => $data['eventType'] ?? 'delete',
+    ]);
+
+    $db->insertOne('audit_logs', [
+        'userId'    => $userId,
+        'action'    => 'file_deleted_by_agent',
+        'details'   => [
+            'agentId' => $agentId,
+            'path'    => $pathNormalizado,
+            'hash'    => $hash,
+            'user'    => $data['user'] ?? null,
+            'source'  => $data['eventType'] ?? 'delete',
+        ],
+        'createdAt' => $now,
+    ]);
+
+    $from->send(json_encode([
+        'type' => 'file_deleted_ack',
+        'payload' => ['success' => true, 'fileId' => (string)$existing['_id']],
+    ]));
+
+    echo "🗑️  Archivo marcado como eliminado: {$pathNormalizado}\n";
+   }
 }
 
 // ─── INICIAR SERVIDOR ──────────────────────────────────────────
