@@ -744,10 +744,15 @@ class AgentWebSocket implements MessageComponentInterface {
             // Sin plantilla → agrupa por carpeta padre
             $parentDir = dirname($path);
             $folderName = basename($parentDir);
-            if (in_array(strtolower($folderName), ['desktop', 'documents', 'downloads', 'users', 'public'], true)) {
-                $folderName = 'Archivos ' . ucfirst(strtolower($folderName));
+
+            // FIX: si no hay carpeta padre válida, usar el nombre del archivo
+            if (empty($folderName) || $folderName === '.' || $folderName === '/' || $folderName === '\\') {
+                $friendlyName = '📄 ' . basename($path);
+            } elseif (in_array(strtolower($folderName), ['desktop', 'documents', 'downloads', 'users', 'public'], true)) {
+                $friendlyName = '📁 Archivos ' . ucfirst(strtolower($folderName));
+            } else {
+                $friendlyName = '📁 ' . $folderName;
             }
-            $friendlyName = '📁 ' . $folderName;
 
             $activity = $db->findOne('compliance_inventory', [
                 'userId' => $userId,
@@ -813,10 +818,14 @@ class AgentWebSocket implements MessageComponentInterface {
             if (!$isRealTemplate) {
                 $parentDir = dirname($path);
                 $folderName = basename($parentDir);
-                if (in_array(strtolower($folderName), ['desktop', 'documents', 'downloads', 'users', 'public'], true)) {
-                    $folderName = 'Archivos ' . ucfirst(strtolower($folderName));
+
+                if (empty($folderName) || $folderName === '.' || $folderName === '/' || $folderName === '\\') {
+                    $friendlyName = '📄 ' . $fileName;
+                } elseif (in_array(strtolower($folderName), ['desktop', 'documents', 'downloads', 'users', 'public'], true)) {
+                    $friendlyName = '📁 Archivos ' . ucfirst(strtolower($folderName));
+                } else {
+                    $friendlyName = '📁 ' . $folderName;
                 }
-                $friendlyName = '📁 ' . $folderName;
             } else {
                 $friendlyName = '📄 ' . $fileName;
             }

@@ -2378,7 +2378,19 @@ $totalFiltered = count($filtered);
 
                     <div class="flex-1 overflow-y-auto p-6 scrollbar-custom">
                         <form id="inventory-edit-form" class="space-y-4">
-                            <input type="hidden" name="item_id" id="edit-item-id">
+                            
+                                                    <!-- ═══ SECCIÓN 0: Archivos agrupados en esta actividad ═══ -->
+                            <div id="edit-sources-section" class="rounded-lg border border-cyan-500/25 bg-cyan-500/[0.03] p-4 mb-2">
+                                <div class="flex items-center justify-between mb-3">
+                                    <p class="text-[11px] font-bold text-cyan-300 uppercase tracking-wider">
+                                        📂 Archivos agrupados en esta actividad
+                                    </p>
+                                    <span id="edit-sources-count" class="text-[10px] text-cyan-400 font-semibold"></span>
+                                </div>
+                                <div id="edit-sources-list" class="space-y-1.5 max-h-64 overflow-y-auto scrollbar-custom">
+                                    <!-- Se llena con JS -->
+                                </div>
+                            </div>
 
                             <!-- SECCIÓN 1: Identificación -->
                             <div class="rounded-lg border border-border-theme/50 bg-bg-base/30 p-4">
@@ -2754,6 +2766,40 @@ $totalFiltered = count($filtered);
                 if (!item) return;
 
                 document.getElementById('edit-item-id').value = itemId;
+                                // ═══ Renderizar los archivos agrupados ═══
+                const sourcesList = document.getElementById('edit-sources-list');
+                const sourcesCount = document.getElementById('edit-sources-count');
+                const sources = item.sources || [];
+
+                if (sources.length === 0) {
+                    sourcesCount.textContent = '';
+                    sourcesList.innerHTML = `
+                        <p class="text-[10px] text-text-subtle italic text-center py-3">
+                            ${item.path ? '📄 ' + item.path : 'Sin archivos registrados'}
+                        </p>`;
+                } else {
+                    sourcesCount.textContent = sources.length + ' archivo' + (sources.length !== 1 ? 's' : '');
+                    sourcesList.innerHTML = sources.map((s, i) => {
+                        const p = s.path || '(ruta desconocida)';
+                        const name = p.split(/[\\\\\/]/).pop() || p;
+                        const recs = s.records ?? 0;
+                        const fId = s.fileId || '';
+                        const date = s.detectedAt ? new Date(s.detectedAt).toLocaleString('es-CL') : '';
+                        return `
+                            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-bg-base/50 border border-white/[0.04] hover:border-cyan-500/30 transition-all">
+                                <span class="text-cyan-400 flex-shrink-0 text-[13px]">📄</span>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-[11px] text-text-heading font-medium truncate" title="${escHtml(p)}">${escHtml(name)}</p>
+                                    <p class="text-[9px] text-text-subtle truncate" title="${escHtml(p)}">${escHtml(p)}</p>
+                                </div>
+                                <div class="text-right flex-shrink-0">
+                                    ${recs > 0 ? `<p class="text-[10px] text-emerald-400 font-semibold">${recs} filas</p>` : ''}
+                                    ${date ? `<p class="text-[8px] text-text-subtle">${date}</p>` : ''}
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
                 document.getElementById('edit-name').value = item.name || '';
                 document.getElementById('edit-code').value = item.code
                     || ('RAT-' + String(itemId).substring(0, 6).toUpperCase());
