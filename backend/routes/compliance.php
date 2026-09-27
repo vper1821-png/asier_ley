@@ -760,11 +760,6 @@ function crud() {
         return;
     }
 
-    $created = $db->insertOne($collection, $item);
-    json_response(['success' => true, $resource => $created]);
-    return;
-}
-
     if ($method === 'PUT' && $id) {
         $filter = ['_id' => $id];
         if (!$isSuperAdmin) $filter['userId'] = ['$in' => $userIds];
@@ -1893,7 +1888,7 @@ function previewPackApply() {
     $agentIds = $body['agentIds'] ?? [];
     if (!$packId || empty($agentIds)) json_error('packId y agentIds requeridos');
 
-        $pack = $db->findOne('compliance_packs', ['_id' => $packId, 'userId' => $user['_id']]);
+    $pack = $db->findOne('compliance_packs', ['_id' => $packId, 'userId' => $user['_id']]);
     if (!$pack || (array_key_exists('active', $pack) && $pack['active'] === false)) {
         json_error('pack no encontrado', 404);
     }
