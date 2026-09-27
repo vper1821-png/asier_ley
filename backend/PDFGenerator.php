@@ -235,105 +235,85 @@ body { font-family: "DejaVu Sans", Helvetica, Arial, sans-serif; margin: 0; padd
         return $html;
     }
 
-      // ─── Inventory PDF (RAT — Art. 14 Ley 21.719 completo) ──────
+    // ─── Inventory PDF (RAT — Art. 14 ter Ley 21.719) ──────────
+    // RESUMEN ejecutivo con agregados. NO itera 100k registros.
     public function generateInventoryPDF($inventoryId = null) {
         $company = $this->getCompanyInfo();
         $filter = $this->getCompanyFilter();
         if ($inventoryId) $filter['_id'] = $inventoryId;
-        $inventory = $this->db->find('compliance_inventory', $filter);
 
         $html = $this->getHeaderHTML(
             'REGISTRO DE ACTIVIDADES DE TRATAMIENTO (RAT)',
-            'Ley 21.719 - Art. 14 - Registro de Actividades de Tratamiento'
+            'Ley 21.719 - Art. 14 ter - Resumen ejecutivo del inventario'
         );
 
-        // ─── Helpers locales ───────────────────────────────────
-        $fmtDate = fn($d) => !empty($d) ? $this->formatDate($d) : '—';
-        $toArr = function($v) {
-            if (is_array($v)) return array_values(array_filter(array_map('trim', $v)));
-            if (is_string($v) && $v !== '') return array_values(array_filter(array_map('trim', explode(',', $v))));
-            return [];
+        // ─── 1. Totales con count() (memoria constante) ──────────
+        $total     = (int)$this->db->count('compliance_inventory', $filter);
+        $sensitive = (int)$this->db->count('compliance_inventory', array_merge($filter, ['sensitive' => true]));
+        $children  = (int)$this->db->count('compliance_inventory', array_merge($filter, ['childrenData' => true]));
+
+        // ─── 2. Distribuciones con aggregate() ───────────────────
+        $byRisk = [];
+        $byLegalBasis = [];
+        $byPurpose = [];
+        try {
+            $byRisk = $this->db->aggregate('compliance_inventory', [
+                ['$match' => $filter],
+                ['$group' => ['_id' => '$risk', 'count' => ['$sum' => 1]]],
+                ['$sort'  => ['count' => -1]],
+            ]) ?: [];
+        } catch (\Throwable $e) { error_log('[RAT PDF] byRisk: ' . $e->getMessage()); }
+
+        try {
+            $byLegalBasis = $this->db->aggregate('compliance_inventory', [
+                ['$match' => $filter],
+                ['$group' => ['_id' => '$legalBasis', 'count' => ['$sum' => 1]]],
+                ['$sort'  => ['count' => -1]],
+            ]) ?: [];
+        } catch (\Throwable $e) { error_log('[RAT PDF] byLegalBasis: ' . $e->getMessage()); }
+
+        try {
+            $byPurpose = $this->db->aggregate('compliance_inventory', [
+                ['$match' => $filter],
+                ['$group' => ['_id' => '$purpose', 'count' => ['$sum' => 1]]],
+                ['$sort'  => ['count' => -1]],
+                ['$limit' => 15],
+            ]) ?: [];
+        } catch (\Throwable $e) { error_log('[RAT PDF] byPurpose: ' . $e->getMessage()); }
+
+        // ─── 3. Top 20 (limit duro, sin cargar todo) ─────────────
+        $topItems = $this->db->find('compliance_inventory', $filter, [
+            'sort'  => ['risk' => -1, 'createdAt' => -1],
+            'limit' => 20,
+        ]);
+
+        // ─── 4. Helpers de formato ───────────────────────────────
+        $fmt = fn($n) => number_format((int)$n, 0, ',', '.');
+        $pct = fn($n, $t) => $t > 0 ? round($n / $t * 100, 1) . '%' : '0%';
+        $riskLabelMap = [
+            'critical' => 'Crítico',
+            'high'     => 'Alto',
+            'medium'   => 'Medio',
+            'low'      => 'Bajo',
+        ];
+        $riskLabel = fn($r) => $riskLabelMap[strtolower((string)$r)] ?? ucfirst((string)$r);
+        $riskBadgeCls = fn($r) => match(strtolower((string)$r)) {
+            'critical', 'high' => 'badge-danger',
+            'medium'           => 'badge-warning',
+            default            => 'badge-success',
         };
-        $labelMap = [
-            'identificacion' => 'Identificación (nombre, RUT, dirección)',
-            'contacto'       => 'Contacto (email, teléfono)',
-            'financieros'    => 'Financieros (cuentas, tarjetas)',
-            'laborales'      => 'Laborales (cargo, sueldo)',
-            'salud'          => 'Salud (historial clínico)',
-            'biometricos'    => 'Biométricos',
-            'geneticos'      => 'Genéticos',
-            'ninos'          => 'Datos de niños, niñas y adolescentes',
-            'navegacion'     => 'Navegación (IP, cookies)',
-            'ubicacion'      => 'Ubicación geográfica',
-            'comportamiento' => 'Perfilado y comportamiento',
-            'antecedentes'   => 'Antecedentes penales / judiciales',
-            'clientes'       => 'Clientes / Usuarios',
-            'empleados'      => 'Empleados / Colaboradores',
-            'proveedores'    => 'Proveedores / Contratistas',
-            'postulantes'    => 'Postulantes a empleo',
-            'pacientes'      => 'Pacientes / Usuarios de salud',
-            'visitantes'     => 'Visitantes / Invitados',
-            'ex_empleados'   => 'Ex-empleados',
-            'publico_general'=> 'Público general',
-            'consentimiento' => 'Consentimiento del titular (Art. 12)',
+        $basisLabelMap = [
+            'consentimiento'     => 'Consentimiento del titular (Art. 12)',
             'ejecucion_contrato' => 'Ejecución de contrato (Art. 13.1.a)',
             'obligacion_legal'   => 'Obligación legal (Art. 13.1.b)',
             'interes_vital'      => 'Interés vital (Art. 13.1.c)',
             'interes_publico'    => 'Interés público (Art. 13.1.d)',
             'interes_legitimo'   => 'Interés legítimo (Art. 13.1.e)',
-            'continua'   => 'Continua (24/7)',
-            'diaria'     => 'Diaria',
-            'semanal'    => 'Semanal',
-            'mensual'    => 'Mensual',
-            'ocasional'  => 'Ocasional',
-            'unica'      => 'Única',
-            'interno_solo'    => 'Solo personal interno',
-            'interno_externo' => 'Personal interno y proveedores',
-            'publico'         => 'Acceso público',
-            'terceros'        => 'Terceros autorizados',
-            // ✅ NUEVO Art. 14.1.d — Destinatarios
-            'no_se_comunica'      => 'No se comunican a terceros',
-            'encargados'          => 'Encargados del tratamiento',
-            'proveedores_ti'      => 'Proveedores TI / Cloud',
-            'autoridades'         => 'Autoridades públicas',
-            'auditores'           => 'Auditores / Asesores',
-            'bancos'              => 'Bancos / Entidades financieras',
-            'publico'             => 'Comunicación pública',
-            'cifrado_reposo'      => 'Cifrado en reposo (AES-256)',
-            'cifrado_transito'    => 'Cifrado en tránsito (TLS)',
-            'pseudonimizacion'    => 'Seudonimización (Art. 30)',
-            'acceso_controlado'   => 'Control de acceso basado en roles (RBAC)',
-            'mfa'                 => 'Autenticación multifactor (MFA)',
-            'auditoria_accesos'   => 'Auditoría de accesos (logs)',
-            'backup_cifrado'      => 'Backups cifrados y probados',
-            'low'      => 'Bajo',
-            'medium'   => 'Medio',
-            'high'     => 'Alto',
-            'critical' => 'Crítico',
+            'no_especificado'    => 'No especificada',
         ];
-        $label = fn($v) => $labelMap[strtolower((string)$v)] ?? ucfirst((string)$v);
+        $basisLabel = fn($b) => $basisLabelMap[strtolower((string)$b)] ?? ucfirst((string)$b);
 
-        // ─── Estadísticas para el resumen ejecutivo ────────────
-        $total = count($inventory);
-        $riskCount = ['low' => 0, 'medium' => 0, 'high' => 0, 'critical' => 0];
-        $basisCount = [];
-        $sensitiveCount = 0;
-        $childrenCount = 0;
-        $withProcessor = 0;
-        $withEvidence = 0;
-        foreach ($inventory as $it) {
-            $r = strtolower($it['risk'] ?? 'low');
-            if (isset($riskCount[$r])) $riskCount[$r]++; else $riskCount['low']++;
-            $lb = $it['legalBasis'] ?? 'no_especificado';
-            $basisCount[$lb] = ($basisCount[$lb] ?? 0) + 1;
-            if (!empty($it['sensitive']))     $sensitiveCount++;
-            if (!empty($it['childrenData']))  $childrenCount++;
-            if (!empty($it['processorName'])) $withProcessor++;
-            if (!empty($it['evidenceUrl']))   $withEvidence++;
-        }
-        arsort($basisCount);
-
-        // ─── Bloque 1: información del responsable ─────────────
+        // ─── 5. RESUMEN EJECUTIVO ────────────────────────────────
         $html .= '<div class="section"><h2>1. Información del Responsable del Tratamiento</h2><div class="info-grid">';
         $html .= '<div class="info-item"><label>Empresa / Razón Social:</label><span>' . $company['name'] . '</span></div>';
         $html .= '<div class="info-item"><label>RUT Empresa:</label><span>' . ($company['companyRut'] ?: 'No especificado') . '</span></div>';
@@ -343,226 +323,133 @@ body { font-family: "DejaVu Sans", Helvetica, Arial, sans-serif; margin: 0; padd
         $html .= '<div class="info-item"><label>Nivel de Cumplimiento:</label><span>' . $company['complianceLevel'] . '</span></div>';
         $html .= '</div></div>';
 
-        // ─── Bloque 2: resumen ejecutivo ──────────────────────
-        $html .= '<div class="section"><h2>2. Resumen Ejecutivo del Inventario</h2>';
-        $html .= '<table class="data-table"><tbody>';
-        $html .= '<tr><td style="width:55%;font-weight:bold">Total de actividades registradas</td><td style="font-weight:bold;font-size:11px">' . $total . '</td></tr>';
-        $html .= '<tr><td style="font-weight:bold">Actividades con datos sensibles (Art. 16)</td><td>' . $sensitiveCount . '</td></tr>';
-        $html .= '<tr><td style="font-weight:bold">Actividades con datos de niños / adolescentes (Art. 17)</td><td>' . $childrenCount . '</td></tr>';
-        $html .= '<tr><td style="font-weight:bold">Actividades con encargado del tratamiento</td><td>' . $withProcessor . '</td></tr>';
-        $html .= '<tr><td style="font-weight:bold">Actividades con evidencia documental asociada</td><td>' . $withEvidence . '</td></tr>';
-        $html .= '</tbody></table>';
-
-        $html .= '<h3>Distribución por nivel de riesgo</h3>';
-        $html .= '<table class="data-table"><thead><tr><th>Nivel de riesgo</th><th>Cantidad</th><th>% del total</th></tr></thead><tbody>';
-        foreach ($riskCount as $k => $c) {
-            $pct = $total > 0 ? round(($c / $total) * 100, 1) : 0;
-            $html .= '<tr><td>' . $label($k) . '</td><td>' . $c . '</td><td>' . $pct . '%</td></tr>';
-        }
-        $html .= '</tbody></table>';
-
-        $html .= '<h3>Distribución por base de licitud (Art. 12-13)</h3>';
-        $html .= '<table class="data-table"><thead><tr><th>Base de licitud</th><th>Cantidad</th><th>% del total</th></tr></thead><tbody>';
-        foreach ($basisCount as $k => $c) {
-            $pct = $total > 0 ? round(($c / $total) * 100, 1) : 0;
-            $html .= '<tr><td>' . htmlspecialchars($label($k)) . '</td><td>' . $c . '</td><td>' . $pct . '%</td></tr>';
-        }
-        $html .= '</tbody></table>';
+        // ─── 6. KPIs del inventario ──────────────────────────────
+        $html .= '<div class="section"><h2>2. Resumen Cuantitativo del Inventario</h2>';
+        $html .= '<div class="status-box">';
+        $html .= '<h3>' . $fmt($total) . ' Actividades de Tratamiento Registradas</h3>';
+        $html .= '<p>Última actualización: ' . $this->formatDate(date('c')) . '</p>';
         $html .= '</div>';
 
-        // ─── Bloque 3: listado consolidado (tabla resumen) ────
-        if ($total > 0) {
-            $html .= '<div class="section"><h2>3. Listado Consolidado de Actividades</h2>';
-            $html .= '<table class="data-table"><thead><tr>';
-            $html .= '<th style="width:5%">#</th>';
-            $html .= '<th style="width:20%">Nombre</th>';
-            $html .= '<th style="width:12%">Código</th>';
-            $html .= '<th style="width:18%">Finalidad</th>';
-            $html .= '<th style="width:15%">Base de licitud</th>';
-            $html .= '<th style="width:10%">Riesgo</th>';
-            $html .= '<th style="width:10%">Sensible</th>';
-            $html .= '<th style="width:10%">Retención</th>';
-            $html .= '</tr></thead><tbody>';
-            foreach ($inventory as $i => $it) {
+        $html .= '<table class="data-table"><tbody>';
+        $html .= '<tr><td style="width:60%;font-weight:bold">Total de actividades registradas</td><td style="font-weight:bold;font-size:11px">' . $fmt($total) . '</td></tr>';
+        $html .= '<tr><td style="font-weight:bold">Actividades con datos sensibles (Art. 16)</td><td>' . $fmt($sensitive) . '</td></tr>';
+        $html .= '<tr><td style="font-weight:bold">Actividades con datos de niños / adolescentes (Art. 17)</td><td>' . $fmt($children) . '</td></tr>';
+        $html .= '<tr><td style="font-weight:bold">Actividades sin datos sensibles</td><td>' . $fmt($total - $sensitive) . '</td></tr>';
+        $html .= '</tbody></table>';
+
+        $html .= '<div class="legal-notice" style="margin-top:12px">';
+        $html .= '<p><strong>Nota metodológica:</strong> Este documento presenta un <strong>resumen ejecutivo</strong> del Registro de Actividades de Tratamiento. El listado detallado de los ' . $fmt($total) . ' tratamientos está disponible como <strong>anexo CSV</strong> para efectos de auditoría granular.</p>';
+        $html .= '</div>';
+        $html .= '</div>';
+
+        // ─── 7. Distribución por riesgo ──────────────────────────
+        $html .= '<div class="section"><h2>3. Distribución por Nivel de Riesgo</h2>';
+        if (empty($byRisk)) {
+            $html .= '<p>Sin datos de riesgo registrados.</p>';
+        } else {
+            $html .= '<table class="data-table"><thead><tr><th>Nivel de riesgo</th><th>Cantidad</th><th>% del total</th></tr></thead><tbody>';
+            foreach ($byRisk as $r) {
+                $riskKey = (string)($r['_id'] ?? 'no_especificado');
+                $count   = (int)($r['count'] ?? 0);
                 $html .= '<tr>';
-                $html .= '<td>' . ($i + 1) . '</td>';
-                $html .= '<td>' . htmlspecialchars($this->safeString($it['name'] ?? '—')) . '</td>';
-                $html .= '<td>' . htmlspecialchars($this->safeString($it['code'] ?? '—')) . '</td>';
-                $html .= '<td>' . htmlspecialchars($this->safeString($it['purpose'] ?? '—')) . '</td>';
-                $html .= '<td>' . htmlspecialchars($label($it['legalBasis'] ?? '—')) . '</td>';
-                $html .= '<td>' . htmlspecialchars($label($it['risk'] ?? 'low')) . '</td>';
-                $html .= '<td>' . (!empty($it['sensitive']) ? 'Sí' : 'No') . '</td>';
-                $html .= '<td>' . (!empty($it['retentionDays']) ? (int)$it['retentionDays'] . ' días' : '—') . '</td>';
+                $html .= '<td><span class="badge ' . $riskBadgeCls($riskKey) . '">' . htmlspecialchars($riskLabel($riskKey)) . '</span></td>';
+                $html .= '<td>' . $fmt($count) . '</td>';
+                $html .= '<td>' . $pct($count, $total) . '</td>';
                 $html .= '</tr>';
             }
             $html .= '</tbody></table>';
-            $html .= '<p style="font-size:8px;color:#555;margin-top:6px">Nota: cada actividad se detalla individualmente en la sección 4 con ficha completa conforme al Art. 14.1 de la Ley 21.719.</p>';
-            $html .= '</div>';
         }
+        $html .= '</div>';
 
-        // ─── Bloque 4: fichas individuales ────────────────────
-        $html .= '<div class="section"><h2>4. Fichas Individuales de Actividades de Tratamiento</h2>';
-        $html .= '<p style="font-size:8px;color:#555">Cada ficha contiene la totalidad de la información exigida por el Art. 14.1 de la Ley 21.719.</p></div>';
-
-        if ($total === 0) {
-            $html .= '<div class="section"><div class="checklist"><div class="checklist-item">No hay actividades de tratamiento registradas.</div></div></div>';
+        // ─── 8. Distribución por base legal ──────────────────────
+        $html .= '<div class="section"><h2>4. Distribución por Base de Licitud (Art. 12-13)</h2>';
+        if (empty($byLegalBasis)) {
+            $html .= '<p>Sin datos de base legal registrados.</p>';
         } else {
-            foreach ($inventory as $idx => $it) {
-                if ($idx > 0) $html .= '<div style="page-break-before:always"></div>';
+            $html .= '<table class="data-table"><thead><tr><th>Base de licitud</th><th>Cantidad</th><th>% del total</th></tr></thead><tbody>';
+            foreach ($byLegalBasis as $r) {
+                $basisKey = (string)($r['_id'] ?? 'no_especificado');
+                $count    = (int)($r['count'] ?? 0);
+                $html .= '<tr>';
+                $html .= '<td>' . htmlspecialchars($basisLabel($basisKey)) . '</td>';
+                $html .= '<td>' . $fmt($count) . '</td>';
+                $html .= '<td>' . $pct($count, $total) . '</td>';
+                $html .= '</tr>';
+            }
+            $html .= '</tbody></table>';
+        }
+        $html .= '</div>';
 
-                $dataCats  = $toArr($it['dataCategories'] ?? []);
-                $subCats   = $toArr($it['subjectCategories'] ?? []);
-                $techM     = $toArr($it['technicalMeasures'] ?? []);
-                $riskKey   = strtolower($it['risk'] ?? 'low');
-                $riskBadge = ['low' => 'badge-success', 'medium' => 'badge-warning', 'high' => 'badge-warning', 'critical' => 'badge-danger'][$riskKey] ?? 'badge-warning';
+        // ─── 9. Top 15 finalidades ───────────────────────────────
+        $html .= '<div class="section"><h2>5. Top 15 Finalidades del Tratamiento</h2>';
+        if (empty($byPurpose)) {
+            $html .= '<p>Sin datos de finalidad registrados.</p>';
+        } else {
+            $html .= '<table class="data-table"><thead><tr><th>Finalidad</th><th>Cantidad</th><th>% del total</th></tr></thead><tbody>';
+            foreach ($byPurpose as $r) {
+                $purposeKey = (string)($r['_id'] ?? 'Sin definir');
+                $count      = (int)($r['count'] ?? 0);
+                $html .= '<tr>';
+                $html .= '<td>' . htmlspecialchars($purposeKey) . '</td>';
+                $html .= '<td>' . $fmt($count) . '</td>';
+                $html .= '<td>' . $pct($count, $total) . '</td>';
+                $html .= '</tr>';
+            }
+            $html .= '</tbody></table>';
+        }
+        $html .= '</div>';
 
-                $html .= '<div class="section"><h2>Ficha #' . ($idx + 1) . ': ' . htmlspecialchars($this->safeString($it['name'] ?? 'Sin nombre')) . '</h2>';
-
-                // Encabezado de la ficha
-                $html .= '<div class="info-grid">';
-                $html .= '<div class="info-item"><label>Identificador interno (_id):</label><span>' . htmlspecialchars((string)($it['_id'] ?? '—')) . '</span></div>';
-                $html .= '<div class="info-item"><label>Código / Referencia:</label><span>' . htmlspecialchars($this->safeString($it['code'] ?? '—')) . '</span></div>';
-                $html .= '<div class="info-item"><label>Nivel de riesgo:</label><span><span class="badge ' . $riskBadge . '">' . $label($riskKey) . '</span></span></div>';
-                $html .= '<div class="info-item"><label>Fecha de registro:</label><span>' . $fmtDate($it['createdAt'] ?? null) . '</span></div>';
-                $html .= '<div class="info-item"><label>Última actualización:</label><span>' . $fmtDate($it['updatedAt'] ?? null) . '</span></div>';
-                $html .= '<div class="info-item"><label>Origen del registro:</label><span>' . htmlspecialchars($this->safeString($it['sourceType'] ?? 'Manual')) . '</span></div>';
-                $html .= '</div>';
-
-                // 4.1 Identificación de la actividad
-                $html .= '<h3>4.1 Identificación de la Actividad (Art. 14.1.a)</h3>';
-                $html .= '<table class="data-table"><tbody>';
-                $html .= '<tr><td style="width:30%;background:#f5f5f5;font-weight:bold">Nombre de la actividad</td><td>' . htmlspecialchars($this->safeString($it['name'] ?? '—')) . '</td></tr>';
-                $html .= '<tr><td style="background:#f5f5f5;font-weight:bold">Código / Referencia</td><td>' . htmlspecialchars($this->safeString($it['code'] ?? '—')) . '</td></tr>';
-                $html .= '</tbody></table>';
-
-                // 4.2 Finalidad y base legal
-                $html .= '<h3>4.2 Finalidad y Base de Licitud (Art. 14.1.b / Art. 12-13)</h3>';
-                $html .= '<table class="data-table"><tbody>';
-                $html .= '<tr><td style="width:30%;background:#f5f5f5;font-weight:bold">Finalidad</td><td>' . htmlspecialchars($this->safeString($it['purpose'] ?? '—')) . '</td></tr>';
-                $html .= '<tr><td style="background:#f5f5f5;font-weight:bold">Base de licitud</td><td>' . htmlspecialchars($label($it['legalBasis'] ?? '—')) . '</td></tr>';
-                $html .= '<tr><td style="background:#f5f5f5;font-weight:bold">Interés legítimo (Art. 13.1.e)</td><td>' . nl2br(htmlspecialchars($this->safeString($it['legitimateInterest'] ?? 'No aplica'))) . '</td></tr>';
-                $html .= '</tbody></table>';
-
-                // 4.3 Responsables
-                $html .= '<h3>4.3 Responsables del Tratamiento (Art. 14.1.a / Art. 15 bis)</h3>';
-                $html .= '<table class="data-table"><tbody>';
-                $html .= '<tr><td style="width:30%;background:#f5f5f5;font-weight:bold">Responsable del tratamiento</td><td>' . htmlspecialchars($this->safeString($it['controllerName'] ?? $company['name'])) . '</td></tr>';
-                $html .= '<tr><td style="background:#f5f5f5;font-weight:bold">Encargado del tratamiento</td><td>' . htmlspecialchars($this->safeString($it['processorName'] ?? '—')) . '</td></tr>';
-                $html .= '</tbody></table>';
-
-                // 4.4 Categorías de datos
-                $html .= '<h3>4.4 Categorías de Datos Personales (Art. 14.1.c / Art. 15-16)</h3>';
-                if (empty($dataCats)) {
-                    $html .= '<p>No especificadas.</p>';
-                } else {
-                    $html .= '<ul style="margin:4px 0;padding-left:16px">';
-                    foreach ($dataCats as $c) {
-                        $html .= '<li>' . htmlspecialchars($label($c)) . '</li>';
-                    }
-                    $html .= '</ul>';
-                }
-                $html .= '<table class="data-table"><tbody>';
-                $html .= '<tr><td style="width:30%;background:#f5f5f5;font-weight:bold">¿Incluye datos sensibles? (Art. 16)</td><td>' . (!empty($it['sensitive']) ? '<span class="badge badge-danger">Sí — Requiere consentimiento explícito</span>' : 'No') . '</td></tr>';
-                $html .= '<tr><td style="background:#f5f5f5;font-weight:bold">¿Incluye datos de niños / adolescentes? (Art. 17)</td><td>' . (!empty($it['childrenData']) ? '<span class="badge badge-danger">Sí — Requiere consentimiento del representante legal</span>' : 'No') . '</td></tr>';
-                $html .= '</tbody></table>';
-
-                              // 4.5 Categorías de titulares
-                $html .= '<h3>4.5 Categorías de Titulares (Art. 14.1.c)</h3>';
-                if (empty($subCats)) {
-                    $html .= '<p>No especificadas.</p>';
-                } else {
-                    $html .= '<ul style="margin:4px 0;padding-left:16px">';
-                    foreach ($subCats as $c) {
-                        $html .= '<li>' . htmlspecialchars($label($c)) . '</li>';
-                    }
-                    $html .= '</ul>';
-                }
-
-                // ✅ NUEVO 4.6 Destinatarios (Art. 14.1.d)
-                $recipients = $toArr($it['recipients'] ?? []);
-                $html .= '<h3>4.6 Destinatarios de los Datos (Art. 14.1.d)</h3>';
-                if (empty($recipients)) {
-                    $html .= '<p style="color:#991b1b;font-weight:bold">⚠ No especificados — requisito obligatorio Art. 14.1.d</p>';
-                } else {
-                    $html .= '<ul style="margin:4px 0;padding-left:16px">';
-                    foreach ($recipients as $r) {
-                        $html .= '<li>' . htmlspecialchars($label($r)) . '</li>';
-                    }
-                    $html .= '</ul>';
-                }
-                if (!empty($it['recipientsDetail'])) {
-                    $html .= '<table class="data-table"><tbody>';
-                    $html .= '<tr><td style="width:30%;background:#f5f5f5;font-weight:bold">Detalle de destinatarios</td><td>' . nl2br(htmlspecialchars($this->safeString($it['recipientsDetail']))) . '</td></tr>';
-                    $html .= '</tbody></table>';
-                }
-
-                // 4.7 Frecuencia y acceso
-                $html .= '<h3>4.7 Frecuencia y Control de Acceso (Art. 14.1.e / Art. 25)</h3>';
-                $html .= '<table class="data-table"><tbody>';
-                $html .= '<tr><td style="width:30%;background:#f5f5f5;font-weight:bold">Frecuencia de tratamiento</td><td>' . htmlspecialchars($label($it['treatmentFrequency'] ?? '—')) . '</td></tr>';
-                $html .= '<tr><td style="background:#f5f5f5;font-weight:bold">Control de acceso</td><td>' . htmlspecialchars($label($it['accessControl'] ?? '—')) . '</td></tr>';
-                $html .= '</tbody></table>';
-
-                // 4.7 Medidas de seguridad
-                $html .= '<h3>4.8 Medidas de Seguridad Implementadas (Art. 25)</h3>';
-                if (empty($techM)) {
-                    $html .= '<p>No especificadas.</p>';
-                } else {
-                    $html .= '<ul style="margin:4px 0;padding-left:16px">';
-                    foreach ($techM as $m) {
-                        $html .= '<li>' . htmlspecialchars($label($m)) . '</li>';
-                    }
-                    $html .= '</ul>';
-                }
-
-                // 4.8 Retención
-                $html .= '<h3>4.9 Plazo de Retención (Art. 14.1.e)</h3>';
-                $html .= '<table class="data-table"><tbody>';
-                $html .= '<tr><td style="width:30%;background:#f5f5f5;font-weight:bold">Plazo de conservación</td><td>' . (!empty($it['retentionDays']) ? (int)$it['retentionDays'] . ' días' : 'No especificado') . '</td></tr>';
-                $html .= '<tr><td style="background:#f5f5f5;font-weight:bold">Almacenamiento</td><td>' . htmlspecialchars($this->safeString($it['storage'] ?? 'No especificado')) . '</td></tr>';
-                $html .= '</tbody></table>';
-
-                // 4.9 Nivel de riesgo
-                $html .= '<h3>4.10 Evaluación del Nivel de Riesgo</h3>';
-                $html .= '<table class="data-table"><tbody>';
-                $html .= '<tr><td style="width:30%;background:#f5f5f5;font-weight:bold">Nivel de riesgo</td><td><span class="badge ' . $riskBadge . '">' . $label($riskKey) . '</span></td></tr>';
-                $html .= '</tbody></table>';
-
-                // 4.10 Observaciones y evidencia
-                $html .= '<h3>4.11 Observaciones y Evidencia Documental</h3>';
-                $html .= '<table class="data-table"><tbody>';
-                $html .= '<tr><td style="width:30%;background:#f5f5f5;font-weight:bold">Observaciones</td><td>' . nl2br(htmlspecialchars($this->safeString($it['notes'] ?? 'Sin observaciones'))) . '</td></tr>';
-                $html .= '<tr><td style="background:#f5f5f5;font-weight:bold">URL de evidencia</td><td>' . (!empty($it['evidenceUrl']) ? htmlspecialchars($it['evidenceUrl']) : '—') . '</td></tr>';
-                $html .= '</tbody></table>';
-
-                $html .= '</div>'; // fin ficha
+        // ─── 10. Top 20 tratamientos por riesgo ──────────────────
+        $html .= '<div class="section"><h2>6. Tratamientos de Mayor Riesgo (Top 20)</h2>';
+        if (empty($topItems)) {
+            $html .= '<p>No hay tratamientos registrados.</p>';
+        } else {
+            $html .= '<table class="data-table"><thead><tr>';
+            $html .= '<th style="width:5%">#</th>';
+            $html .= '<th style="width:28%">Tratamiento</th>';
+            $html .= '<th style="width:22%">Finalidad</th>';
+            $html .= '<th style="width:18%">Base legal</th>';
+            $html .= '<th style="width:12%">Riesgo</th>';
+            $html .= '<th style="width:15%">Sensible</th>';
+            $html .= '</tr></thead><tbody>';
+            $i = 0;
+            foreach ($topItems as $it) {
+                $i++;
+                $riskKey = (string)($it['risk'] ?? 'low');
+                $html .= '<tr>';
+                $html .= '<td>' . $i . '</td>';
+                $html .= '<td>' . htmlspecialchars($this->safeString($it['name'] ?? '—')) . '</td>';
+                $html .= '<td>' . htmlspecialchars($this->safeString($it['purpose'] ?? '—')) . '</td>';
+                $html .= '<td>' . htmlspecialchars($basisLabel($it['legalBasis'] ?? 'no_especificado')) . '</td>';
+                $html .= '<td><span class="badge ' . $riskBadgeCls($riskKey) . '">' . htmlspecialchars($riskLabel($riskKey)) . '</span></td>';
+                $html .= '<td>' . (!empty($it['sensitive']) ? 'Sí' : 'No') . '</td>';
+                $html .= '</tr>';
+            }
+            $html .= '</tbody></table>';
+            if ($total > 20) {
+                $html .= '<div class="legal-notice" style="margin-top:10px"><p>Este resumen muestra los <strong>20 tratamientos de mayor riesgo</strong>. El listado completo de los ' . $fmt($total) . ' tratamientos está disponible en el <strong>anexo CSV</strong>.</p></div>';
             }
         }
+        $html .= '</div>';
 
-        // ─── Bloque 5: marco legal ────────────────────────────
-        $html .= '<div class="section"><h2>5. Marco Legal Aplicable</h2><div class="legal-notice">';
+        // ─── 11. Marco legal ─────────────────────────────────────
+        $html .= '<div class="section"><h2>7. Marco Legal Aplicable</h2><div class="legal-notice">';
         $html .= '<h3>Ley 21.719 — Protección de Datos Personales</h3>';
         $html .= '<ul>';
-        $html .= '<li><strong>Art. 14.1.a:</strong> Identificación del responsable y del encargado del tratamiento.</li>';
-        $html .= '<li><strong>Art. 14.1.b:</strong> Fines del tratamiento y base de licitud (Arts. 12 y 13).</li>';
-        $html .= '<li><strong>Art. 14.1.c:</strong> Categorías de titulares y de datos personales tratados.</li>';
-        $html .= '<li><strong>Art. 14.1.d:</strong> Destinatarios o categorías de destinatarios a quienes se comunican los datos.</li>';
-        $html .= '<li><strong>Art. 14.1.e:</strong> Plazos previstos para la supresión de las diferentes categorías de datos.</li>';
-        $html .= '<li><strong>Art. 15:</strong> Registro de Actividades de Tratamiento (RAT) obligatorio.</li>';
+        $html .= '<li><strong>Art. 14 ter:</strong> Obligación de mantener y documentar el Registro de Actividades de Tratamiento (RAT).</li>';
         $html .= '<li><strong>Art. 16:</strong> Tratamiento de datos sensibles — consentimiento explícito y medidas reforzadas.</li>';
         $html .= '<li><strong>Art. 17:</strong> Tratamiento de datos de niños, niñas y adolescentes — salvaguardas especiales.</li>';
         $html .= '<li><strong>Art. 25:</strong> Medidas técnicas y organizativas de seguridad del tratamiento.</li>';
-        $html .= '<li><strong>Art. 15 bis:</strong> Contratos con encargados del tratamiento.</li>';
         $html .= '</ul>';
         $html .= '<p><strong>Sanciones por incumplimiento:</strong> Multas de hasta 20.000 UTM según la gravedad de la infracción (Arts. 32-36).</p>';
         $html .= '</div></div>';
 
-        // ─── Bloque 6: declaración y firma ────────────────────
-        $html .= '<div class="section"><h2>6. Declaración de Veracidad y Responsabilidad</h2>';
+        // ─── 12. Declaración y firma ─────────────────────────────
+        $html .= '<div class="section"><h2>8. Declaración de Veracidad y Responsabilidad</h2>';
         $html .= '<div class="legal-notice">';
-        $html .= '<p>El presente documento constituye el <strong>Registro de Actividades de Tratamiento (RAT)</strong> del responsable identificado, elaborado conforme al Art. 14 y Art. 15 de la Ley 21.719 de Protección de Datos Personales de la República de Chile.</p>';
-        $html .= '<p>El responsable declara que la información contenida en este registro es fiel reflejo de las actividades de tratamiento efectivamente realizadas a la fecha de emisión, y se compromete a mantenerlo actualizado conforme a las obligaciones legales vigentes.</p>';
-        $html .= '<p style="margin-top:24px">En Santiago de Chile, a ' . date('d/m/Y') . '.</p>';
+        $html .= '<p>El presente documento constituye el <strong>Resumen Ejecutivo del Registro de Actividades de Tratamiento (RAT)</strong> del responsable identificado, elaborado conforme al Art. 14 ter de la Ley 21.719.</p>';
+        $html .= '<p>El detalle granular de los tratamientos se conserva en el anexo CSV asociado, verificable mediante hash SHA-256.</p>';
+        $html .= '<p style="margin-top:20px">En Santiago de Chile, a ' . date('d/m/Y') . '.</p>';
         $html .= '<table style="width:100%;margin-top:50px;border-collapse:collapse">';
         $html .= '<tr>';
         $html .= '<td style="width:45%;border-top:1px solid #000;padding-top:6px;font-size:8px;text-align:center">';
