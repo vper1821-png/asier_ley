@@ -1377,12 +1377,10 @@ TMPL, [
     exit;
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// Estado del escaneo inicial del agente + comando de re-escaneo
-// ═══════════════════════════════════════════════════════════════════════
-
 // GET/POST /api/agents/{id}/scan-state
 // Devuelve el estado del escaneo inicial normalizado.
+// CRÍTICO: MongoDB devuelve los subdocumentos como BSONDocument, NO como array.
+// Hay que convertir explícitamente o los campos se pierden silenciosamente.
 function scanState() {
     $user = Auth::requireAuth();
     $db = Database::getInstance();
@@ -1394,10 +1392,28 @@ function scanState() {
     $agent = $db->findOne('agents', ['agentId' => $agentId]);
     if (!$agent) json_error('agente no encontrado', 404);
 
-    // Normalización defensiva: cualquier variante de tipo se convierte a su forma canónica
+    // ═══ FIX: convertir BSONDocument a array correctamente ═══
+    // NO usar `if (!is_array($raw)) $raw = [];` porque destruye el BSONDocument.
     $raw = $agent['scanState'] ?? [];
-    if (!is_array($raw)) $raw = [];
 
+    // Caso 1: viene como BSONDocument (lo normal desde Mongo)
+    if ($raw instanceof \MongoDB\Model\BSONDocument) {
+        $raw = $raw->getArrayCopy();
+    }
+    // Caso 2: viene como objeto genérico con getArrayCopy
+    elseif (is_object($raw) && method_exists($raw, 'getArrayCopy')) {
+        $raw = $raw->getArrayCopy();
+    }
+    // Caso 3: viene como stdClass (raro pero posible)
+    elseif (is_object($raw)) {
+        $raw = get_object_vars($raw);
+    }
+    // Caso 4: no es nada utilizable
+    elseif (!is_array($raw)) {
+        $raw = [];
+    }
+
+    // Normalizar cada campo a su tipo canónico
     $state = [
         'completed'        => filter_var($raw['completed'] ?? false, FILTER_VALIDATE_BOOLEAN),
         'started_at'       => $raw['started_at']       ?? null,
