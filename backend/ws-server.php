@@ -722,6 +722,8 @@ private function bsonToArray($v) {
 
         $path = $fileData['path'] ?? '';
         $hash = $fileData['hash'] ?? '';
+        $path = str_replace('\\', '/', (string)$path);
+
         if (!$path || !$hash) throw new \Exception('path y hash requeridos');
 
         // ── FIX D: resolver hostname real desde la colección agents ──
@@ -745,7 +747,7 @@ private function bsonToArray($v) {
         ]);
 
         $fileDoc = [
-            'userId' => $userId, 'sourceType' => 'agent', 'agentId' => $agentId,
+    'userId' => $userId, 'sourceType' => 'file', 'agentId' => $agentId,
             'hostname' => $hostname, 'path' => $path,
             'originalName' => basename($path), 'ext' => $extension,
             'size' => (int)($fileData['size'] ?? 0), 'hash' => $hash,
@@ -776,11 +778,15 @@ private function bsonToArray($v) {
             'categories' => $categories, 'sensitive' => $sensitive,
         ]);
 
-        $templateId = $resolved['templateId'];
+$templateId = $resolved['templateId'];
+$isFallback = ($resolved['mode'] === 'agent_fallback');
 
-        // 4. Buscar actividad existente (agregación)
-        $activity = null;
-        if ($templateId) {
+// El fallback se agrupa por carpeta (no por templateId) y NO aplica defaults
+$groupByTemplate = $templateId && !$isFallback;
+
+// 4. Buscar actividad existente (agregación)
+$activity = null;
+if ($groupByTemplate) {
             // Con plantilla → agrupa por templateId
             $activityRaw = $db->findOne('compliance_inventory', [
     'userId' => $userId, 'agentId' => $agentId, 'templateApplied' => $templateId,
@@ -853,86 +859,84 @@ $activity = $activityRaw ? $this->bsonToArray($activityRaw) : null;
             $db->updateOne('compliance_files', ['_id' => $fileId], [
                 'analysisResult.inventoryId' => (string)$activity['_id'],
             ]);
+} else {
+    // CREAR nueva actividad
+    // El fallback NO aporta defaults → el item queda vacío para revisión manual
+    $defaults = $isFallback ? [] : ($resolved['defaults'] ?? []);
+
+    // Nombre del item:
+    // - Template específico (Nómina, CV, etc.) → nombre del template
+    // - Fallback o inferencia → nombre de carpeta padre
+    if ($groupByTemplate) {
+        $friendlyName = '📄 ' . $resolved['templateName'];
+    } else {
+        $parentDir  = dirname($path);
+        $folderName = basename($parentDir);
+        $fileName   = basename($path);
+
+        if (empty($folderName) || $folderName === '.' || $folderName === '/' || $folderName === '\\') {
+            $friendlyName = '📄 ' . $fileName;
+        } elseif (in_array(strtolower($folderName), ['desktop','documents','downloads','users','public'], true)) {
+            $friendlyName = '📁 Archivos ' . ucfirst(strtolower($folderName));
         } else {
-            // CREAR nueva actividad
-            $defaults = $resolved['defaults'] ?? [];
-
-            // ── FIX A: nombre descriptivo ──
-            $fileName = basename($path);
-            $isRealTemplate = !empty($resolved['templateName'])
-                           && $resolved['templateName'] !== 'auto-inferencia';
-
-            if (!$isRealTemplate) {
-                $parentDir = dirname($path);
-                $folderName = basename($parentDir);
-
-                if (empty($folderName) || $folderName === '.' || $folderName === '/' || $folderName === '\\') {
-                    $friendlyName = '📄 ' . $fileName;
-                } elseif (in_array(strtolower($folderName), ['desktop', 'documents', 'downloads', 'users', 'public'], true)) {
-                    $friendlyName = '📁 Archivos ' . ucfirst(strtolower($folderName));
-                } else {
-                    $friendlyName = '📁 ' . $folderName;
-                }
-            } else {
-                $friendlyName = '📄 ' . $fileName;
-            }
-
-            // Código único RAT
-            $autoCode = 'RAT-' . strtoupper(substr(md5($path . $agentId), 0, 6));
-
-            // Config del usuario para defaults
-            $userConfig  = $db->findOne('compliance_config', ['userId' => $userId]) ?? [];
-            $companyName = $userConfig['companyName'] ?? '';
-            $dpdName     = $userConfig['dpdName'] ?? '';
-            $agentRec = $db->findOne('agents', ['agentId' => $agentId, 'userId' => $userId]);
-$agentTplIds = $agentRec ? $this->bsonToArray($agentRec['templateIds'] ?? []) : [];
-
-            $inventoryDoc = array_merge([
-                'userId' => $userId, 'agentId' => $agentId, 'hostname' => $hostname,
-                'path' => $path, 'extension' => $extension,
-                'name' => $friendlyName,
-                'code' => $autoCode,
-                'controllerName' => $companyName,
-                'processorName' => $dpdName,
-                'storage' => $hostname !== 'unknown' ? $hostname : ($fileData['user'] ?? 'equipo-local'),
-                'technicalMeasures' => ['cifrado_reposo', 'acceso_controlado', 'auditoria_accesos'],
-                'sourceType' => 'agent', 'sourceId' => (string)$fileId,
-                'sources' => [[
-                    'fileId' => (string)$fileId, 'path' => $path,
-                    'records' => $rowCount, 'detectedAt' => date('c'), 'hash' => $hash,
-                ]],
-                'fileCount' => 1, 'recordCount' => $rowCount, 'records' => $rowCount,
-                'fileExtensions' => [$extension],
-                'dataCategories' => implode(', ', $categories),
-                'sensitive' => $sensitive, 'active' => true,
-                'user' => $fileData['user'] ?? null,
-                'firstSeenAt' => date('c'), 'lastSeenAt' => date('c'),
-                'templateApplied' => $templateId, 'templateName' => $resolved['templateName'],
-                'templateMode' => $resolved['mode'], 'templateAppliedAt' => date('c'),
-                'needsReview' => ($resolved['mode'] === 'inference'),
-                'templateDebug' => [
-    'ctx' => [
-        'path'        => $path,
-        'hostname'    => $hostname,
-        'extension'   => $extension,
-        'categories'  => $categories,
-        'sensitive'   => $sensitive,
-    ],
-    'resolvedMode'         => $resolved['mode'],
-    'resolvedTemplateId'   => $resolved['templateId'],
-    'resolvedTemplateName' => $resolved['templateName'] ?? null,
-    'agentTemplateIds'     => $agentTplIds ?? [],
-    'defaultsKeys'         => array_keys($resolved['defaults'] ?? []),
-    'at'                   => date('c'),
-],
-                'createdAt' => date('c'), 'updatedAt' => date('c'),
-            ], $defaults);
-
-            $inv = $db->insertOne('compliance_inventory', $inventoryDoc);
-            $db->updateOne('compliance_files', ['_id' => $fileId], [
-                'analysisResult.inventoryId' => (string)$inv['_id'],
-            ]);
+            $friendlyName = '📁 ' . $folderName;
         }
+    }
+
+    $autoCode = 'RAT-' . strtoupper(substr(md5($path . $agentId), 0, 6));
+
+    $userConfig  = $db->findOne('compliance_config', ['userId' => $userId]) ?? [];
+    $companyName = $userConfig['companyName'] ?? '';
+    $dpdName     = $userConfig['dpdName'] ?? '';
+    $agentRec    = $db->findOne('agents', ['agentId' => $agentId, 'userId' => $userId]);
+    $agentTplIds = $agentRec ? $this->bsonToArray($agentRec['templateIds'] ?? []) : [];
+
+    $inventoryDoc = array_merge([
+        'userId' => $userId, 'agentId' => $agentId, 'hostname' => $hostname,
+        'path' => $path, 'extension' => $extension,
+        'name' => $friendlyName,
+        'code' => $autoCode,
+        'controllerName' => $companyName,
+        'processorName'  => $dpdName,
+        'storage' => $hostname !== 'unknown' ? $hostname : ($fileData['user'] ?? 'equipo-local'),
+        'technicalMeasures' => ['cifrado_reposo', 'acceso_controlado', 'auditoria_accesos'],
+        'sourceType' => 'file',                       // ← Cambio 4: 'agent' → 'file'
+        'sourceId'   => (string)$fileId,
+        'sources' => [[
+            'fileId' => (string)$fileId, 'path' => $path,
+            'records' => $rowCount, 'detectedAt' => date('c'), 'hash' => $hash,
+        ]],
+        'fileCount' => 1, 'recordCount' => $rowCount, 'records' => $rowCount,
+        'fileExtensions' => [$extension],
+        'dataCategories' => implode(', ', $categories),
+        'sensitive' => $sensitive, 'active' => true,
+        'user' => $fileData['user'] ?? null,
+        'firstSeenAt' => date('c'), 'lastSeenAt' => date('c'),
+        'templateApplied'   => $groupByTemplate ? $templateId : null,  // ← fallback → null
+        'templateName'      => $resolved['templateName'],
+        'templateMode'      => $resolved['mode'],
+        'templateAppliedAt' => date('c'),
+        'needsReview' => in_array($resolved['mode'], ['inference','agent_fallback'], true),  // ← fallback también
+        'templateDebug' => [
+            'ctx' => [
+                'path' => $path, 'hostname' => $hostname, 'extension' => $extension,
+                'categories' => $categories, 'sensitive' => $sensitive,
+            ],
+            'resolvedMode'         => $resolved['mode'],
+            'resolvedTemplateId'   => $resolved['templateId'],
+            'resolvedTemplateName' => $resolved['templateName'] ?? null,
+            'agentTemplateIds'     => $agentTplIds,
+            'defaultsKeys'         => array_keys($defaults),
+            'at'                   => date('c'),
+        ],
+        'createdAt' => date('c'), 'updatedAt' => date('c'),
+    ], $defaults);
+
+    $inv = $db->insertOne('compliance_inventory', $inventoryDoc);
+    $db->updateOne('compliance_files', ['_id' => $fileId], [
+        'analysisResult.inventoryId' => (string)$inv['_id'],
+    ]);
+}
 
         // 5. Auditoría
         $db->insertOne('file_audit_logs', [
@@ -1029,7 +1033,7 @@ $agentTplIds = $agentRec ? $this->bsonToArray($agentRec['templateIds'] ?? []) : 
     foreach ($templates as $tpl) {
         if (!empty($tpl['isFallback'])) {
             return [
-                'defaults'     => $this->bsonToArray($tpl['defaults'] ?? []),
+                'defaults'     => [],
                 'templateId'   => (string)$tpl['_id'],
                 'templateName' => $tpl['name'] ?? '',
                 'mode'         => 'agent_fallback',

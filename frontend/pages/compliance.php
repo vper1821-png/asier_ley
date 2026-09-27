@@ -2207,115 +2207,172 @@ $totalFiltered = count($filtered);
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-border-theme/30">
-                                <?php foreach ($filtered as $it):
-                                    $risk = $it['risk'] ?? 'low';
-                                    $riskColors = [
-                                        'critical' => ['text' => 'text-red-400', 'bg' => 'bg-red-500/15', 'border' => 'border-red-500/25', 'dot' => 'bg-red-400', 'label' => 'Crítico'],
-                                        'high' => ['text' => 'text-yellow-400', 'bg' => 'bg-yellow-500/15', 'border' => 'border-yellow-500/25', 'dot' => 'bg-yellow-400', 'label' => 'Alto'],
-                                        'medium' => ['text' => 'text-blue-400', 'bg' => 'bg-blue-500/15', 'border' => 'border-blue-500/25', 'dot' => 'bg-blue-400', 'label' => 'Medio'],
-                                        'low' => ['text' => 'text-text-muted', 'bg' => 'bg-bg-elevated/50', 'border' => 'border-border-theme', 'dot' => 'bg-text-subtle', 'label' => 'Bajo'],
-                                    ];
-                                    $rc = $riskColors[$risk] ?? $riskColors['low'];
-                                    $dc = $it['dataCategories'] ?? '';
-                                    if (is_array($dc)) $dc = implode(', ', $dc);
-                                    $sourceType = $it['sourceType'] ?? 'database';
-                                    $sourceLabel = $sourceType === 'file' ? 'Archivo' : 'Base de datos';
-                                    $sourceIcon = $sourceType === 'file'
-                                        ? '<svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>'
-                                        : '<svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>';
-                                    $sourceId = $it['sourceId'] ?? null;
-                                    $isComplete = !empty($it['name'])
-                                        && !empty($it['legalBasis'])
-                                        && $it['legalBasis'] !== 'Pendiente de definir'
-                                        && !empty($it['dataCategories'])
-                                        && !empty($it['recipients'])
-                                        && empty($it['needsReview']);
-                                ?>
-                                <tr class="border-t border-border-theme/30 hover:bg-bg-base/40 transition-colors <?= $isComplete ? 'rat-row-complete' : 'rat-row-incomplete' ?>">
-                                    <td class="py-2.5 px-3">
-                                        <span class="text-[12px] font-medium <?= $isComplete ? 'text-emerald-300' : 'text-text-heading' ?>"><?= h($it['name'] ?? 'Sin nombre') ?></span>
-<?php if ($isComplete): ?>
-    <span class="ml-1 inline-flex items-center gap-0.5 text-[8px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
-        <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
-        Completo
-    </span>
-<?php else: ?>
-    <span class="ml-1 text-[8px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">Incompleto</span>
+<?php foreach ($filtered as $it):
+    $risk = $it['risk'] ?? 'low';
+    $riskColors = [
+        'critical' => ['text'=>'text-red-400','bg'=>'bg-red-500/15','border'=>'border-red-500/25','dot'=>'bg-red-400','label'=>'Crítico'],
+        'high'     => ['text'=>'text-yellow-400','bg'=>'bg-yellow-500/15','border'=>'border-yellow-500/25','dot'=>'bg-yellow-400','label'=>'Alto'],
+        'medium'   => ['text'=>'text-blue-400','bg'=>'bg-blue-500/15','border'=>'border-blue-500/25','dot'=>'bg-blue-400','label'=>'Medio'],
+        'low'      => ['text'=>'text-text-muted','bg'=>'bg-bg-elevated/50','border'=>'border-border-theme','dot'=>'bg-text-subtle','label'=>'Bajo'],
+    ];
+    $rc = $riskColors[$risk] ?? $riskColors['low'];
+    $dc = $it['dataCategories'] ?? '';
+    if (is_array($dc)) $dc = implode(', ', $dc);
+    $sourceType = $it['sourceType'] ?? 'file';
+    $sourceLabel = $sourceType === 'file' ? 'Archivo' : 'Base de datos';
+    $sourceIcon = $sourceType === 'file'
+        ? '<svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>'
+        : '<svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>';
+    $sourceId = $it['sourceId'] ?? null;
+    $isComplete = !empty($it['name'])
+        && !empty($it['legalBasis'])
+        && $it['legalBasis'] !== 'Pendiente de definir'
+        && !empty($it['dataCategories'])
+        && !empty($it['recipients'])
+        && empty($it['needsReview']);
+
+    // ═══ Grupos expandibles ═══
+    $sources = $it['sources'] ?? [];
+    $sourceCount = count($sources);
+    $isGroup = $sourceCount > 1;
+    $rowId = 'rat-' . substr((string)($it['_id'] ?? ''), -8);
+?>
+<tr class="rat-row rat-row-main border-t border-border-theme/30 hover:bg-bg-base/40 transition-colors <?= $isComplete ? 'rat-row-complete' : 'rat-row-incomplete' ?>"
+    <?= $isGroup ? 'data-group="1" data-target="' . h($rowId) . '"' : '' ?>>
+    <td class="py-2.5 px-3">
+        <div class="flex items-start gap-2">
+            <?php if ($isGroup): ?>
+                <button type="button"
+                        onclick="toggleRatGroup('<?= h($rowId) ?>')"
+                        class="rat-expand-btn mt-0.5 w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 bg-white/[0.04] border border-white/[0.08] text-text-muted hover:text-white hover:border-accent transition-all"
+                        title="Expandir <?= $sourceCount ?> archivos">
+                    <svg class="rat-chevron w-3 h-3 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                    </svg>
+                </button>
+            <?php else: ?>
+                <span class="w-5 h-5 flex-shrink-0"></span>
+            <?php endif; ?>
+
+            <div class="min-w-0 flex-1">
+                <span class="text-[12px] font-medium <?= $isComplete ? 'text-emerald-300' : 'text-text-heading' ?>"><?= h($it['name'] ?? 'Sin nombre') ?></span>
+
+                <?php if ($isGroup): ?>
+                    <span class="ml-1.5 inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                        <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+                        <?= $sourceCount ?> archivos
+                    </span>
+                <?php endif; ?>
+
+                <?php if ($isComplete): ?>
+                    <span class="ml-1 inline-flex items-center gap-0.5 text-[8px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
+                        <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
+                        Completo
+                    </span>
+                <?php else: ?>
+                    <span class="ml-1 text-[8px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">Incompleto</span>
+                <?php endif; ?>
+
+                <?php if (!empty($it['needsReview'])): ?>
+                    <span class="ml-1 text-[8px] px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">Requiere revisión</span>
+                <?php endif; ?>
+
+                <?php if (!empty($it['purpose'])): ?>
+                    <span class="block text-[9px] text-text-subtle mt-0.5"><?= h($it['purpose']) ?></span>
+                <?php endif; ?>
+            </div>
+        </div>
+    </td>
+    <td class="py-2.5 px-3 text-text-body max-w-[120px] truncate" title="<?= h($dc) ?>"><?= h($dc ?: '-') ?></td>
+    <td class="py-2.5 px-3 text-text-muted text-[11px]"><?= h($it['legalBasis'] ?? '-') ?></td>
+    <td class="py-2.5 px-3">
+        <span class="inline-flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full border <?= $rc['bg'] ?> <?= $rc['text'] ?> <?= $rc['border'] ?>">
+            <span class="w-1.5 h-1.5 rounded-full <?= $rc['dot'] ?>"></span>
+            <?= $rc['label'] ?>
+        </span>
+    </td>
+    <td class="py-2.5 px-3">
+        <?php if (!empty($it['sensitive'])): ?>
+            <span class="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 inline-flex items-center gap-1 w-fit">
+                <span class="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse"></span>Sensible
+            </span>
+        <?php else: ?>
+            <span class="text-[10px] text-text-subtle">No</span>
+        <?php endif; ?>
+    </td>
+    <td class="py-2.5 px-3">
+        <span class="text-[10px] text-text-muted inline-flex items-center gap-1">
+            <?= $sourceIcon ?>
+            <?= $sourceLabel ?>
+            <?php if ($sourceType === 'file' && $sourceId): ?>
+                <a href="/compliance?tab=files" class="text-cyan-400 hover:text-cyan-300 text-[9px] inline-flex items-center" title="Ver archivo origen">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                </a>
+            <?php endif; ?>
+        </span>
+    </td>
+    <td class="py-2.5 px-3 text-text-muted text-[11px]">
+        <?= !empty($it['retentionDays']) ? h($it['retentionDays'] . ' días') : '-' ?>
+    </td>
+    <td class="py-2.5 px-3">
+        <div class="flex items-center justify-center gap-1.5">
+            <button onclick="openInventoryDetailModal('<?= h($it['_id'] ?? '') ?>')" class="p-2 rounded-lg text-text-muted hover:text-indigo-400 hover:bg-indigo-500/10 transition-all" title="Ver detalle completo">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+            </button>
+            <button onclick="openInventoryEditModal('<?= h($it['_id'] ?? '') ?>')" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-cyan-500/10 border border-cyan-500/25 text-cyan-400 hover:bg-cyan-500/20 transition-all" title="Editar actividad">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                Editar
+            </button>
+            <form method="POST" class="inline" onsubmit="return confirm('¿Eliminar esta actividad?')">
+                <input type="hidden" name="collection" value="inventory">
+                <input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>">
+                <button type="submit" name="delete_item" value="1" class="p-1.5 rounded-lg text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-all" title="Eliminar">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                </button>
+            </form>
+        </div>
+    </td>
+</tr>
+
+<?php if ($isGroup): ?>
+<tr id="<?= h($rowId) ?>-sources" class="hidden rat-row-sources">
+    <td colspan="8" class="p-0">
+        <div class="bg-bg-base/60 border-t border-cyan-500/15 px-6 py-4">
+            <p class="text-[10px] font-semibold text-cyan-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                <?= $sourceCount ?> archivos en esta actividad
+            </p>
+            <div class="space-y-1.5 max-h-[400px] overflow-y-auto scrollbar-custom">
+                <?php foreach ($sources as $src):
+                    $spath = $src['path'] ?? '';
+                    $sname = basename(str_replace('\\', '/', $spath));
+                    $srecs = (int)($src['records'] ?? 0);
+                    $sdate = $src['detectedAt'] ?? '';
+                    $shash = $src['hash'] ?? '';
+                ?>
+                <div class="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.04] hover:border-cyan-500/30 transition-all">
+                    <span class="text-cyan-400 flex-shrink-0 text-[13px]">📄</span>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-[11px] text-text-heading font-medium truncate" title="<?= h($spath) ?>"><?= h($sname) ?></p>
+                        <p class="text-[9px] text-text-subtle truncate" title="<?= h($spath) ?>"><?= h($spath) ?></p>
+                    </div>
+                    <div class="text-right flex-shrink-0">
+                        <?php if ($srecs > 0): ?>
+                            <p class="text-[10px] text-emerald-400 font-semibold"><?= $srecs ?> filas</p>
+                        <?php endif; ?>
+                        <?php if ($sdate): ?>
+                            <p class="text-[8px] text-text-subtle"><?= h(substr($sdate, 0, 16)) ?></p>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    </td>
+</tr>
 <?php endif; ?>
-                                        <?php if (!empty($it['purpose'])): ?>
-                                            <span class="block text-[9px] text-text-subtle mt-0.5"><?= h($it['purpose']) ?></span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td class="py-2.5 px-3 text-text-body max-w-[120px] truncate" title="<?= h($dc) ?>">
-                                        <?= h($dc ?: '-') ?>
-                                    </td>
-                                    <td class="py-2.5 px-3 text-text-muted text-[11px]"><?= h($it['legalBasis'] ?? '-') ?></td>
-                                    <td class="py-2.5 px-3">
-                                        <span class="inline-flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full border <?= $rc['bg'] ?> <?= $rc['text'] ?> <?= $rc['border'] ?>">
-                                            <span class="w-1.5 h-1.5 rounded-full <?= $rc['dot'] ?>"></span>
-                                            <?= $rc['label'] ?>
-                                        </span>
-                                    </td>
-                                    <td class="py-2.5 px-3">
-                                        <?php if (!empty($it['sensitive'])): ?>
-                                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 inline-flex items-center gap-1 w-fit">
-                                                <span class="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse"></span>
-                                                Sensible
-                                            </span>
-                                        <?php else: ?>
-                                            <span class="text-[10px] text-text-subtle">No</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td class="py-2.5 px-3">
-                                        <span class="text-[10px] text-text-muted inline-flex items-center gap-1">
-                                            <?= $sourceIcon ?>
-                                            <?= $sourceLabel ?>
-                                            <?php if ($sourceType === 'file' && $sourceId): ?>
-                                                <a href="/compliance?tab=files" class="text-cyan-400 hover:text-cyan-300 text-[9px] inline-flex items-center" title="Ver archivo origen">
-                                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-                                                </a>
-                                            <?php elseif ($sourceType === 'database' && $sourceId): ?>
-                                                <a href="/databases" class="text-cyan-400 hover:text-cyan-300 text-[9px] inline-flex items-center" title="Ver base de datos origen">
-                                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-                                                </a>
-                                            <?php endif; ?>
-                                        </span>
-                                    </td>
-                                    <td class="py-2.5 px-3 text-text-muted text-[11px]">
-                                        <?= !empty($it['retentionDays']) ? h($it['retentionDays'] . ' días') : '-' ?>
-                                    </td>
-                                    <td class="py-2.5 px-3">
-                                        <div class="flex items-center justify-center gap-1.5">
-                                            <!-- Ver Detalle -->
-                                            <button onclick="openInventoryDetailModal('<?= h($it['_id'] ?? '') ?>')"
-                                                    class="p-2 rounded-lg text-text-muted hover:text-indigo-400 hover:bg-indigo-500/10 transition-all"
-                                                    title="Ver detalle completo">
-                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-                                            </button>
-
-                                            <!-- Editar (más grande) -->
-                                            <button onclick="openInventoryEditModal('<?= h($it['_id'] ?? '') ?>')"
-                                                    class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-medium bg-cyan-500/10 border border-cyan-500/25 text-cyan-400 hover:bg-cyan-500/20 transition-all"
-                                                    title="Editar actividad">
-                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
-                                                Editar
-                                            </button>
-
-                                            <!-- Eliminar -->
-                                            <form method="POST" class="inline" onsubmit="return confirm('¿Eliminar esta actividad de tratamiento?\n\nNombre: <?= h(addslashes($it['name'] ?? 'Sin nombre')) ?>\nID: <?= h(substr($it['_id'] ?? '', 0, 8)) ?>...\n\nEsta acción no se puede deshacer.')">
-    <input type="hidden" name="collection" value="inventory">
-    <input type="hidden" name="item_id" value="<?= h($it['_id'] ?? '') ?>">
-                                                <button type="submit" name="delete_item" value="1"
-                                                        class="p-1.5 rounded-lg text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-all"
-                                                        title="Eliminar">
-                                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                                                </button>
-                                            </form>
-                                        </div>
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                            </tbody>
+<?php endforeach; ?>
+</tbody>
                         </table>
                     </div>
 
@@ -2936,12 +2993,28 @@ if (recipientsSelected.length === 0) {
             });
 
             // ─── Utilidad: escape HTML ───
-            function escHtml(str) {
-                if (!str) return '';
-                const div = document.createElement('div');
-                div.textContent = str;
-                return div.innerHTML;
-            }
+            // ─── Utilidad: escape HTML ───
+function escHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+// ═══ RAT expandible ═══
+function toggleRatGroup(rowId) {
+    const sourcesRow = document.getElementById(rowId + '-sources');
+    const mainRow = document.querySelector('[data-target="' + rowId + '"]');
+    if (!sourcesRow || !mainRow) return;
+
+    const isHidden = sourcesRow.classList.contains('hidden');
+    sourcesRow.classList.toggle('hidden');
+
+    const chevron = mainRow.querySelector('.rat-chevron');
+    if (chevron) {
+        chevron.style.transform = isHidden ? 'rotate(90deg)' : 'rotate(0deg)';
+    }
+}
 
              // ─── Inventory Wizard JavaScript ───
             (function() {
