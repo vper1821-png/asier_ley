@@ -1633,24 +1633,49 @@ main.compliance-workspace { position: relative; }
             if (!is_array($inventoryItems)) $inventoryItems = [];
 
             // ─── Estadísticas ───
-            $totalItems = count($inventoryItems);
-            $dbItems = count(array_filter($inventoryItems, fn($i) => ($i['sourceType'] ?? '') === 'database'));
-            $fileItems = count(array_filter($inventoryItems, fn($i) => ($i['sourceType'] ?? '') === 'file'));
-            $sensitiveItemsCount = count(array_filter($inventoryItems, fn($i) => !empty($i['sensitive'])));
-            $riskCounts = [
-                'critical' => count(array_filter($inventoryItems, fn($i) => ($i['risk'] ?? '') === 'critical')),
-                'high' => count(array_filter($inventoryItems, fn($i) => ($i['risk'] ?? '') === 'high')),
-                'medium' => count(array_filter($inventoryItems, fn($i) => ($i['risk'] ?? '') === 'medium')),
-                'low' => count(array_filter($inventoryItems, fn($i) => ($i['risk'] ?? '') === 'low' || empty($i['risk']))),
-            ];
-            $completeItems = count(array_filter($inventoryItems, function($i) {
-                return !empty($i['name'])
-                    && !empty($i['legalBasis'])
-                    && $i['legalBasis'] !== 'Pendiente de definir'
-                    && !empty($i['dataCategories'])
-                    && !empty($i['recipients'])
-                    && empty($i['needsReview']);
-            }));
+// ─── Estadísticas (contando ARCHIVOS individuales, no actividades) ───
+// Helper: cuántos archivos representa este item agrupado.
+// Si tiene sources[], cuenta cada uno. Si no, cuenta como 1.
+$countFilesInItem = function($i) {
+    $sources = $i['sources'] ?? [];
+    if (!is_array($sources) || empty($sources)) return 1;
+    return count($sources);
+};
+
+// Determina si un item (actividad) está completo
+$isItemComplete = function($i) {
+    return !empty($i['name'])
+        && !empty($i['legalBasis'])
+        && $i['legalBasis'] !== 'Pendiente de definir'
+        && !empty($i['dataCategories'])
+        && !empty($i['recipients'])
+        && empty($i['needsReview']);
+};
+
+// Suma los archivos de cada item según el criterio
+$totalItems = 0;
+$dbItems = 0;
+$fileItems = 0;
+$sensitiveItemsCount = 0;
+$riskCounts = ['critical' => 0, 'high' => 0, 'medium' => 0, 'low' => 0];
+$completeItems = 0;
+
+foreach ($inventoryItems as $i) {
+    $n = $countFilesInItem($i);
+
+    $totalItems += $n;
+
+    if (($i['sourceType'] ?? '') === 'database') $dbItems += $n;
+    if (($i['sourceType'] ?? '') === 'file')     $fileItems += $n;
+
+    if (!empty($i['sensitive'])) $sensitiveItemsCount += $n;
+
+    $r = $i['risk'] ?? 'low';
+    if (!isset($riskCounts[$r])) $r = 'low';
+    $riskCounts[$r] += $n;
+
+    if ($isItemComplete($i)) $completeItems += $n;
+}
 
             // ─── Filtros y ordenamiento ───
             $search = $_GET['search'] ?? '';
@@ -2132,7 +2157,9 @@ $totalFiltered = count($filtered);
                             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>
                         </div>
                         <p class="text-[12px] font-semibold text-white">Registro de Actividades de Tratamiento (RAT)</p>
-                        <span class="text-[10px] text-text-subtle"><?= $totalFiltered ?> / <?= $totalItems ?> actividades</span>
+                        <span class="text-[10px] text-text-subtle">
+    <?= $totalFiltered ?> actividades · <?= $totalItems ?> archivos
+</span>
                     </div>
                     <div class="flex items-center gap-2">
                         <a href="/compliance-export?type=ropa" class="text-[10px] text-primary-400 hover:text-primary-300 font-medium transition-colors flex items-center gap-1">
@@ -2378,7 +2405,7 @@ $totalFiltered = count($filtered);
 
                     <!-- Footer de la tabla -->
                     <div class="px-5 py-2.5 border-t border-border-theme/20 flex items-center justify-between text-[10px] text-text-subtle">
-                        <span><?= $totalFiltered ?> actividades mostradas</span>
+                        <span><?= $totalFiltered ?> actividades · <?= $totalItems ?> archivos</span>
                         <span>Última actualización: <?= date('H:i:s') ?></span>
                     </div>
                 <?php endif; ?>
