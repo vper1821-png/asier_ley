@@ -74,10 +74,25 @@ class BsonHelpers
     }
 }
 
-// ─── Aliases de compatibilidad (borrar cuando todo esté migrado) ───
-if (!function_exists('_pub_bson_str')) function _pub_bson_str($v): string { return BsonHelpers::str($v); }
-if (!function_exists('_pub_bson_arr')) function _pub_bson_arr($v): array  { return BsonHelpers::arr($v); }
-if (!function_exists('_pub_h'))        function _pub_h($s): string        { return BsonHelpers::h($s); }
-if (!function_exists('arcoToArray'))   function arcoToArray($v)           { return BsonHelpers::toArray($v); }
+// ─── Aliases de compatibilidad ───
+// IMPORTANTE: cada if DEBE tener llaves { }. Sin llaves, PHP no parsea
+// `if (X) function foo(): type { ... }` y lanza:
+//   Parse error: syntax error, unexpected identifier "_pub_bson_str", expecting "("
 
+if (!function_exists('_pub_bson_str')) {
+    function _pub_bson_str($v): string { return BsonHelpers::str($v); }
 }
+
+if (!function_exists('_pub_bson_arr')) {
+    function _pub_bson_arr($v): array { return BsonHelpers::arr($v); }
+}
+
+if (!function_exists('_pub_h')) {
+    function _pub_h($s): string { return BsonHelpers::h($s); }
+}
+
+if (!function_exists('arcoToArray')) {
+    function arcoToArray($v) { return BsonHelpers::toArray($v); }
+}
+
+} // ← cierra el if (!class_exists('BsonHelpers')) del inicio
