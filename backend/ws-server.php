@@ -249,9 +249,11 @@ private function resolvePackHint($templateHint, $userId) {
     if (!$this->db || !$templateHint) return null;
     $pack = $this->db->findOne('compliance_packs', ['_id' => $templateHint, 'userId' => $userId]);
     if (!$pack) return null;
+    $pack = $this->bsonToArray($pack);                                    // ← FIX
     if (array_key_exists('active', $pack) && $pack['active'] === false) return null;
 
-    $tpls = $this->db->find('compliance_templates', ['packId' => (string)$pack['_id']]);
+    $tplsRaw = $this->db->find('compliance_templates', ['packId' => (string)$pack['_id']]);
+    $tpls = array_map(fn($t) => $this->bsonToArray($t), $tplsRaw);       // ← FIX
     $active = array_values(array_filter($tpls, function ($t) {
         return !array_key_exists('active', $t) || $t['active'] !== false;
     }));
@@ -261,6 +263,25 @@ private function resolvePackHint($templateHint, $userId) {
         'templateIds'   => array_map(fn($t) => (string)$t['_id'], $active),
         'templateCount' => count($active),
     ];
+}
+/** Convierte recursivamente BSONDocument/BSONArray a arrays PHP. */
+private function bsonToArray($v) {
+    if ($v instanceof \MongoDB\Model\BSONDocument) {
+        $v = $v->getArrayCopy();
+    } elseif ($v instanceof \MongoDB\Model\BSONArray) {
+        $v = $v->getArrayCopy();
+    }
+    if (is_array($v)) {
+        $out = [];
+        foreach ($v as $k => $item) {
+            $out[$k] = $this->bsonToArray($item);
+        }
+        return $out;
+    }
+    if ($v instanceof \MongoDB\BSON\ObjectId) {
+        return (string)$v;
+    }
+    return $v;
 }
 
     // ─── HANDLER: FILE_DETECTED ─────────────────────────────────────
@@ -352,8 +373,12 @@ private function resolvePackHint($templateHint, $userId) {
                 . ($fileData['sensitive'] ? 'true' : 'false')
                 . ", fileId=" . ($result['fileId'] ?? '?') . ")\n";
         } catch (\Throwable $e) {
-            echo "❌ inventory_item ERROR: {$path} - " . $e->getMessage() . "\n";
-        }
+    $line = sprintf("[%s] ❌ ERROR: %s | agent=%s\n%s\n",
+        date('c'), $path, $agentId, $e->getTraceAsString());
+    @file_put_contents('/var/log/securelab-ws-errors.log', $line, FILE_APPEND);
+    echo "❌ inventory_item ERROR: {$path} - " . $e->getMessage() . "\n";
+    echo "   Stack: " . $e->getTraceAsString() . "\n";
+}
     }
 
     // ─── HANDLERS: FILE_EVENT, DB_QUERY, HOST_EVENT, TELEMETRY, EVENT ──
@@ -757,9 +782,10 @@ private function resolvePackHint($templateHint, $userId) {
         $activity = null;
         if ($templateId) {
             // Con plantilla → agrupa por templateId
-            $activity = $db->findOne('compliance_inventory', [
-                'userId' => $userId, 'agentId' => $agentId, 'templateApplied' => $templateId,
-            ]);
+            $activityRaw = $db->findOne('compliance_inventory', [
+    'userId' => $userId, 'agentId' => $agentId, 'templateApplied' => $templateId,
+]);
+$activity = $activityRaw ? $this->bsonToArray($activityRaw) : null;
         } else {
             // Sin plantilla → agrupa por carpeta padre
             $parentDir = dirname($path);
@@ -774,12 +800,13 @@ private function resolvePackHint($templateHint, $userId) {
                 $friendlyName = '📁 ' . $folderName;
             }
 
-            $activity = $db->findOne('compliance_inventory', [
-                'userId' => $userId,
-                'agentId' => $agentId,
-                'name' => $friendlyName,
-                'templateApplied' => null,
-            ]);
+            $activityRaw = $db->findOne('compliance_inventory', [
+    'userId' => $userId,
+    'agentId' => $agentId,
+    'name' => $friendlyName,
+    'templateApplied' => null,
+]);
+$activity = $activityRaw ? $this->bsonToArray($activityRaw) : null;
         }
 
         if ($activity) {
@@ -857,6 +884,8 @@ private function resolvePackHint($templateHint, $userId) {
             $userConfig  = $db->findOne('compliance_config', ['userId' => $userId]) ?? [];
             $companyName = $userConfig['companyName'] ?? '';
             $dpdName     = $userConfig['dpdName'] ?? '';
+            $agentRec = $db->findOne('agents', ['agentId' => $agentId, 'userId' => $userId]);
+$agentTplIds = $agentRec ? $this->bsonToArray($agentRec['templateIds'] ?? []) : [];
 
             $inventoryDoc = array_merge([
                 'userId' => $userId, 'agentId' => $agentId, 'hostname' => $hostname,
@@ -951,32 +980,37 @@ private function resolvePackHint($templateHint, $userId) {
         'userId' => $userId, 'agentId' => $agentId, 'signature' => $signature,
     ]);
     if ($learned && !empty($learned['templateId'])) {
-        // FIX #4: criterio consistente para active
         $tpl = $db->findOne('compliance_templates', ['_id' => $learned['templateId']]);
-        if ($tpl && (!array_key_exists('active', $tpl) || $tpl['active'] !== false)) {
-            $db->updateOne('compliance_cluster_learning', ['_id' => $learned['_id']], [
-                'hitCount'   => ((int)($learned['hitCount'] ?? 0)) + 1,
-                'lastSeenAt' => date('c'),
-            ]);
-            return [
-                'defaults'     => $tpl['defaults'] ?? [],
-                'templateId'   => (string)$tpl['_id'],
-                'templateName' => $tpl['name'] ?? '',
-                'mode'         => 'learning',
-            ];
+        if ($tpl) {
+            $tpl = $this->bsonToArray($tpl);
+            if (!array_key_exists('active', $tpl) || $tpl['active'] !== false) {
+                $db->updateOne('compliance_cluster_learning', ['_id' => $learned['_id']], [
+                    'hitCount'   => ((int)($learned['hitCount'] ?? 0)) + 1,
+                    'lastSeenAt' => date('c'),
+                ]);
+                return [
+                    'defaults'     => $this->bsonToArray($tpl['defaults'] ?? []),
+                    'templateId'   => (string)$tpl['_id'],
+                    'templateName' => $tpl['name'] ?? '',
+                    'mode'         => 'learning',
+                ];
+            }
         }
-    }
+    }   // ← ESTA llave es la que faltaba
 
     // CAPA 1: Plantillas del agente
     $agent = $db->findOne('agents', ['agentId' => $agentId, 'userId' => $userId]);
+    $agent = $agent ? $this->bsonToArray($agent) : [];
     $agentTplIds = $agent['templateIds'] ?? [];
 
     $templates = [];
     foreach ($agentTplIds as $tid) {
         $t = $db->findOne('compliance_templates', ['_id' => $tid]);
-        // FIX #4
-        if ($t && (!array_key_exists('active', $t) || $t['active'] !== false)) {
-            $templates[] = $t;
+        if ($t) {
+            $t = $this->bsonToArray($t);
+            if (!array_key_exists('active', $t) || $t['active'] !== false) {
+                $templates[] = $t;
+            }
         }
     }
     usort($templates, fn($a, $b) => ($b['priority'] ?? 0) <=> ($a['priority'] ?? 0));
@@ -985,7 +1019,7 @@ private function resolvePackHint($templateHint, $userId) {
         if (!empty($tpl['isFallback'])) continue;
         if ($this->matchTemplateRulesWs($tpl, $ctx)) {
             return [
-                'defaults'     => $tpl['defaults'] ?? [],
+                'defaults'     => $this->bsonToArray($tpl['defaults'] ?? []),
                 'templateId'   => (string)$tpl['_id'],
                 'templateName' => $tpl['name'] ?? '',
                 'mode'         => 'agent',
@@ -995,7 +1029,7 @@ private function resolvePackHint($templateHint, $userId) {
     foreach ($templates as $tpl) {
         if (!empty($tpl['isFallback'])) {
             return [
-                'defaults'     => $tpl['defaults'] ?? [],
+                'defaults'     => $this->bsonToArray($tpl['defaults'] ?? []),
                 'templateId'   => (string)$tpl['_id'],
                 'templateName' => $tpl['name'] ?? '',
                 'mode'         => 'agent_fallback',
@@ -1004,15 +1038,18 @@ private function resolvePackHint($templateHint, $userId) {
     }
 
     // CAPA 2: Globales
-    $globalTpls = $db->find('compliance_templates', ['userId' => $userId, 'isGlobal' => true]);
-    $globalTpls = array_values(array_filter($globalTpls, function ($t) {
-        return !array_key_exists('active', $t) || $t['active'] !== false;
-    }));
+    $globalTplsRaw = $db->find('compliance_templates', ['userId' => $userId, 'isGlobal' => true]);
+    $globalTpls = array_values(array_filter(
+        array_map(fn($t) => $this->bsonToArray($t), $globalTplsRaw),
+        function ($t) {
+            return !array_key_exists('active', $t) || $t['active'] !== false;
+        }
+    ));
     usort($globalTpls, fn($a, $b) => ($b['priority'] ?? 0) <=> ($a['priority'] ?? 0));
     foreach ($globalTpls as $tpl) {
         if ($this->matchTemplateRulesWs($tpl, $ctx)) {
             return [
-                'defaults'     => $tpl['defaults'] ?? [],
+                'defaults'     => $this->bsonToArray($tpl['defaults'] ?? []),
                 'templateId'   => (string)$tpl['_id'],
                 'templateName' => $tpl['name'] ?? '',
                 'mode'         => 'global',
@@ -1028,6 +1065,9 @@ private function resolvePackHint($templateHint, $userId) {
         'mode'         => 'inference',
     ];
 }
+
+    // FIX #3 y #5: normalización de paths y acentos para el matcher
+
 
     // FIX #3 y #5: normalización de paths y acentos para el matcher
 private function normalizePath($p) {
