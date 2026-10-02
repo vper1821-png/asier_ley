@@ -66,7 +66,21 @@ RUN rm -f /etc/nginx/sites-enabled/default && \
     ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
 
 # Configurar PHP (production)
+# Configurar PHP (production)
 RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
+
+# 🔒 Hardening de PHP: ocultar versión y endurecer sesiones
+RUN printf 'expose_php = Off\n\
+display_errors = Off\n\
+log_errors = On\n\
+log_errors_max_len = 1024\n\
+session.cookie_httponly = On\n\
+session.cookie_secure = On\n\
+session.cookie_samesite = Strict\n\
+session.use_strict_mode = On\n\
+session.use_only_cookies = On\n\
+session.gc_maxlifetime = 3600\n' \
+    > /usr/local/etc/php/conf.d/zz-hardening.ini
 
 # Copiar la aplicación PHP (backend) ANTES de composer install para que vendor se genere correctamente
 WORKDIR /var/www/html
